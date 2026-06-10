@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     database_url: str = "sqlite:///./dispatch.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    default_model: str = "llama3"
+    default_model: str = "qwen3:8b"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

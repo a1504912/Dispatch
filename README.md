@@ -23,10 +23,19 @@ dispatch/
 
 ## 快速開始（Docker Compose）
 
-需要先在主機上跑好 [Ollama](https://ollama.com/)（預設 `http://localhost:11434`）。
+需要先在主機上跑好 [Ollama](https://ollama.com/)（預設 `http://localhost:11434`），
+並拉好預設團隊用的兩個模型：
+
+```bash
+ollama pull qwen2.5-coder:7b   # 工程師（改程式）
+ollama pull qwen3:8b           # 其他 agent 與預設模型
+```
 
 ```bash
 docker compose up --build
+
+# （可選）建立預設的五個 AI 員工
+docker compose exec backend python -m app.seed
 ```
 
 - 前端：http://localhost:5173
