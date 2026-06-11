@@ -19,6 +19,16 @@ app = FastAPI(title="Dispatch API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    # Also allow localhost and private LAN IPs on any port, so the frontend
+    # works whether it's opened via localhost:5173 or http://192.168.x.x:5173.
+    allow_origin_regex=(
+        r"https?://("
+        r"localhost|127\.0\.0\.1|"
+        r"192\.168\.\d{1,3}\.\d{1,3}|"
+        r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+        r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+        r")(:\d+)?"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
