@@ -11,9 +11,21 @@ engine = create_engine(settings.database_url, echo=False, connect_args=connect_a
 
 def init_db() -> None:
     """Create database tables. Import models so they are registered on metadata."""
+    from sqlalchemy import text
+
     from app import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
+
+    # 輕量遷移：舊資料庫補上後來新增的欄位（SQLite create_all 不會加欄位）。
+    if settings.database_url.startswith("sqlite"):
+        with engine.connect() as conn:
+            columns = [row[1] for row in conn.execute(text("PRAGMA table_info(event)"))]
+            if columns and "completed" not in columns:
+                conn.execute(
+                    text("ALTER TABLE event ADD COLUMN completed BOOLEAN NOT NULL DEFAULT 0")
+                )
+                conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

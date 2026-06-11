@@ -27,6 +27,11 @@ class EventCreate(SQLModel):
     description: str = ""
     agent_id: Optional[int] = None
     color: str = "#3788d8"
+    completed: bool = False
+
+
+class EventCompletedUpdate(SQLModel):
+    completed: bool
 
 
 # ---------- Chat ----------

@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Event
-from app.schemas import EventCreate
+from app.schemas import EventCompletedUpdate, EventCreate
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -33,6 +33,22 @@ def update_event(
         raise HTTPException(status_code=404, detail="Event not found")
     for key, value in payload.model_dump().items():
         setattr(event, key, value)
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+    return event
+
+
+@router.patch("/{event_id}/completed", response_model=Event)
+def set_completed(
+    event_id: int,
+    payload: EventCompletedUpdate,
+    session: Session = Depends(get_session),
+):
+    event = session.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    event.completed = payload.completed
     session.add(event)
     session.commit()
     session.refresh(event)

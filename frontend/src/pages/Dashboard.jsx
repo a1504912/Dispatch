@@ -4,7 +4,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import zhTwLocale from "@fullcalendar/core/locales/zh-tw";
-import { listEvents } from "../api/events";
+import { listEvents, setEventCompleted } from "../api/events";
 import { listAgents } from "../api/agents";
 import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
@@ -68,6 +68,8 @@ export default function Dashboard() {
             start: e.start_time,
             end: e.end_time,
             color: e.color,
+            completed: e.completed,
+            classNames: e.completed ? ["event-done"] : [],
           }))
         );
       })
@@ -88,6 +90,12 @@ export default function Dashboard() {
     openNewEvent({ start_time: info.start, end_time: info.end });
   }
 
+  // 行事曆上直接勾選完成/未完成
+  async function toggleCompleted(id, completed) {
+    await setEventCompleted(Number(id), completed);
+    loadEvents();
+  }
+
   useEffect(() => {
     loadEvents();
     listAgents()
@@ -96,10 +104,11 @@ export default function Dashboard() {
   }, []);
 
   const today = new Date();
-  const todayCount = events.filter((e) => {
+  const todayEvents = events.filter((e) => {
     const d = new Date(e.start);
     return d.toDateString() === today.toDateString();
-  }).length;
+  });
+  const todayDone = todayEvents.filter((e) => e.completed).length;
   const activeCount = agents.filter((a) => a.status === "active").length;
 
   return (
@@ -138,7 +147,12 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard emoji="🧑‍💻" label="AI 員工" value={agents.length} hint="位" />
         <StatCard emoji="⚡" label="工作中" value={activeCount} hint="位" />
-        <StatCard emoji="📌" label="今日行程" value={todayCount} hint="件" />
+        <StatCard
+          emoji="📌"
+          label="今日行程"
+          value={todayEvents.length === 0 ? 0 : `${todayDone}/${todayEvents.length}`}
+          hint={todayEvents.length === 0 ? "件" : "件完成"}
+        />
       </div>
 
       {/* 行事曆 + 對話 */}
@@ -161,6 +175,31 @@ export default function Dashboard() {
             events={events}
             eventClick={handleEventClick}
             select={handleSelect}
+            eventContent={(arg) => {
+              const completed = arg.event.extendedProps.completed;
+              return (
+                <div className="flex items-center gap-1 overflow-hidden px-0.5">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(completed)}
+                    onChange={() => {}}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCompleted(arg.event.id, !completed);
+                    }}
+                    className="h-3 w-3 shrink-0 cursor-pointer accent-emerald-500"
+                    title={completed ? "標記為未完成" : "標記為完成"}
+                  />
+                  {arg.timeText && (
+                    <span className="shrink-0 text-[10px] opacity-80">{arg.timeText}</span>
+                  )}
+                  <span className={`truncate ${completed ? "line-through opacity-70" : ""}`}>
+                    {arg.event.title}
+                  </span>
+                </div>
+              );
+            }}
           />
         </div>
         <div className="h-[640px] xl:col-span-1 xl:h-auto">

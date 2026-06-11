@@ -33,3 +33,4 @@ class Event(SQLModel, table=True):
     description: str = ""
     agent_id: Optional[int] = Field(default=None, foreign_key="agent.id")
     color: str = "#3788d8"
+    completed: bool = False

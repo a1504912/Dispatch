@@ -49,6 +49,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       agent_id: initial?.agent_id != null ? String(initial.agent_id) : "",
       color: initial?.color ?? COLORS[0],
       description: initial?.description ?? "",
+      completed: initial?.completed ?? false,
     });
   }, [open, initial]);
 
@@ -65,6 +66,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       description: form.description,
       color: form.color,
       agent_id: form.agent_id ? Number(form.agent_id) : null,
+      completed: form.completed,
     };
     try {
       if (isEdit) await updateEvent(initial.id, payload);
@@ -100,9 +102,22 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-black text-slate-900">
-          {isEdit ? "編輯行程" : "新增行程"}
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-black text-slate-900">
+            {isEdit ? "編輯行程" : "新增行程"}
+          </h2>
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, completed: !form.completed })}
+            className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-bold ring-1 transition active:scale-95 ${
+              form.completed
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                : "bg-slate-50 text-slate-400 ring-slate-200 hover:text-slate-600"
+            }`}
+          >
+            {form.completed ? "✅ 已完成" : "⬜ 未完成"}
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>

@@ -15,6 +15,11 @@ export async function updateEvent(id, event) {
   return data;
 }
 
+export async function setEventCompleted(id, completed) {
+  const { data } = await client.patch(`/api/events/${id}/completed`, { completed });
+  return data;
+}
+
 export async function deleteEvent(id) {
   await client.delete(`/api/events/${id}`);
 }

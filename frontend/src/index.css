@@ -101,3 +101,7 @@ body {
   border-radius: 0.5rem;
   overflow: hidden;
 }
+/* 已完成的事件：變淡 */
+.fc .event-done {
+  opacity: 0.55;
+}
