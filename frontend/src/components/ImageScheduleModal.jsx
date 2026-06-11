@@ -1,0 +1,246 @@
+import { useEffect, useRef, useState } from "react";
+import { scheduleFromImage } from "../api/schedule";
+import { createEvent } from "../api/events";
+import { listModels } from "../api/models";
+
+// 判斷一個模型名稱看起來像不像「視覺模型」
+const VISION_HINT = /vl|llava|vision|minicpm|moondream|bakllava|gemma3/i;
+
+function formatRange(start, end) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const date = s.toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "short" });
+  const t = (d) => d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${date} ${t(s)}–${t(e)}`;
+}
+
+export default function ImageScheduleModal({ open, onClose, onSaved }) {
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [models, setModels] = useState([]);
+  const [model, setModel] = useState("");
+  const [visionWarning, setVisionWarning] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [proposals, setProposals] = useState(null);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef(null);
+
+  // 重置 + 載入可用模型
+  useEffect(() => {
+    if (!open) return;
+    setFile(null);
+    setPreviewUrl("");
+    setProposals(null);
+    setError("");
+    listModels()
+      .then((data) => {
+        const list = data.models ?? [];
+        setModels(list);
+        const vision = list.find((m) => VISION_HINT.test(m));
+        setModel(vision ?? list[0] ?? "");
+        setVisionWarning(list.length > 0 && !vision);
+      })
+      .catch(() => setModels([]));
+  }, [open]);
+
+  // 支援直接貼上截圖
+  useEffect(() => {
+    if (!open) return;
+    function onPaste(e) {
+      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
+      if (item) pickFile(item.getAsFile());
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [open]);
+
+  function pickFile(f) {
+    if (!f) return;
+    setFile(f);
+    setPreviewUrl(URL.createObjectURL(f));
+    setProposals(null);
+    setError("");
+  }
+
+  async function handleParse() {
+    if (!file) return;
+    setLoading(true);
+    setError("");
+    try {
+      const data = await scheduleFromImage(file, model || undefined);
+      setProposals(data.events ?? []);
+    } catch (err) {
+      setError(
+        err?.response?.data?.detail ??
+          "解析失敗，請確認 Ollama 有安裝視覺模型（例如 qwen2.5vl:7b）。"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      for (const ev of proposals) await createEvent(ev);
+      onSaved?.();
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function removeProposal(idx) {
+    setProposals((p) => p.filter((_, i) => i !== idx));
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-slate-100 px-6 py-4">
+          <h2 className="text-lg font-black text-slate-900">📷 截圖排程</h2>
+          <p className="mt-0.5 text-sm text-slate-400">
+            上傳或貼上截圖（Ctrl+V），AI 會自動讀出行程並排進行事曆。
+          </p>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          {/* 模型選擇 */}
+          {models.length > 0 && (
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-500">視覺模型</label>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+              >
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                    {VISION_HINT.test(m) ? "  👁 視覺" : ""}
+                  </option>
+                ))}
+              </select>
+              {visionWarning && (
+                <p className="mt-1.5 text-xs text-amber-600">
+                  ⚠️ 沒偵測到視覺模型，建議先 <code>ollama pull qwen2.5vl:7b</code>。
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 圖片上傳 / 預覽 */}
+          {!previewUrl ? (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40"
+            >
+              <span className="text-4xl">🖼️</span>
+              <span className="text-sm font-medium text-slate-600">點此選擇圖片</span>
+              <span className="text-xs text-slate-400">或直接 Ctrl + V 貼上截圖</span>
+            </button>
+          ) : (
+            <div className="relative overflow-hidden rounded-xl border border-slate-200">
+              <img src={previewUrl} alt="預覽" className="max-h-52 w-full object-contain bg-slate-50" />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-2 right-2 rounded-lg bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow ring-1 ring-slate-200 hover:bg-white"
+              >
+                換一張
+              </button>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => pickFile(e.target.files?.[0])}
+          />
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {/* 解析結果 */}
+          {proposals && (
+            <div>
+              <p className="mb-2 text-xs font-bold text-slate-500">
+                AI 讀到 {proposals.length} 筆行程
+                {proposals.length > 0 && "（可移除不要的）"}
+              </p>
+              {proposals.length === 0 ? (
+                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">
+                  沒讀到行程，換一張更清楚的截圖試試。
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {proposals.map((ev, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"
+                    >
+                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-violet-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{ev.title}</p>
+                        <p className="text-xs text-slate-400">{formatRange(ev.start_time, ev.end_time)}</p>
+                        {ev.description && (
+                          <p className="mt-0.5 truncate text-xs text-slate-400">{ev.description}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeProposal(i)}
+                        className="shrink-0 rounded-md px-1.5 text-slate-300 hover:text-red-500"
+                        title="移除"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 底部按鈕 */}
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100"
+          >
+            關閉
+          </button>
+          {!proposals ? (
+            <button
+              onClick={handleParse}
+              disabled={!file || loading}
+              className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none"
+            >
+              {loading ? "AI 解析中…" : "✨ 開始解析"}
+            </button>
+          ) : (
+            <button
+              onClick={handleSave}
+              disabled={proposals.length === 0 || saving}
+              className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none"
+            >
+              {saving ? "加入中…" : `加入 ${proposals.length} 筆到行事曆`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -7,6 +7,7 @@ import zhTwLocale from "@fullcalendar/core/locales/zh-tw";
 import { listEvents } from "../api/events";
 import { listAgents } from "../api/agents";
 import ChatBox from "../components/ChatBox.jsx";
+import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 
 function StatCard({ emoji, label, value, hint }) {
   return (
@@ -28,9 +29,10 @@ function StatCard({ emoji, label, value, hint }) {
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
 
-  useEffect(() => {
-    listEvents()
+  function loadEvents() {
+    return listEvents()
       .then((data) =>
         setEvents(
           data.map((e) => ({
@@ -43,6 +45,10 @@ export default function Dashboard() {
         )
       )
       .catch(() => setEvents([]));
+  }
+
+  useEffect(() => {
+    loadEvents();
     listAgents()
       .then(setAgents)
       .catch(() => setAgents([]));
@@ -58,17 +64,25 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* 頁首 */}
-      <div>
-        <h1 className="text-2xl font-black text-slate-900">總覽</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {today.toLocaleDateString("zh-TW", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            weekday: "long",
-          })}
-          ，把今天交給你的團隊吧。
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900">總覽</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {today.toLocaleDateString("zh-TW", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              weekday: "long",
+            })}
+            ，把今天交給你的團隊吧。
+          </p>
+        </div>
+        <button
+          onClick={() => setImageModalOpen(true)}
+          className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
+        >
+          📷 截圖排程
+        </button>
       </div>
 
       {/* 統計卡 */}
@@ -100,6 +114,12 @@ export default function Dashboard() {
           <ChatBox agents={agents} />
         </div>
       </div>
+
+      <ImageScheduleModal
+        open={imageModalOpen}
+        onClose={() => setImageModalOpen(false)}
+        onSaved={loadEvents}
+      />
     </div>
   );
 }

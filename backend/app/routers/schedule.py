@@ -1,12 +1,20 @@
+import base64
+import json
 from datetime import datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlmodel import Session
 
+from app import ollama_client
+from app.config import settings
 from app.database import get_session
 from app.schemas import EventCreate, ScheduleRequest, ScheduleResponse
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
+
+AI_EVENT_COLOR = "#8b5cf6"
 
 
 @router.post("/generate", response_model=ScheduleResponse)
@@ -33,3 +41,107 @@ def generate_schedule(payload: ScheduleRequest, session: Session = Depends(get_s
         )
 
     return ScheduleResponse(events=events)
+
+
+def _build_prompt() -> str:
+    today = datetime.now()
+    return (
+        "你是行程解析助手。使用者會上傳一張截圖（可能是訊息對話、email、海報、"
+        "課表或手寫便條）。請辨識圖片中所有的活動、會議或待辦，轉成日曆事件。\n"
+        f"今天是 {today.strftime('%Y-%m-%d')}（{today.strftime('%A')}），"
+        "請依此推算相對日期（例如「明天」「下週三」）。\n"
+        "只輸出 JSON，格式為：\n"
+        '{"events": [{"title": "標題", "start_time": "YYYY-MM-DDTHH:MM:SS", '
+        '"end_time": "YYYY-MM-DDTHH:MM:SS", "description": "補充說明"}]}\n'
+        "規則：\n"
+        "- 時間一律用 ISO 8601，不要加時區。\n"
+        "- 沒寫結束時間就預設一小時；只有日期沒時間就預設當天 09:00。\n"
+        "- 標題與說明使用繁體中文，簡潔扼要。\n"
+        "- 找不到任何行程就回 {\"events\": []}。"
+    )
+
+
+def _parse_events(content: str) -> list[EventCreate]:
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    items = data.get("events") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        return []
+
+    events: list[EventCreate] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or item.get("name")
+        start = item.get("start_time") or item.get("start")
+        if not title or not start:
+            continue
+        try:
+            start_dt = datetime.fromisoformat(str(start).replace("Z", ""))
+        except ValueError:
+            continue
+        end = item.get("end_time") or item.get("end")
+        try:
+            end_dt = (
+                datetime.fromisoformat(str(end).replace("Z", ""))
+                if end
+                else start_dt + timedelta(hours=1)
+            )
+        except ValueError:
+            end_dt = start_dt + timedelta(hours=1)
+        if end_dt <= start_dt:
+            end_dt = start_dt + timedelta(hours=1)
+
+        events.append(
+            EventCreate(
+                title=str(title),
+                start_time=start_dt,
+                end_time=end_dt,
+                description=str(item.get("description", "")),
+                color=AI_EVENT_COLOR,
+            )
+        )
+    return events
+
+
+@router.post("/from-image", response_model=ScheduleResponse)
+async def schedule_from_image(
+    file: UploadFile = File(...),
+    model: Optional[str] = Form(None),
+):
+    """Read a screenshot with a vision model and propose calendar events.
+
+    The proposed events are returned (not saved) so the user can review them
+    before adding to the calendar.
+    """
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="空的圖片檔")
+
+    image_b64 = base64.b64encode(raw).decode()
+    messages = [
+        {"role": "system", "content": _build_prompt()},
+        {
+            "role": "user",
+            "content": "請解析這張截圖中的所有行程／活動，只輸出 JSON。",
+            "images": [image_b64],
+        },
+    ]
+
+    try:
+        content = await ollama_client.chat(
+            model or settings.vision_model, messages, format="json"
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"無法呼叫視覺模型：{exc}。"
+                "請確認 Ollama 正在執行，且已安裝視覺模型（例如 qwen2.5vl:7b）。"
+            ),
+        ) from exc
+
+    return ScheduleResponse(events=_parse_events(content))

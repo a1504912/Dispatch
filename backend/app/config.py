@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./dispatch.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     default_model: str = "qwen3:8b"
+    vision_model: str = "qwen2.5vl:7b"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
