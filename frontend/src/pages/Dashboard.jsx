@@ -30,6 +30,23 @@ export default function Dashboard() {
   const [events, setEvents] = useState([]);
   const [agents, setAgents] = useState([]);
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [pastedFile, setPastedFile] = useState(null);
+
+  // 在總覽頁任何地方 Ctrl+V 貼圖，直接開啟截圖排程
+  useEffect(() => {
+    function onPaste(e) {
+      if (imageModalOpen) return; // 視窗開著時交給視窗自己處理
+      const item = [...(e.clipboardData?.items ?? [])].find((i) =>
+        i.type.startsWith("image/")
+      );
+      if (item) {
+        setPastedFile(item.getAsFile());
+        setImageModalOpen(true);
+      }
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [imageModalOpen]);
 
   function loadEvents() {
     return listEvents()
@@ -117,7 +134,11 @@ export default function Dashboard() {
 
       <ImageScheduleModal
         open={imageModalOpen}
-        onClose={() => setImageModalOpen(false)}
+        initialFile={pastedFile}
+        onClose={() => {
+          setImageModalOpen(false);
+          setPastedFile(null);
+        }}
         onSaved={loadEvents}
       />
     </div>

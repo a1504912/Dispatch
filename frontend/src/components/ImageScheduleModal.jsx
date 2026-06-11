@@ -14,7 +14,7 @@ function formatRange(start, end) {
   return `${date} ${t(s)}–${t(e)}`;
 }
 
-export default function ImageScheduleModal({ open, onClose, onSaved }) {
+export default function ImageScheduleModal({ open, onClose, onSaved, initialFile = null }) {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [models, setModels] = useState([]);
@@ -26,13 +26,17 @@ export default function ImageScheduleModal({ open, onClose, onSaved }) {
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
 
-  // 重置 + 載入可用模型
+  // 重置 + 載入可用模型（若是從外部貼上開啟的，直接帶入那張圖）
   useEffect(() => {
     if (!open) return;
-    setFile(null);
-    setPreviewUrl("");
     setProposals(null);
     setError("");
+    if (initialFile) {
+      pickFile(initialFile);
+    } else {
+      setFile(null);
+      setPreviewUrl("");
+    }
     listModels()
       .then((data) => {
         const list = data.models ?? [];
@@ -142,11 +146,19 @@ export default function ImageScheduleModal({ open, onClose, onSaved }) {
           {!previewUrl ? (
             <button
               onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = [...(e.dataTransfer?.files ?? [])].find((x) =>
+                  x.type.startsWith("image/")
+                );
+                if (f) pickFile(f);
+              }}
               className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40"
             >
               <span className="text-4xl">🖼️</span>
-              <span className="text-sm font-medium text-slate-600">點此選擇圖片</span>
-              <span className="text-xs text-slate-400">或直接 Ctrl + V 貼上截圖</span>
+              <span className="text-sm font-medium text-slate-600">直接 Ctrl + V 貼上截圖</span>
+              <span className="text-xs text-slate-400">也可以拖曳圖片進來，或點此選擇檔案</span>
             </button>
           ) : (
             <div className="relative overflow-hidden rounded-xl border border-slate-200">
