@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import agents, chat, events, schedule
+from app.routers import agents, chat, events, models, schedule
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.include_router(agents.router)
 app.include_router(chat.router)
 app.include_router(schedule.router)
 app.include_router(events.router)
+app.include_router(models.router)
 
 
 @app.get("/")

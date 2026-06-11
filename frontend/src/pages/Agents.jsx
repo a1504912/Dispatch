@@ -5,6 +5,7 @@ import {
   listAgents,
   updateAgentStatus,
 } from "../api/agents";
+import { listModels } from "../api/models";
 import {
   DEFAULT_MODEL,
   OLLAMA_MODELS,
@@ -77,9 +78,25 @@ function AgentCard({ agent, onDelete, onStatus }) {
 function CreateModal({ open, onClose, onSubmit }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  // 預設用內建清單，成功讀到 Ollama 後改用實際安裝的模型
+  const [modelOptions, setModelOptions] = useState(OLLAMA_MODELS);
+  const [ollamaOnline, setOllamaOnline] = useState(null);
 
   useEffect(() => {
-    if (open) setForm(emptyForm);
+    if (!open) return;
+    setForm(emptyForm);
+    listModels()
+      .then((data) => {
+        setOllamaOnline(data.ollama_online);
+        if (data.models?.length) {
+          setModelOptions(data.models.map((name) => ({ value: name, label: name })));
+          setForm((f) => ({
+            ...f,
+            model: data.models.includes(DEFAULT_MODEL) ? DEFAULT_MODEL : data.models[0],
+          }));
+        }
+      })
+      .catch(() => setOllamaOnline(null));
   }, [open]);
 
   if (!open) return null;
@@ -135,13 +152,21 @@ function CreateModal({ open, onClose, onSubmit }) {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-slate-500">使用模型</label>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">
+              使用模型
+              {ollamaOnline === true && (
+                <span className="ml-2 font-normal text-emerald-600">● 已連線 Ollama，顯示已安裝的模型</span>
+              )}
+              {ollamaOnline === false && (
+                <span className="ml-2 font-normal text-amber-600">● Ollama 未連線，顯示建議清單</span>
+              )}
+            </label>
             <select
               className={`${field} cursor-pointer`}
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
             >
-              {OLLAMA_MODELS.map((m) => (
+              {modelOptions.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}
                 </option>
