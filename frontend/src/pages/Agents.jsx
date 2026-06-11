@@ -5,6 +5,7 @@ import {
   listAgents,
   updateAgentStatus,
 } from "../api/agents";
+import { DEFAULT_MODEL, OLLAMA_MODELS } from "../constants";
 
 const STATUSES = ["active", "idle", "disabled"];
 
@@ -14,7 +15,7 @@ const statusStyles = {
   disabled: "bg-gray-200 text-gray-500",
 };
 
-const emptyForm = { name: "", role: "", model: "", system_prompt: "" };
+const emptyForm = { name: "", role: "", model: DEFAULT_MODEL, system_prompt: "" };
 
 export default function Agents() {
   const [agents, setAgents] = useState([]);
@@ -70,12 +71,17 @@ export default function Agents() {
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value })}
           />
-          <input
-            className="rounded-md border px-3 py-2 text-sm"
-            placeholder="Ollama 模型"
+          <select
+            className="rounded-md border bg-white px-3 py-2 text-sm"
             value={form.model}
             onChange={(e) => setForm({ ...form, model: e.target.value })}
-          />
+          >
+            {OLLAMA_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
