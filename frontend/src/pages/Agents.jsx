@@ -9,6 +9,12 @@ import { DEFAULT_MODEL, OLLAMA_MODELS } from "../constants";
 
 const STATUSES = ["active", "idle", "disabled"];
 
+const statusLabels = {
+  active: "工作中",
+  idle: "待命",
+  disabled: "停用",
+};
+
 const statusStyles = {
   active: "bg-green-100 text-green-700",
   idle: "bg-yellow-100 text-yellow-700",
@@ -121,7 +127,7 @@ export default function Agents() {
                       statusStyles[a.status] || ""
                     }`}
                   >
-                    {a.status}
+                    {statusLabels[a.status] || a.status}
                   </span>
                   <select
                     value={a.status}
@@ -130,7 +136,7 @@ export default function Agents() {
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>
-                        {s}
+                        {statusLabels[s]}
                       </option>
                     ))}
                   </select>
