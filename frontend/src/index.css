@@ -7,3 +7,97 @@ body,
 #root {
   height: 100%;
 }
+
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+}
+
+/* ---------- 細捲軸 ---------- */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ---------- 聊天「輸入中」動畫 ---------- */
+.typing-dot {
+  @apply inline-block h-1.5 w-1.5 rounded-full bg-slate-400;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ---------- FullCalendar 主題化 ---------- */
+.fc {
+  --fc-border-color: #e2e8f0;
+  --fc-today-bg-color: #eef2ff;
+  --fc-button-bg-color: #ffffff;
+  --fc-button-text-color: #334155;
+  --fc-button-border-color: #e2e8f0;
+  --fc-button-hover-bg-color: #f1f5f9;
+  --fc-button-hover-border-color: #cbd5e1;
+  --fc-button-active-bg-color: #4f46e5;
+  --fc-button-active-border-color: #4f46e5;
+  --fc-event-border-color: transparent;
+  --fc-page-bg-color: transparent;
+  font-size: 0.875rem;
+}
+.fc .fc-button {
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.8rem;
+  font-weight: 500;
+  box-shadow: none !important;
+  text-transform: none;
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  color: #ffffff;
+}
+.fc .fc-toolbar-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number {
+  color: #475569;
+  text-decoration: none;
+  font-weight: 500;
+}
+.fc .fc-event {
+  border-radius: 6px;
+  padding: 1px 4px;
+  font-size: 0.75rem;
+}
+.fc .fc-timegrid-slot {
+  height: 2.4rem;
+}
+.fc .fc-scrollgrid {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}

@@ -3,11 +3,31 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import zhTwLocale from "@fullcalendar/core/locales/zh-tw";
 import { listEvents } from "../api/events";
+import { listAgents } from "../api/agents";
 import ChatBox from "../components/ChatBox.jsx";
+
+function StatCard({ emoji, label, value, hint }) {
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 text-xl ring-1 ring-indigo-100">
+        {emoji}
+      </div>
+      <div>
+        <p className="text-xs font-medium text-slate-400">{label}</p>
+        <p className="text-xl font-black text-slate-800">
+          {value}
+          {hint && <span className="ml-1 text-xs font-medium text-slate-400">{hint}</span>}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
+  const [agents, setAgents] = useState([]);
 
   useEffect(() => {
     listEvents()
@@ -23,25 +43,62 @@ export default function Dashboard() {
         )
       )
       .catch(() => setEvents([]));
+    listAgents()
+      .then(setAgents)
+      .catch(() => setAgents([]));
   }, []);
 
+  const today = new Date();
+  const todayCount = events.filter((e) => {
+    const d = new Date(e.start);
+    return d.toDateString() === today.toDateString();
+  }).length;
+  const activeCount = agents.filter((a) => a.status === "active").length;
+
   return (
-    <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-3">
-      <div className="rounded-lg border bg-white p-4 lg:col-span-2">
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "dayGridMonth,timeGridWeek,timeGridDay",
-          }}
-          height="auto"
-          events={events}
-        />
+    <div className="space-y-6">
+      {/* 頁首 */}
+      <div>
+        <h1 className="text-2xl font-black text-slate-900">總覽</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {today.toLocaleDateString("zh-TW", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            weekday: "long",
+          })}
+          ，把今天交給你的團隊吧。
+        </p>
       </div>
-      <div className="h-[600px] lg:col-span-1">
-        <ChatBox />
+
+      {/* 統計卡 */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard emoji="🧑‍💻" label="AI 員工" value={agents.length} hint="位" />
+        <StatCard emoji="⚡" label="工作中" value={activeCount} hint="位" />
+        <StatCard emoji="📌" label="今日行程" value={todayCount} hint="件" />
+      </div>
+
+      {/* 行事曆 + 對話 */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+          <FullCalendar
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            locale={zhTwLocale}
+            initialView="timeGridWeek"
+            headerToolbar={{
+              left: "prev,next today",
+              center: "title",
+              right: "dayGridMonth,timeGridWeek,timeGridDay",
+            }}
+            height={620}
+            nowIndicator
+            scrollTime="08:00:00"
+            events={events}
+          />
+        </div>
+        <div className="h-[640px] xl:col-span-1 xl:h-auto">
+          <ChatBox agents={agents} />
+        </div>
       </div>
     </div>
   );
