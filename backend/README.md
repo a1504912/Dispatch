@@ -30,6 +30,23 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 The SQLite database (`dispatch.db`) and tables are created automatically on
 startup.
 
+## Seed the default agent team
+
+Creates five agents (工程師 / 工作助理 / 個人助理 / 家務管家 / 旅遊規劃師)
+with Traditional Chinese system prompts. Idempotent — re-running skips
+agents that already exist.
+
+```bash
+python -m app.seed
+```
+
+The agents use these Ollama models, so pull them first:
+
+```bash
+ollama pull qwen2.5-coder:7b   # 工程師（改程式）
+ollama pull qwen3:8b           # 其他所有 agent 與 DEFAULT_MODEL
+```
+
 ## Configuration (`.env`)
 
 | Variable        | Description                                  | Default                                          |
@@ -37,7 +54,7 @@ startup.
 | `OLLAMA_URL`    | Base URL of the Ollama server                | `http://localhost:11434`                         |
 | `DATABASE_URL`  | SQLModel/SQLAlchemy database URL             | `sqlite:///./dispatch.db`                         |
 | `CORS_ORIGINS`  | Comma-separated allowed frontend origins     | `http://localhost:5173,http://127.0.0.1:5173`    |
-| `DEFAULT_MODEL` | Fallback Ollama model when an agent has none | `llama3`                                          |
+| `DEFAULT_MODEL` | Fallback Ollama model when an agent has none | `qwen3:8b`                                        |
 
 ## API endpoints
 
