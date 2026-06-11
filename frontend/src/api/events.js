@@ -10,6 +10,11 @@ export async function createEvent(event) {
   return data;
 }
 
+export async function updateEvent(id, event) {
+  const { data } = await client.put(`/api/events/${id}`, event);
+  return data;
+}
+
 export async function deleteEvent(id) {
   await client.delete(`/api/events/${id}`);
 }

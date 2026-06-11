@@ -8,6 +8,7 @@ import { listEvents } from "../api/events";
 import { listAgents } from "../api/agents";
 import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
+import EventModal from "../components/EventModal.jsx";
 
 function StatCard({ emoji, label, value, hint }) {
   return (
@@ -28,9 +29,17 @@ function StatCard({ emoji, label, value, hint }) {
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
+  const [rawEvents, setRawEvents] = useState([]);
   const [agents, setAgents] = useState([]);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [pastedFile, setPastedFile] = useState(null);
+  const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+
+  function openNewEvent(initial = null) {
+    setEditingEvent(initial);
+    setEventModalOpen(true);
+  }
 
   // 在總覽頁任何地方 Ctrl+V 貼圖，直接開啟截圖排程
   useEffect(() => {
@@ -50,7 +59,8 @@ export default function Dashboard() {
 
   function loadEvents() {
     return listEvents()
-      .then((data) =>
+      .then((data) => {
+        setRawEvents(data);
         setEvents(
           data.map((e) => ({
             id: String(e.id),
@@ -59,9 +69,23 @@ export default function Dashboard() {
             end: e.end_time,
             color: e.color,
           }))
-        )
-      )
-      .catch(() => setEvents([]));
+        );
+      })
+      .catch(() => {
+        setRawEvents([]);
+        setEvents([]);
+      });
+  }
+
+  // 點行事曆上的事件 → 開啟編輯
+  function handleEventClick(info) {
+    const raw = rawEvents.find((e) => String(e.id) === info.event.id);
+    if (raw) openNewEvent(raw);
+  }
+
+  // 拖選一段空白時段 → 用該時間預填新增
+  function handleSelect(info) {
+    openNewEvent({ start_time: info.start, end_time: info.end });
   }
 
   useEffect(() => {
@@ -94,12 +118,20 @@ export default function Dashboard() {
             ，把今天交給你的團隊吧。
           </p>
         </div>
-        <button
-          onClick={() => setImageModalOpen(true)}
-          className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
-        >
-          📷 截圖排程
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => openNewEvent()}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-95"
+          >
+            ＋ 新增行程
+          </button>
+          <button
+            onClick={() => setImageModalOpen(true)}
+            className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
+          >
+            📷 截圖排程
+          </button>
+        </div>
       </div>
 
       {/* 統計卡 */}
@@ -124,7 +156,11 @@ export default function Dashboard() {
             height={620}
             nowIndicator
             scrollTime="08:00:00"
+            selectable
+            selectMirror
             events={events}
+            eventClick={handleEventClick}
+            select={handleSelect}
           />
         </div>
         <div className="h-[640px] xl:col-span-1 xl:h-auto">
@@ -138,6 +174,17 @@ export default function Dashboard() {
         onClose={() => {
           setImageModalOpen(false);
           setPastedFile(null);
+        }}
+        onSaved={loadEvents}
+      />
+
+      <EventModal
+        open={eventModalOpen}
+        initial={editingEvent}
+        agents={agents}
+        onClose={() => {
+          setEventModalOpen(false);
+          setEditingEvent(null);
         }}
         onSaved={loadEvents}
       />
