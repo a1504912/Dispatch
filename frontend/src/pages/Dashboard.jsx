@@ -169,6 +169,15 @@ export default function Dashboard() {
       {/* 行事曆 + 清單 + 對話 */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
+        {/* 行程清單（跟著行事曆檢視範圍） */}
+        <EventList
+          events={rangedEvents}
+          agents={agents}
+          type={viewRange?.type}
+          onToggle={toggleCompleted}
+          onEdit={openNewEvent}
+        />
+
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -221,15 +230,6 @@ export default function Dashboard() {
             }}
           />
         </div>
-
-        {/* 行程清單（跟著行事曆檢視範圍） */}
-        <EventList
-          events={rangedEvents}
-          agents={agents}
-          type={viewRange?.type}
-          onToggle={toggleCompleted}
-          onEdit={openNewEvent}
-        />
         </div>
 
         <div className="h-[640px] xl:col-span-1 xl:h-auto">
