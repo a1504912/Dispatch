@@ -16,9 +16,16 @@ function formatWhen(start, end) {
 
 export default function EventList({ events, agents = [], type, onToggle, onEdit }) {
   const [sort, setSort] = useState("time"); // time | status
+  const [filter, setFilter] = useState("all"); // all | active | done
   const agentName = (id) => agents.find((a) => a.id === id)?.name;
 
-  const sorted = [...events].sort((a, b) => {
+  const filtered = events.filter((e) => {
+    if (filter === "active") return !e.completed;
+    if (filter === "done") return e.completed;
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
     if (sort === "status" && Boolean(a.completed) !== Boolean(b.completed)) {
       return a.completed ? 1 : -1; // 未完成在前
     }
@@ -40,6 +47,26 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
           </h2>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+        {/* 篩選 */}
+        <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
+          {[
+            ["all", "全部"],
+            ["active", "未完成"],
+            ["done", "已完成"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`rounded-lg px-3 py-1.5 transition ${
+                filter === key ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* 排序切換 */}
         <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
           <button
@@ -59,10 +86,13 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
             未完成優先
           </button>
         </div>
+        </div>
       </div>
 
       {sorted.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-400">這段期間沒有行程。</p>
+        <p className="py-10 text-center text-sm text-slate-400">
+          {filter === "all" ? "這段期間沒有行程。" : "沒有符合篩選的行程。"}
+        </p>
       ) : (
         <ul className="mt-4 divide-y divide-slate-100">
           {sorted.map((ev) => (
