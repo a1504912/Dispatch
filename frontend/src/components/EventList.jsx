@@ -17,7 +17,18 @@ function formatWhen(start, end) {
 export default function EventList({ events, agents = [], type, onToggle, onEdit }) {
   const [sort, setSort] = useState("time"); // time | status
   const [filter, setFilter] = useState("all"); // all | active | done
+  // 收合狀態（記住使用者偏好）
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("dispatch.eventListCollapsed") === "1"
+  );
   const agentName = (id) => agents.find((a) => a.id === id)?.name;
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      localStorage.setItem("dispatch.eventListCollapsed", c ? "0" : "1");
+      return !c;
+    });
+  }
 
   const filtered = events.filter((e) => {
     if (filter === "active") return !e.completed;
@@ -37,7 +48,22 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <button
+          onClick={toggleCollapsed}
+          className="group flex items-center gap-2"
+          title={collapsed ? "展開清單" : "收合清單"}
+        >
+          <svg
+            className={`h-4 w-4 text-slate-400 transition-transform group-hover:text-slate-600 ${
+              collapsed ? "-rotate-90" : ""
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth="2.5"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
           <h2 className="text-lg font-black text-slate-900">
             行程清單
             <span className="ml-2 text-sm font-medium text-slate-400">
@@ -45,9 +71,9 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
               {events.length > 0 && `・完成 ${doneCount}`}
             </span>
           </h2>
-        </div>
+        </button>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={`flex-wrap items-center gap-2 ${collapsed ? "hidden" : "flex"}`}>
         {/* 篩選 */}
         <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
           {[
@@ -89,7 +115,7 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
         </div>
       </div>
 
-      {sorted.length === 0 ? (
+      {collapsed ? null : sorted.length === 0 ? (
         <p className="py-10 text-center text-sm text-slate-400">
           {filter === "all" ? "這段期間沒有行程。" : "沒有符合篩選的行程。"}
         </p>
