@@ -9,6 +9,7 @@ import { listAgents } from "../api/agents";
 import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
+import EventList from "../components/EventList.jsx";
 
 function StatCard({ emoji, label, value, hint }) {
   return (
@@ -35,6 +36,8 @@ export default function Dashboard() {
   const [pastedFile, setPastedFile] = useState(null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+  // 行事曆目前檢視範圍（月/週/日），清單依此過濾
+  const [viewRange, setViewRange] = useState(null);
 
   function openNewEvent(initial = null) {
     setEditingEvent(initial);
@@ -103,6 +106,14 @@ export default function Dashboard() {
       .catch(() => setAgents([]));
   }, []);
 
+  // 落在目前檢視範圍內的事項（給下方清單用）
+  const rangedEvents = viewRange
+    ? rawEvents.filter((e) => {
+        const d = new Date(e.start_time);
+        return d >= viewRange.start && d < viewRange.end;
+      })
+    : rawEvents;
+
   const today = new Date();
   const todayEvents = events.filter((e) => {
     const d = new Date(e.start);
@@ -170,6 +181,13 @@ export default function Dashboard() {
             height={620}
             nowIndicator
             scrollTime="08:00:00"
+            datesSet={(arg) =>
+              setViewRange({
+                start: arg.view.currentStart,
+                end: arg.view.currentEnd,
+                type: arg.view.type,
+              })
+            }
             selectable
             selectMirror
             events={events}
@@ -206,6 +224,15 @@ export default function Dashboard() {
           <ChatBox agents={agents} />
         </div>
       </div>
+
+      {/* 行程清單（跟著行事曆檢視範圍） */}
+      <EventList
+        events={rangedEvents}
+        agents={agents}
+        type={viewRange?.type}
+        onToggle={toggleCompleted}
+        onEdit={openNewEvent}
+      />
 
       <ImageScheduleModal
         open={imageModalOpen}
