@@ -14,6 +14,18 @@ function formatRange(start, end) {
   return `${date} ${t(s)}–${t(e)}`;
 }
 
+const pad = (n) => String(n).padStart(2, "0");
+
+// Date 或 ISO 字串 → datetime-local 的 "YYYY-MM-DDTHH:MM"
+function toInputValue(value) {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
+}
+
 export default function ImageScheduleModal({ open, onClose, onSaved, initialFile = null }) {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -23,6 +35,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [proposals, setProposals] = useState(null);
+  const [editingIdx, setEditingIdx] = useState(null);
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
 
@@ -30,6 +43,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
   useEffect(() => {
     if (!open) return;
     setProposals(null);
+    setEditingIdx(null);
     setError("");
     if (initialFile) {
       pickFile(initialFile);
@@ -87,7 +101,10 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
   async function handleSave() {
     setSaving(true);
     try {
-      for (const ev of proposals) await createEvent(ev);
+      // 略過沒有標題的空白項
+      for (const ev of proposals.filter((e) => e.title?.trim())) {
+        await createEvent(ev);
+      }
       onSaved?.();
       onClose();
     } finally {
@@ -97,9 +114,35 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
 
   function removeProposal(idx) {
     setProposals((p) => p.filter((_, i) => i !== idx));
+    setEditingIdx(null);
+  }
+
+  function updateProposal(idx, patch) {
+    setProposals((p) => p.map((ev, i) => (i === idx ? { ...ev, ...patch } : ev)));
+  }
+
+  function addBlankProposal() {
+    const start = new Date();
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() + 1);
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+    setProposals((p) => [
+      ...(p ?? []),
+      {
+        title: "",
+        start_time: toInputValue(start),
+        end_time: toInputValue(end),
+        description: "",
+        color: "#8b5cf6",
+      },
+    ]);
+    setEditingIdx(proposals?.length ?? 0);
   }
 
   if (!open) return null;
+
+  const validCount = proposals?.filter((e) => e.title?.trim()).length ?? 0;
 
   return (
     <div
@@ -188,38 +231,124 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
           {/* 解析結果 */}
           {proposals && (
             <div>
-              <p className="mb-2 text-xs font-bold text-slate-500">
-                AI 讀到 {proposals.length} 筆行程
-                {proposals.length > 0 && "（可移除不要的）"}
-              </p>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-bold text-slate-500">
+                  AI 讀到 {proposals.length} 筆行程
+                  {proposals.length > 0 && "（點一下可編輯）"}
+                </p>
+                <button
+                  onClick={addBlankProposal}
+                  className="rounded-lg px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                >
+                  ＋ 手動新增
+                </button>
+              </div>
               {proposals.length === 0 ? (
                 <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">
-                  沒讀到行程，換一張更清楚的截圖試試。
+                  沒讀到行程，換一張更清楚的截圖，或按上方「＋ 手動新增」。
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {proposals.map((ev, i) => (
-                    <li
-                      key={i}
-                      className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"
-                    >
-                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-violet-500" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-800">{ev.title}</p>
-                        <p className="text-xs text-slate-400">{formatRange(ev.start_time, ev.end_time)}</p>
-                        {ev.description && (
-                          <p className="mt-0.5 truncate text-xs text-slate-400">{ev.description}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => removeProposal(i)}
-                        className="shrink-0 rounded-md px-1.5 text-slate-300 hover:text-red-500"
-                        title="移除"
+                  {proposals.map((ev, i) => {
+                    const editing = editingIdx === i;
+                    const inputCls =
+                      "w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+                    return (
+                      <li
+                        key={i}
+                        className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5"
                       >
-                        ✕
-                      </button>
-                    </li>
-                  ))}
+                        {editing ? (
+                          <div className="space-y-2">
+                            <input
+                              className={inputCls}
+                              placeholder="標題"
+                              value={ev.title}
+                              autoFocus
+                              onChange={(e) => updateProposal(i, { title: e.target.value })}
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="datetime-local"
+                                className={inputCls}
+                                value={toInputValue(ev.start_time)}
+                                onChange={(e) => {
+                                  const start = e.target.value;
+                                  updateProposal(i, {
+                                    start_time: start,
+                                    ...(toInputValue(ev.end_time) < start
+                                      ? { end_time: start }
+                                      : {}),
+                                  });
+                                }}
+                              />
+                              <input
+                                type="datetime-local"
+                                className={inputCls}
+                                value={toInputValue(ev.end_time)}
+                                min={toInputValue(ev.start_time)}
+                                onChange={(e) => updateProposal(i, { end_time: e.target.value })}
+                              />
+                            </div>
+                            <input
+                              className={inputCls}
+                              placeholder="備註（可留空）"
+                              value={ev.description ?? ""}
+                              onChange={(e) => updateProposal(i, { description: e.target.value })}
+                            />
+                            <div className="flex justify-end gap-2 pt-0.5">
+                              <button
+                                onClick={() => removeProposal(i)}
+                                className="rounded-lg px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50"
+                              >
+                                刪除
+                              </button>
+                              <button
+                                onClick={() => setEditingIdx(null)}
+                                className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-bold text-white hover:bg-slate-700"
+                              >
+                                完成
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-3">
+                            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-violet-500" />
+                            <button
+                              onClick={() => setEditingIdx(i)}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                {ev.title || "（未命名，點此編輯）"}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                {formatRange(ev.start_time, ev.end_time)}
+                              </p>
+                              {ev.description && (
+                                <p className="mt-0.5 truncate text-xs text-slate-400">
+                                  {ev.description}
+                                </p>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => setEditingIdx(i)}
+                              className="shrink-0 rounded-md px-1.5 text-slate-300 hover:text-indigo-500"
+                              title="編輯"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => removeProposal(i)}
+                              className="shrink-0 rounded-md px-1.5 text-slate-300 hover:text-red-500"
+                              title="移除"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -245,10 +374,10 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
           ) : (
             <button
               onClick={handleSave}
-              disabled={proposals.length === 0 || saving}
+              disabled={validCount === 0 || saving}
               className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none"
             >
-              {saving ? "加入中…" : `加入 ${proposals.length} 筆到行事曆`}
+              {saving ? "加入中…" : `加入 ${validCount} 筆到行事曆`}
             </button>
           )}
         </div>
