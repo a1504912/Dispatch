@@ -21,10 +21,13 @@ def init_db() -> None:
     if settings.database_url.startswith("sqlite"):
         with engine.connect() as conn:
             columns = [row[1] for row in conn.execute(text("PRAGMA table_info(event)"))]
-            if columns and "completed" not in columns:
-                conn.execute(
-                    text("ALTER TABLE event ADD COLUMN completed BOOLEAN NOT NULL DEFAULT 0")
-                )
+            if columns:
+                if "completed" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE event ADD COLUMN completed BOOLEAN NOT NULL DEFAULT 0")
+                    )
+                if "google_event_id" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN google_event_id VARCHAR"))
                 conn.commit()
 
 

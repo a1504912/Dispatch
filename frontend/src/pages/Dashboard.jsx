@@ -10,6 +10,7 @@ import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
 import EventList from "../components/EventList.jsx";
+import GoogleSync from "../components/GoogleSync.jsx";
 
 function StatCard({ emoji, label, value, hint }) {
   return (
@@ -138,7 +139,8 @@ export default function Dashboard() {
             ，把今天交給你的團隊吧。
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <GoogleSync onSynced={loadEvents} />
           <button
             onClick={() => openNewEvent()}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-95"
