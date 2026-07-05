@@ -41,6 +41,70 @@ function addDays(dateStr, n) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+const MINUTE_OPTIONS = ["00", "15", "30", "45"];
+
+/** 日期 + 上午/下午 + 時 + 分 的組合選擇器（value 為 "YYYY-MM-DDTHH:MM"）。 */
+function DateTimeField({ value, onChange, fieldClass }) {
+  const date = value.slice(0, 10);
+  const hh = parseInt(value.slice(11, 13) || "0", 10);
+  const mm = value.slice(14, 16) || "00";
+  const isPM = hh >= 12;
+  const hour12 = hh % 12 === 0 ? 12 : hh % 12;
+  const minutes = MINUTE_OPTIONS.includes(mm) ? MINUTE_OPTIONS : [mm, ...MINUTE_OPTIONS];
+
+  function emit(nextDate, nextPM, nextH12, nextMM) {
+    let h = nextH12 % 12;
+    if (nextPM) h += 12;
+    onChange(`${nextDate}T${pad(h)}:${nextMM}`);
+  }
+
+  const selectCls =
+    "cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-2 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+
+  return (
+    <div className="space-y-1.5">
+      <input
+        type="date"
+        className={fieldClass}
+        value={date}
+        onChange={(e) => emit(e.target.value, isPM, hour12, mm)}
+      />
+      <div className="flex gap-1.5">
+        <select
+          className={`${selectCls} flex-1`}
+          value={isPM ? "pm" : "am"}
+          onChange={(e) => emit(date, e.target.value === "pm", hour12, mm)}
+        >
+          <option value="am">上午</option>
+          <option value="pm">下午</option>
+        </select>
+        <select
+          className={`${selectCls} flex-1`}
+          value={hour12}
+          onChange={(e) => emit(date, isPM, Number(e.target.value), mm)}
+        >
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+            <option key={h} value={h}>
+              {h} 時
+            </option>
+          ))}
+        </select>
+        <select
+          className={`${selectCls} flex-1`}
+          value={mm}
+          onChange={(e) => emit(date, isPM, hour12, e.target.value)}
+        >
+          {minutes.map((m) => (
+            <option key={m} value={m}>
+              {m} 分
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 export default function EventModal({ open, onClose, onSaved, initial, agents = [] }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -66,6 +130,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim() || saving) return;
+    if (!form.all_day && form.end_time < form.start_time) return;
     setSaving(true);
     const payload = {
       title: form.title.trim(),
@@ -204,35 +269,34 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-slate-500">開始</label>
-                <input
-                  type="datetime-local"
-                  className={field}
+                <DateTimeField
+                  fieldClass={field}
                   value={form.start_time}
-                  onChange={(e) => {
-                    const start = e.target.value;
+                  onChange={(start) =>
                     // 開始往後移時，若超過結束就把結束一起順移
                     setForm((f) => ({
                       ...f,
                       start_time: start,
                       end_time: f.end_time < start ? start : f.end_time,
-                    }));
-                  }}
+                    }))
+                  }
                 />
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-slate-500">結束</label>
-                <input
-                  type="datetime-local"
-                  className={field}
+                <DateTimeField
+                  fieldClass={field}
                   value={form.end_time}
-                  min={form.start_time}
-                  onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                  onChange={(end) => setForm({ ...form, end_time: end })}
                 />
               </div>
             </div>
+          )}
+          {!form.all_day && form.end_time < form.start_time && (
+            <p className="text-xs text-red-500">⚠️ 結束時間早於開始時間</p>
           )}
 
           <div>
