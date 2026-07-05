@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createEvent, updateEvent, deleteEvent } from "../api/events";
 
 // 可選的事件顏色
@@ -108,6 +108,7 @@ function DateTimeField({ value, onChange, fieldClass }) {
 export default function EventModal({ open, onClose, onSaved, initial, agents = [] }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef(null);
   const isEdit = Boolean(initial?.id);
 
   useEffect(() => {
@@ -122,8 +123,31 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       description: initial?.description ?? "",
       completed: initial?.completed ?? false,
       all_day: initial?.all_day ?? false,
+      image: initial?.image ?? "",
     });
   }, [open, initial]);
+
+  // 視窗開著時可直接 Ctrl+V 貼圖（capture 讓它優先於總覽頁的貼圖排程）
+  useEffect(() => {
+    if (!open) return;
+    function onPaste(e) {
+      const item = [...(e.clipboardData?.items ?? [])].find((i) =>
+        i.type.startsWith("image/")
+      );
+      if (!item) return;
+      e.stopPropagation();
+      readImageFile(item.getAsFile());
+    }
+    window.addEventListener("paste", onPaste, true);
+    return () => window.removeEventListener("paste", onPaste, true);
+  }, [open]);
+
+  function readImageFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, image: reader.result }));
+    reader.readAsDataURL(file);
+  }
 
   if (!open || !form) return null;
 
@@ -141,6 +165,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       agent_id: form.agent_id ? Number(form.agent_id) : null,
       completed: form.completed,
       all_day: form.all_day,
+      image: form.image || null,
     };
     try {
       if (isEdit) await updateEvent(initial.id, payload);
@@ -330,6 +355,41 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                 />
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">圖片</label>
+            {form.image ? (
+              <div className="relative overflow-hidden rounded-xl border border-slate-200">
+                <img
+                  src={form.image}
+                  alt=""
+                  className="max-h-44 w-full bg-slate-50 object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, image: "" })}
+                  className="absolute right-2 top-2 rounded-lg bg-white/90 px-2.5 py-1 text-xs font-medium text-red-600 shadow ring-1 ring-slate-200 hover:bg-white"
+                >
+                  移除
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 py-4 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40"
+              >
+                📷 直接 Ctrl + V 貼上圖片，或點此選擇檔案
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => readImageFile(e.target.files?.[0])}
+            />
           </div>
 
           <div>

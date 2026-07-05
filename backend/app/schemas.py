@@ -29,6 +29,7 @@ class EventCreate(SQLModel):
     color: str = "#3788d8"
     completed: bool = False
     all_day: bool = False
+    image: Optional[str] = None
 
 
 class EventCompletedUpdate(SQLModel):

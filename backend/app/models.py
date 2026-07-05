@@ -36,6 +36,8 @@ class Event(SQLModel, table=True):
     completed: bool = False
     # 整天活動（Google all-day；end_time 慣例上是「隔天 00:00」不含）
     all_day: bool = False
+    # 附加圖片（data URL，存在本地 SQLite）
+    image: Optional[str] = None
     # 對應的 Google 日曆事件 id（未同步則為 None）
     google_event_id: Optional[str] = Field(default=None, index=True)
 

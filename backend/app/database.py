@@ -32,6 +32,8 @@ def init_db() -> None:
                     conn.execute(
                         text("ALTER TABLE event ADD COLUMN all_day BOOLEAN NOT NULL DEFAULT 0")
                     )
+                if "image" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN image TEXT"))
                 conn.commit()
 
 

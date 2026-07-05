@@ -11,6 +11,7 @@ import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
 import EventList from "../components/EventList.jsx";
 import GoogleSync from "../components/GoogleSync.jsx";
+import WeekBoard from "../components/WeekBoard.jsx";
 
 function StatCard({ emoji, label, value, hint }) {
   return (
@@ -39,6 +40,15 @@ export default function Dashboard() {
   const [editingEvent, setEditingEvent] = useState(null);
   // 行事曆目前檢視範圍（月/週/日），清單依此過濾
   const [viewRange, setViewRange] = useState(null);
+  // 檢視模式：行事曆 / 週看板（記住偏好）
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem("dispatch.viewMode") || "calendar"
+  );
+
+  function switchMode(mode) {
+    setViewMode(mode);
+    localStorage.setItem("dispatch.viewMode", mode);
+  }
 
   function openNewEvent(initial = null) {
     setEditingEvent(initial);
@@ -48,7 +58,7 @@ export default function Dashboard() {
   // 在總覽頁任何地方 Ctrl+V 貼圖，直接開啟截圖排程
   useEffect(() => {
     function onPaste(e) {
-      if (imageModalOpen) return; // 視窗開著時交給視窗自己處理
+      if (imageModalOpen || eventModalOpen) return; // 視窗開著時交給視窗自己處理
       const item = [...(e.clipboardData?.items ?? [])].find((i) =>
         i.type.startsWith("image/")
       );
@@ -59,7 +69,7 @@ export default function Dashboard() {
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [imageModalOpen]);
+  }, [imageModalOpen, eventModalOpen]);
 
   function loadEvents() {
     return listEvents()
@@ -172,6 +182,47 @@ export default function Dashboard() {
       {/* 行事曆 + 清單 + 對話 */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
+        {/* 檢視切換 */}
+        <div className="flex w-fit rounded-xl bg-slate-100 p-1 text-sm font-medium">
+          <button
+            onClick={() => switchMode("calendar")}
+            className={`rounded-lg px-4 py-1.5 transition ${
+              viewMode === "calendar"
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            🗓 行事曆
+          </button>
+          <button
+            onClick={() => switchMode("board")}
+            className={`rounded-lg px-4 py-1.5 transition ${
+              viewMode === "board"
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            📋 週看板
+          </button>
+        </div>
+
+        {viewMode === "board" ? (
+          <WeekBoard
+            events={rawEvents}
+            onToggle={toggleCompleted}
+            onEdit={openNewEvent}
+            onAdd={(d) => {
+              const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+                d.getDate()
+              ).padStart(2, "0")}`;
+              openNewEvent({
+                start_time: `${day}T09:00`,
+                end_time: `${day}T10:00`,
+              });
+            }}
+          />
+        ) : (
+          <>
         {/* 行程清單（跟著行事曆檢視範圍） */}
         <EventList
           events={rangedEvents}
@@ -263,6 +314,8 @@ export default function Dashboard() {
             }}
           />
         </div>
+          </>
+        )}
         </div>
 
         <div className="h-[640px] xl:col-span-1 xl:h-auto">
