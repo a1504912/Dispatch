@@ -34,6 +34,21 @@ def init_db() -> None:
                     )
                 if "image" not in columns:
                     conn.execute(text("ALTER TABLE event ADD COLUMN image TEXT"))
+                if "category_id" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN category_id INTEGER"))
+                if "source" not in columns:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE event ADD COLUMN source VARCHAR NOT NULL DEFAULT 'local'"
+                        )
+                    )
+                    # 既有資料：從 Google 拉進來的（同步時上的是 Google 藍）視為 Google 來源
+                    conn.execute(
+                        text(
+                            "UPDATE event SET source = 'google' "
+                            "WHERE google_event_id IS NOT NULL AND color = '#4285F4'"
+                        )
+                    )
                 conn.commit()
 
 

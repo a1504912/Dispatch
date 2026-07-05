@@ -23,6 +23,15 @@ class Agent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Category(SQLModel, table=True):
+    """使用者自訂的行程分類（工作、家裡、出遊…）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    color: str = "#6366f1"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Event(SQLModel, table=True):
     """A calendar event, optionally assigned to an agent."""
 
@@ -38,6 +47,10 @@ class Event(SQLModel, table=True):
     all_day: bool = False
     # 附加圖片（data URL，存在本地 SQLite）
     image: Optional[str] = None
+    # 分類（可為空）
+    category_id: Optional[int] = Field(default=None, foreign_key="category.id")
+    # 來源：local（在 Dispatch 建立）/ google（從 Google 拉進來）
+    source: str = "local"
     # 對應的 Google 日曆事件 id（未同步則為 None）
     google_event_id: Optional[str] = Field(default=None, index=True)
 

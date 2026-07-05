@@ -30,6 +30,13 @@ class EventCreate(SQLModel):
     completed: bool = False
     all_day: bool = False
     image: Optional[str] = None
+    category_id: Optional[int] = None
+
+
+# ---------- Category ----------
+class CategoryCreate(SQLModel):
+    name: str
+    color: str = "#6366f1"
 
 
 class EventCompletedUpdate(SQLModel):

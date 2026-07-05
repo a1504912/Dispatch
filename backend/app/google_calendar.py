@@ -269,6 +269,7 @@ def sync(session: Session) -> dict:
                             color=GOOGLE_COLOR,
                             all_day=all_day,
                             google_event_id=gid,
+                            source="google",
                         )
                     )
                     pulled_created += 1

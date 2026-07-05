@@ -6,6 +6,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import zhTwLocale from "@fullcalendar/core/locales/zh-tw";
 import { listEvents, setEventCompleted } from "../api/events";
 import { listAgents } from "../api/agents";
+import { listCategories } from "../api/categories";
 import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
@@ -31,9 +32,35 @@ function StatCard({ emoji, label, value, hint }) {
 }
 
 export default function Dashboard() {
-  const [events, setEvents] = useState([]);
   const [rawEvents, setRawEvents] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [categories, setCategories] = useState([]);
+  // 篩選：選中的分類 id（空陣列 = 全部；"none" 代表未分類）、是否顯示 Google 事件
+  const [catFilter, setCatFilter] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("dispatch.catFilter")) || [];
+    } catch {
+      return [];
+    }
+  });
+  const [showGoogle, setShowGoogle] = useState(
+    () => localStorage.getItem("dispatch.showGoogle") !== "0"
+  );
+
+  function toggleCatFilter(key) {
+    setCatFilter((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      localStorage.setItem("dispatch.catFilter", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function toggleShowGoogle() {
+    setShowGoogle((v) => {
+      localStorage.setItem("dispatch.showGoogle", v ? "0" : "1");
+      return !v;
+    });
+  }
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [pastedFile, setPastedFile] = useState(null);
   const [eventModalOpen, setEventModalOpen] = useState(false);
@@ -73,25 +100,8 @@ export default function Dashboard() {
 
   function loadEvents() {
     return listEvents()
-      .then((data) => {
-        setRawEvents(data);
-        setEvents(
-          data.map((e) => ({
-            id: String(e.id),
-            title: e.title,
-            start: e.start_time,
-            end: e.end_time,
-            color: e.color,
-            allDay: Boolean(e.all_day),
-            completed: e.completed,
-            classNames: e.completed ? ["event-done"] : [],
-          }))
-        );
-      })
-      .catch(() => {
-        setRawEvents([]);
-        setEvents([]);
-      });
+      .then(setRawEvents)
+      .catch(() => setRawEvents([]));
   }
 
   // 點行事曆上的事件 → 開啟編輯
@@ -116,15 +126,40 @@ export default function Dashboard() {
     listAgents()
       .then(setAgents)
       .catch(() => setAgents([]));
+    listCategories()
+      .then(setCategories)
+      .catch(() => setCategories([]));
   }, []);
+
+  // 套用篩選後的原始事件
+  const visibleRaw = rawEvents.filter((e) => {
+    if (!showGoogle && e.source === "google") return false;
+    if (catFilter.length > 0) {
+      const key = e.category_id != null ? String(e.category_id) : "none";
+      if (!catFilter.includes(key)) return false;
+    }
+    return true;
+  });
+
+  // FullCalendar 用的格式
+  const events = visibleRaw.map((e) => ({
+    id: String(e.id),
+    title: e.title,
+    start: e.start_time,
+    end: e.end_time,
+    color: e.color,
+    allDay: Boolean(e.all_day),
+    completed: e.completed,
+    classNames: e.completed ? ["event-done"] : [],
+  }));
 
   // 落在目前檢視範圍內的事項（給下方清單用）
   const rangedEvents = viewRange
-    ? rawEvents.filter((e) => {
+    ? visibleRaw.filter((e) => {
         const d = new Date(e.start_time);
         return d >= viewRange.start && d < viewRange.end;
       })
-    : rawEvents;
+    : visibleRaw;
 
   const today = new Date();
   const todayEvents = events.filter((e) => {
@@ -182,7 +217,8 @@ export default function Dashboard() {
       {/* 行事曆 + 清單 + 對話 */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
-        {/* 檢視切換 */}
+        {/* 檢視切換 + 篩選 */}
+        <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-fit rounded-xl bg-slate-100 p-1 text-sm font-medium">
           <button
             onClick={() => switchMode("calendar")}
@@ -206,9 +242,71 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {/* 分類篩選 chips */}
+        {categories.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => {
+                setCatFilter([]);
+                localStorage.setItem("dispatch.catFilter", "[]");
+              }}
+              className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${
+                catFilter.length === 0
+                  ? "bg-slate-800 text-white ring-slate-800"
+                  : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              全部
+            </button>
+            {categories.map((c) => {
+              const key = String(c.id);
+              const active = catFilter.includes(key);
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => toggleCatFilter(key)}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${
+                    active
+                      ? "bg-slate-800 text-white ring-slate-800"
+                      : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: c.color }}
+                  />
+                  {c.name}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => toggleCatFilter("none")}
+              className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${
+                catFilter.includes("none")
+                  ? "bg-slate-800 text-white ring-slate-800"
+                  : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              未分類
+            </button>
+          </div>
+        )}
+
+        {/* Google 事件開關 */}
+        <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+          <input
+            type="checkbox"
+            checked={showGoogle}
+            onChange={toggleShowGoogle}
+            className="h-4 w-4 accent-indigo-600"
+          />
+          顯示 Google 事件
+        </label>
+        </div>
+
         {viewMode === "board" ? (
           <WeekBoard
-            events={rawEvents}
+            events={visibleRaw}
             onToggle={toggleCompleted}
             onEdit={openNewEvent}
             onAdd={(d) => {
@@ -337,6 +435,7 @@ export default function Dashboard() {
         open={eventModalOpen}
         initial={editingEvent}
         agents={agents}
+        categories={categories}
         onClose={() => {
           setEventModalOpen(false);
           setEditingEvent(null);

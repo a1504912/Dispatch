@@ -103,7 +103,7 @@ function DateTimeField({ value, onChange, fieldClass }) {
   );
 }
 
-export default function EventModal({ open, onClose, onSaved, initial, agents = [] }) {
+export default function EventModal({ open, onClose, onSaved, initial, agents = [], categories = [] }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
@@ -122,6 +122,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       completed: initial?.completed ?? false,
       all_day: initial?.all_day ?? false,
       image: initial?.image ?? "",
+      category_id: initial?.category_id != null ? String(initial.category_id) : "",
     });
   }, [open, initial]);
 
@@ -164,6 +165,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       completed: form.completed,
       all_day: form.all_day,
       image: form.image || null,
+      category_id: form.category_id ? Number(form.category_id) : null,
     };
     try {
       if (isEdit) await updateEvent(initial.id, payload);
@@ -321,6 +323,22 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           {!form.all_day && form.end_time < form.start_time && (
             <p className="text-xs text-red-500">⚠️ 結束時間早於開始時間</p>
           )}
+
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">分類</label>
+            <select
+              className={`${field} cursor-pointer`}
+              value={form.category_id}
+              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+            >
+              <option value="">未分類</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">負責員工</label>
