@@ -329,7 +329,16 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
             <select
               className={`${field} cursor-pointer`}
               value={form.category_id}
-              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+              onChange={(e) => {
+                const id = e.target.value;
+                // 選了分類就自動帶入該分類的顏色（之後仍可手動改）
+                const cat = categories.find((c) => String(c.id) === id);
+                setForm({
+                  ...form,
+                  category_id: id,
+                  color: cat ? cat.color : form.color,
+                });
+              }}
             >
               <option value="">未分類</option>
               {categories.map((c) => (
