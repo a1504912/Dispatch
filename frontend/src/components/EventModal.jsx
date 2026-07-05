@@ -59,48 +59,46 @@ function DateTimeField({ value, onChange, fieldClass }) {
   }
 
   const selectCls =
-    "cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-2 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+    "shrink-0 cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-1.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex gap-1.5">
       <input
         type="date"
-        className={fieldClass}
+        className={`${fieldClass} min-w-0 flex-1`}
         value={date}
         onChange={(e) => emit(e.target.value, isPM, hour12, mm)}
       />
-      <div className="flex gap-1.5">
-        <select
-          className={`${selectCls} flex-1`}
-          value={isPM ? "pm" : "am"}
-          onChange={(e) => emit(date, e.target.value === "pm", hour12, mm)}
-        >
-          <option value="am">上午</option>
-          <option value="pm">下午</option>
-        </select>
-        <select
-          className={`${selectCls} flex-1`}
-          value={hour12}
-          onChange={(e) => emit(date, isPM, Number(e.target.value), mm)}
-        >
-          {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
-            <option key={h} value={h}>
-              {h} 時
-            </option>
-          ))}
-        </select>
-        <select
-          className={`${selectCls} flex-1`}
-          value={mm}
-          onChange={(e) => emit(date, isPM, hour12, e.target.value)}
-        >
-          {minutes.map((m) => (
-            <option key={m} value={m}>
-              {m} 分
-            </option>
-          ))}
-        </select>
-      </div>
+      <select
+        className={selectCls}
+        value={isPM ? "pm" : "am"}
+        onChange={(e) => emit(date, e.target.value === "pm", hour12, mm)}
+      >
+        <option value="am">上午</option>
+        <option value="pm">下午</option>
+      </select>
+      <select
+        className={selectCls}
+        value={hour12}
+        onChange={(e) => emit(date, isPM, Number(e.target.value), mm)}
+      >
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+          <option key={h} value={h}>
+            {h} 時
+          </option>
+        ))}
+      </select>
+      <select
+        className={selectCls}
+        value={mm}
+        onChange={(e) => emit(date, isPM, hour12, e.target.value)}
+      >
+        {minutes.map((m) => (
+          <option key={m} value={m}>
+            {m} 分
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -294,7 +292,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-3">
               <div>
                 <label className="mb-1.5 block text-xs font-bold text-slate-500">開始</label>
                 <DateTimeField
