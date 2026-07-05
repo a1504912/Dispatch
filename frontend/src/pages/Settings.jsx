@@ -67,9 +67,16 @@ function CategorySettings() {
   async function handleCreate(e) {
     e.preventDefault();
     if (!newName.trim()) return;
-    await createCategory({ name: newName.trim(), color: newColor });
-    setNewName("");
-    refresh();
+    try {
+      await createCategory({ name: newName.trim(), color: newColor });
+      setNewName("");
+      refresh();
+    } catch (err) {
+      alert(
+        "新增失敗：連不到分類 API。\n請確認 backend 已經 git pull 並重新啟動。\n" +
+          (err?.message ?? "")
+      );
+    }
   }
 
   async function handleDelete(cat) {
