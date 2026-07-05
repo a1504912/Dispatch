@@ -208,20 +208,50 @@ export default function Dashboard() {
             select={handleSelect}
             eventContent={(arg) => {
               const completed = arg.event.extendedProps.completed;
+              const checkbox = (
+                <input
+                  type="checkbox"
+                  checked={Boolean(completed)}
+                  onChange={() => {}}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleCompleted(arg.event.id, !completed);
+                  }}
+                  className="h-3 w-3 shrink-0 cursor-pointer accent-emerald-500"
+                  title={completed ? "標記為未完成" : "標記為完成"}
+                />
+              );
+
+              // 週/日檢視的直式方塊：時間一行、標題換行顯示
+              const isTimeBlock =
+                arg.view.type.startsWith("timeGrid") && !arg.event.allDay;
+              if (isTimeBlock) {
+                return (
+                  <div className="flex h-full flex-col gap-0.5 overflow-hidden px-1 py-0.5">
+                    <div className="flex items-center gap-1">
+                      {checkbox}
+                      {arg.timeText && (
+                        <span className="truncate text-[10px] leading-none opacity-80">
+                          {arg.timeText}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`break-words text-xs font-medium leading-tight ${
+                        completed ? "line-through opacity-70" : ""
+                      }`}
+                    >
+                      {arg.event.title}
+                    </span>
+                  </div>
+                );
+              }
+
+              // 月檢視、整天列：單行精簡
               return (
                 <div className="flex items-center gap-1 overflow-hidden px-0.5">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(completed)}
-                    onChange={() => {}}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleCompleted(arg.event.id, !completed);
-                    }}
-                    className="h-3 w-3 shrink-0 cursor-pointer accent-emerald-500"
-                    title={completed ? "標記為未完成" : "標記為完成"}
-                  />
+                  {checkbox}
                   {arg.timeText && (
                     <span className="shrink-0 text-[10px] opacity-80">{arg.timeText}</span>
                   )}
