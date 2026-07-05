@@ -8,7 +8,7 @@ function startOfWeek(base) {
 }
 
 const fmtDay = (d) =>
-  d.toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", weekday: "short" });
+  `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleDateString("zh-TW", { weekday: "short" })}`;
 const fmtTime = (x) =>
   new Date(x).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
 
@@ -60,20 +60,20 @@ export default function WeekBoard({ events, onToggle, onEdit, onAdd }) {
         </div>
       </div>
 
-      {/* 一天一欄 */}
-      <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+      {/* 一天一欄，七欄平均分配填滿寬度 */}
+      <div className="mt-4 grid grid-cols-7 gap-1.5">
         {days.map((d) => {
           const list = eventsOf(d);
           return (
             <div
               key={d.toISOString()}
-              className={`w-48 shrink-0 rounded-xl p-2 ${
+              className={`min-w-0 rounded-xl p-1.5 ${
                 isToday(d) ? "bg-indigo-50/70 ring-1 ring-indigo-200" : "bg-slate-50"
               }`}
             >
-              <div className="flex items-center justify-between px-1 pb-2">
+              <div className="flex items-center justify-between pb-1.5 pl-1">
                 <span
-                  className={`text-sm font-bold ${
+                  className={`truncate text-xs font-bold ${
                     isToday(d) ? "text-indigo-700" : "text-slate-600"
                   }`}
                 >
@@ -81,25 +81,25 @@ export default function WeekBoard({ events, onToggle, onEdit, onAdd }) {
                 </span>
                 <button
                   onClick={() => onAdd(d)}
-                  className="rounded-md px-1.5 text-slate-400 transition hover:bg-white hover:text-indigo-600"
+                  className="shrink-0 rounded-md px-1 text-slate-400 transition hover:bg-white hover:text-indigo-600"
                   title="在這天新增行程"
                 >
                   ＋
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {list.length === 0 && (
-                  <p className="py-4 text-center text-xs text-slate-300">－</p>
+                  <p className="py-3 text-center text-xs text-slate-300">－</p>
                 )}
                 {list.map((ev) => (
                   <div
                     key={ev.id}
                     onClick={() => onEdit(ev)}
-                    className="cursor-pointer rounded-lg border border-slate-200 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow"
+                    className="cursor-pointer rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow"
                     style={{ borderLeft: `3px solid ${ev.color}` }}
                   >
-                    <div className="flex items-start gap-1.5">
+                    <div className="flex items-start gap-1">
                       <input
                         type="checkbox"
                         checked={Boolean(ev.completed)}
@@ -109,13 +109,13 @@ export default function WeekBoard({ events, onToggle, onEdit, onAdd }) {
                       />
                       <div className="min-w-0 flex-1">
                         <p
-                          className={`break-words text-sm font-medium leading-snug ${
+                          className={`break-words text-xs font-medium leading-snug ${
                             ev.completed ? "text-slate-400 line-through" : "text-slate-800"
                           }`}
                         >
                           {ev.title}
                         </p>
-                        <p className="text-[11px] text-slate-400">
+                        <p className="text-[10px] text-slate-400">
                           {ev.all_day ? "整天" : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
                         </p>
                       </div>
@@ -124,7 +124,7 @@ export default function WeekBoard({ events, onToggle, onEdit, onAdd }) {
                       <img
                         src={ev.image}
                         alt=""
-                        className="mt-1.5 w-full rounded-md border border-slate-100 object-cover"
+                        className="mt-1 w-full rounded-md border border-slate-100 object-cover"
                       />
                     )}
                   </div>
