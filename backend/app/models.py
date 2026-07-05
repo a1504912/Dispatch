@@ -34,6 +34,8 @@ class Event(SQLModel, table=True):
     agent_id: Optional[int] = Field(default=None, foreign_key="agent.id")
     color: str = "#3788d8"
     completed: bool = False
+    # 整天活動（Google all-day；end_time 慣例上是「隔天 00:00」不含）
+    all_day: bool = False
     # 對應的 Google 日曆事件 id（未同步則為 None）
     google_event_id: Optional[str] = Field(default=None, index=True)
 

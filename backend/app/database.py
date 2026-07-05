@@ -28,6 +28,10 @@ def init_db() -> None:
                     )
                 if "google_event_id" not in columns:
                     conn.execute(text("ALTER TABLE event ADD COLUMN google_event_id VARCHAR"))
+                if "all_day" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE event ADD COLUMN all_day BOOLEAN NOT NULL DEFAULT 0")
+                    )
                 conn.commit()
 
 

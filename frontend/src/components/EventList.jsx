@@ -6,12 +6,21 @@ const RANGE_LABEL = {
   timeGridDay: "當日",
 };
 
-function formatWhen(start, end) {
-  const s = new Date(start);
-  const e = new Date(end);
-  const date = s.toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", weekday: "short" });
+function formatWhen(ev) {
+  const s = new Date(ev.start_time);
+  const e = new Date(ev.end_time);
+  const day = (d) =>
+    d.toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", weekday: "short" });
+  if (ev.all_day) {
+    // end_time 是「不含」的隔天，顯示時往回一天
+    const lastDay = new Date(e);
+    lastDay.setDate(lastDay.getDate() - 1);
+    const range =
+      lastDay > s ? `${day(s)} – ${day(lastDay)}` : day(s);
+    return `${range}　整天`;
+  }
   const t = (d) => d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `${date}　${t(s)}–${t(e)}`;
+  return `${day(s)}　${t(s)}–${t(e)}`;
 }
 
 export default function EventList({ events, agents = [], type, onToggle, onEdit }) {
@@ -147,7 +156,7 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
                   {ev.title}
                 </p>
                 <p className="truncate text-xs text-slate-400">
-                  {formatWhen(ev.start_time, ev.end_time)}
+                  {formatWhen(ev)}
                   {agentName(ev.agent_id) && `　·　${agentName(ev.agent_id)}`}
                 </p>
               </div>

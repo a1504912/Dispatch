@@ -72,6 +72,7 @@ export default function Dashboard() {
             start: e.start_time,
             end: e.end_time,
             color: e.color,
+            allDay: Boolean(e.all_day),
             completed: e.completed,
             classNames: e.completed ? ["event-done"] : [],
           }))
@@ -91,7 +92,7 @@ export default function Dashboard() {
 
   // 拖選一段空白時段 → 用該時間預填新增
   function handleSelect(info) {
-    openNewEvent({ start_time: info.start, end_time: info.end });
+    openNewEvent({ start_time: info.start, end_time: info.end, all_day: info.allDay });
   }
 
   // 行事曆上直接勾選完成/未完成

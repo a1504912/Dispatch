@@ -34,6 +34,13 @@ function defaultTimes() {
   return { start, end };
 }
 
+/** "YYYY-MM-DD" 加 n 天。 */
+function addDays(dateStr, n) {
+  const d = new Date(`${dateStr}T00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export default function EventModal({ open, onClose, onSaved, initial, agents = [] }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -50,6 +57,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       color: initial?.color ?? COLORS[0],
       description: initial?.description ?? "",
       completed: initial?.completed ?? false,
+      all_day: initial?.all_day ?? false,
     });
   }, [open, initial]);
 
@@ -67,6 +75,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       color: form.color,
       agent_id: form.agent_id ? Number(form.agent_id) : null,
       completed: form.completed,
+      all_day: form.all_day,
     };
     try {
       if (isEdit) await updateEvent(initial.id, payload);
@@ -131,35 +140,100 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-500">開始</label>
-              <input
-                type="datetime-local"
-                className={field}
-                value={form.start_time}
-                onChange={(e) => {
-                  const start = e.target.value;
-                  // 開始往後移時，若超過結束就把結束一起順移
-                  setForm((f) => ({
-                    ...f,
-                    start_time: start,
-                    end_time: f.end_time < start ? start : f.end_time,
-                  }));
-                }}
-              />
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={form.all_day}
+              onChange={(e) => {
+                const allDay = e.target.checked;
+                const startDate = form.start_time.slice(0, 10);
+                if (allDay) {
+                  // 轉整天：起 = 當天 00:00，迄 = 隔天 00:00（不含）
+                  setForm({
+                    ...form,
+                    all_day: true,
+                    start_time: `${startDate}T00:00`,
+                    end_time: `${addDays(startDate, 1)}T00:00`,
+                  });
+                } else {
+                  setForm({
+                    ...form,
+                    all_day: false,
+                    start_time: `${startDate}T09:00`,
+                    end_time: `${startDate}T10:00`,
+                  });
+                }
+              }}
+              className="h-4 w-4 accent-indigo-600"
+            />
+            整天
+          </label>
+
+          {form.all_day ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">開始日期</label>
+                <input
+                  type="date"
+                  className={field}
+                  value={form.start_time.slice(0, 10)}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    const endDisplay = addDays(form.end_time.slice(0, 10), -1);
+                    setForm({
+                      ...form,
+                      start_time: `${d}T00:00`,
+                      end_time: `${addDays(endDisplay < d ? d : endDisplay, 1)}T00:00`,
+                    });
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                  結束日期（含當天）
+                </label>
+                <input
+                  type="date"
+                  className={field}
+                  value={addDays(form.end_time.slice(0, 10), -1)}
+                  min={form.start_time.slice(0, 10)}
+                  onChange={(e) =>
+                    setForm({ ...form, end_time: `${addDays(e.target.value, 1)}T00:00` })
+                  }
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-500">結束</label>
-              <input
-                type="datetime-local"
-                className={field}
-                value={form.end_time}
-                min={form.start_time}
-                onChange={(e) => setForm({ ...form, end_time: e.target.value })}
-              />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">開始</label>
+                <input
+                  type="datetime-local"
+                  className={field}
+                  value={form.start_time}
+                  onChange={(e) => {
+                    const start = e.target.value;
+                    // 開始往後移時，若超過結束就把結束一起順移
+                    setForm((f) => ({
+                      ...f,
+                      start_time: start,
+                      end_time: f.end_time < start ? start : f.end_time,
+                    }));
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">結束</label>
+                <input
+                  type="datetime-local"
+                  className={field}
+                  value={form.end_time}
+                  min={form.start_time}
+                  onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">負責員工</label>

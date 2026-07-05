@@ -28,6 +28,7 @@ class EventCreate(SQLModel):
     agent_id: Optional[int] = None
     color: str = "#3788d8"
     completed: bool = False
+    all_day: bool = False
 
 
 class EventCompletedUpdate(SQLModel):

@@ -150,15 +150,20 @@ def _headers(token: str) -> dict:
 
 
 def _to_google_body(event: Event) -> dict:
+    body = {"summary": event.title, "description": event.description or ""}
+    if event.all_day:
+        start_date = event.start_time.date()
+        # Google 的整天活動 end.date 是「不含」的隔天
+        end_date = max(event.end_time.date(), start_date + dt.timedelta(days=1))
+        body["start"] = {"date": start_date.isoformat()}
+        body["end"] = {"date": end_date.isoformat()}
+        return body
     tz = _tz()
     start = event.start_time.replace(tzinfo=tz)
     end = event.end_time.replace(tzinfo=tz)
-    return {
-        "summary": event.title,
-        "description": event.description or "",
-        "start": {"dateTime": start.isoformat(), "timeZone": settings.timezone},
-        "end": {"dateTime": end.isoformat(), "timeZone": settings.timezone},
-    }
+    body["start"] = {"dateTime": start.isoformat(), "timeZone": settings.timezone}
+    body["end"] = {"dateTime": end.isoformat(), "timeZone": settings.timezone}
+    return body
 
 
 def _parse_node(node: dict) -> dt.datetime:
@@ -246,15 +251,12 @@ def sync(session: Session) -> dict:
                 if not start_node or not end_node:
                     continue
                 start, end = _parse_node(start_node), _parse_node(end_node)
+                all_day = bool(start_node.get("date"))
                 title = g.get("summary") or "(無標題)"
                 desc = g.get("description") or ""
                 if local:
-                    local.title, local.start_time, local.end_time, local.description = (
-                        title,
-                        start,
-                        end,
-                        desc,
-                    )
+                    local.title, local.start_time, local.end_time = title, start, end
+                    local.description, local.all_day = desc, all_day
                     session.add(local)
                     pulled_updated += 1
                 else:
@@ -265,6 +267,7 @@ def sync(session: Session) -> dict:
                             end_time=end,
                             description=desc,
                             color=GOOGLE_COLOR,
+                            all_day=all_day,
                             google_event_id=gid,
                         )
                     )
