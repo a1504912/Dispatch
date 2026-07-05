@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -27,6 +27,77 @@ function StatCard({ emoji, label, value, hint }) {
           {hint && <span className="ml-1 text-xs font-medium text-slate-400">{hint}</span>}
         </p>
       </div>
+    </div>
+  );
+}
+
+function CategoryFilterDropdown({ categories, catFilter, onToggle, onClear }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const label =
+    catFilter.length === 0 ? "分類：全部" : `分類：已選 ${catFilter.length} 項`;
+
+  const row = (active) =>
+    `flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition ${
+      active ? "bg-indigo-50 font-medium text-indigo-700" : "text-slate-600 hover:bg-slate-50"
+    }`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium shadow-sm transition active:scale-95 ${
+          catFilter.length > 0
+            ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+        }`}
+      >
+        🏷️ {label}
+        <svg
+          className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="2.5"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          <button className={row(catFilter.length === 0)} onClick={onClear}>
+            全部
+            {catFilter.length === 0 && <span className="ml-auto">✓</span>}
+          </button>
+          <div className="my-1 border-t border-slate-100" />
+          {categories.map((c) => {
+            const key = String(c.id);
+            const active = catFilter.includes(key);
+            return (
+              <button key={c.id} className={row(active)} onClick={() => onToggle(key)}>
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: c.color }} />
+                {c.name}
+                {active && <span className="ml-auto">✓</span>}
+              </button>
+            );
+          })}
+          <button className={row(catFilter.includes("none"))} onClick={() => onToggle("none")}>
+            <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
+            未分類
+            {catFilter.includes("none") && <span className="ml-auto">✓</span>}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -242,54 +313,17 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* 分類篩選 chips */}
+        {/* 分類篩選（下拉收合） */}
         {categories.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              onClick={() => {
-                setCatFilter([]);
-                localStorage.setItem("dispatch.catFilter", "[]");
-              }}
-              className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${
-                catFilter.length === 0
-                  ? "bg-slate-800 text-white ring-slate-800"
-                  : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              全部
-            </button>
-            {categories.map((c) => {
-              const key = String(c.id);
-              const active = catFilter.includes(key);
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => toggleCatFilter(key)}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${
-                    active
-                      ? "bg-slate-800 text-white ring-slate-800"
-                      : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: c.color }}
-                  />
-                  {c.name}
-                </button>
-              );
-            })}
-            <button
-              onClick={() => toggleCatFilter("none")}
-              className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${
-                catFilter.includes("none")
-                  ? "bg-slate-800 text-white ring-slate-800"
-                  : "bg-white text-slate-500 ring-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              未分類
-            </button>
-          </div>
+          <CategoryFilterDropdown
+            categories={categories}
+            catFilter={catFilter}
+            onToggle={toggleCatFilter}
+            onClear={() => {
+              setCatFilter([]);
+              localStorage.setItem("dispatch.catFilter", "[]");
+            }}
+          />
         )}
 
         {/* Google 事件開關 */}
