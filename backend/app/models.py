@@ -55,6 +55,16 @@ class Event(SQLModel, table=True):
     google_event_id: Optional[str] = Field(default=None, index=True)
 
 
+class Subtask(SQLModel, table=True):
+    """主行程底下的小明細（可打勾的子任務）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: int = Field(foreign_key="event.id", index=True)
+    title: str
+    done: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class GoogleCredential(SQLModel, table=True):
     """單一列（id=1）存放 Google OAuth token。"""
 

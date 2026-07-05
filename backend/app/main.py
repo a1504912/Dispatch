@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import agents, categories, chat, events, google, models, schedule
+from app.routers import agents, categories, chat, events, google, models, schedule, subtasks
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app.include_router(events.router)
 app.include_router(models.router)
 app.include_router(google.router)
 app.include_router(categories.router)
+app.include_router(subtasks.router)
 
 
 @app.get("/")

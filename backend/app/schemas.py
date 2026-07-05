@@ -39,6 +39,17 @@ class CategoryCreate(SQLModel):
     color: str = "#6366f1"
 
 
+# ---------- Subtask ----------
+class SubtaskCreate(SQLModel):
+    event_id: int
+    title: str
+
+
+class SubtaskUpdate(SQLModel):
+    title: Optional[str] = None
+    done: Optional[bool] = None
+
+
 class EventCompletedUpdate(SQLModel):
     completed: bool
 

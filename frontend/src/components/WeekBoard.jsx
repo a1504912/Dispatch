@@ -12,7 +12,7 @@ const fmtDay = (d) =>
 const fmtTime = (x) =>
   new Date(x).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-export default function WeekBoard({ events, onToggle, onEdit, onAdd }) {
+export default function WeekBoard({ events, subtaskCounts = {}, onToggle, onEdit, onAdd }) {
   const [offset, setOffset] = useState(0);
 
   const weekStart = startOfWeek(new Date());
@@ -117,6 +117,17 @@ export default function WeekBoard({ events, onToggle, onEdit, onAdd }) {
                         </p>
                         <p className="text-[10px] text-slate-400">
                           {ev.all_day ? "整天" : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
+                          {subtaskCounts[ev.id] && (
+                            <span
+                              className={`ml-1 ${
+                                subtaskCounts[ev.id].done === subtaskCounts[ev.id].total
+                                  ? "text-emerald-500"
+                                  : "text-indigo-500"
+                              }`}
+                            >
+                              ☑ {subtaskCounts[ev.id].done}/{subtaskCounts[ev.id].total}
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>

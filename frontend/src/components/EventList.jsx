@@ -23,7 +23,14 @@ function formatWhen(ev) {
   return `${day(s)}　${t(s)}–${t(e)}`;
 }
 
-export default function EventList({ events, agents = [], type, onToggle, onEdit }) {
+export default function EventList({
+  events,
+  agents = [],
+  subtaskCounts = {},
+  type,
+  onToggle,
+  onEdit,
+}) {
   const [sort, setSort] = useState("time"); // time | status
   const [filter, setFilter] = useState("all"); // all | active | done
   // 收合狀態（記住使用者偏好）
@@ -158,6 +165,17 @@ export default function EventList({ events, agents = [], type, onToggle, onEdit 
                 <p className="truncate text-xs text-slate-400">
                   {formatWhen(ev)}
                   {agentName(ev.agent_id) && `　·　${agentName(ev.agent_id)}`}
+                  {subtaskCounts[ev.id] && (
+                    <span
+                      className={`ml-1.5 ${
+                        subtaskCounts[ev.id].done === subtaskCounts[ev.id].total
+                          ? "text-emerald-500"
+                          : "text-indigo-500"
+                      }`}
+                    >
+                      ☑ {subtaskCounts[ev.id].done}/{subtaskCounts[ev.id].total}
+                    </span>
+                  )}
                 </p>
               </div>
               {ev.completed ? (

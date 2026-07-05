@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { createEvent, updateEvent, deleteEvent } from "../api/events";
+import {
+  createSubtask,
+  deleteSubtask,
+  listSubtasks,
+  updateSubtask,
+} from "../api/subtasks";
 
 // 可選的事件顏色
 const COLORS = [
@@ -106,8 +112,40 @@ function DateTimeField({ value, onChange, fieldClass }) {
 export default function EventModal({ open, onClose, onSaved, initial, agents = [], categories = [] }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [subtasks, setSubtasks] = useState([]);
+  const [newSub, setNewSub] = useState("");
   const fileInputRef = useRef(null);
   const isEdit = Boolean(initial?.id);
+
+  async function refreshSubtasks() {
+    if (!initial?.id) return;
+    try {
+      setSubtasks(await listSubtasks(initial.id));
+    } catch {
+      setSubtasks([]);
+    }
+  }
+
+  async function handleAddSubtask(e) {
+    e.preventDefault();
+    if (!newSub.trim() || !initial?.id) return;
+    await createSubtask(initial.id, newSub.trim());
+    setNewSub("");
+    refreshSubtasks();
+    onSaved?.(); // 讓看板/清單上的明細進度即時更新
+  }
+
+  async function handleToggleSubtask(st) {
+    await updateSubtask(st.id, { done: !st.done });
+    refreshSubtasks();
+    onSaved?.();
+  }
+
+  async function handleDeleteSubtask(id) {
+    await deleteSubtask(id);
+    refreshSubtasks();
+    onSaved?.();
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -124,6 +162,13 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       image: initial?.image ?? "",
       category_id: initial?.category_id != null ? String(initial.category_id) : "",
     });
+    setNewSub("");
+    setSubtasks([]);
+    if (initial?.id) {
+      listSubtasks(initial.id)
+        .then(setSubtasks)
+        .catch(() => setSubtasks([]));
+    }
   }, [open, initial]);
 
   // 視窗開著時可直接 Ctrl+V 貼圖（capture 讓它優先於總覽頁的貼圖排程）
@@ -380,6 +425,75 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                 />
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">
+              明細
+              {subtasks.length > 0 && (
+                <span className="ml-2 font-normal text-slate-400">
+                  {subtasks.filter((s) => s.done).length}/{subtasks.length} 完成
+                </span>
+              )}
+            </label>
+            {!isEdit ? (
+              <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-xs text-slate-400">
+                先儲存行程，就可以新增明細項目。
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {subtasks.map((st) => (
+                  <div
+                    key={st.id}
+                    className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={st.done}
+                      onChange={() => handleToggleSubtask(st)}
+                      className="h-4 w-4 shrink-0 cursor-pointer accent-emerald-500"
+                    />
+                    <span
+                      className={`min-w-0 flex-1 break-words text-sm ${
+                        st.done ? "text-slate-400 line-through" : "text-slate-700"
+                      }`}
+                    >
+                      {st.title}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSubtask(st.id)}
+                      className="shrink-0 rounded-md px-1 text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                      title="刪除明細"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <div className="flex gap-1.5">
+                  <input
+                    className={`${field} flex-1`}
+                    placeholder="新增明細，例：轉週報表跳錯"
+                    value={newSub}
+                    onChange={(e) => setNewSub(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddSubtask(e);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSubtask}
+                    disabled={!newSub.trim()}
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-bold text-indigo-600 shadow-sm transition hover:bg-indigo-50 active:scale-95 disabled:opacity-40"
+                  >
+                    ＋
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

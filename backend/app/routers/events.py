@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 from app import google_calendar as gcal
 from app.database import get_session
-from app.models import Event
+from app.models import Event, Subtask
 from app.schemas import EventCompletedUpdate, EventCreate
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -83,6 +83,8 @@ def delete_event(event_id: int, session: Session = Depends(get_session)):
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     google_event_id = event.google_event_id
+    for subtask in session.exec(select(Subtask).where(Subtask.event_id == event_id)).all():
+        session.delete(subtask)
     session.delete(event)
     session.commit()
     _propagate_delete(session, google_event_id)
