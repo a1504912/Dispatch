@@ -67,6 +67,9 @@ def exchange_code(code: str) -> dict:
     }
     with httpx.Client(timeout=20) as client:
         resp = client.post(TOKEN_URI, data=data)
+        if resp.status_code != 200:
+            # Google 會在 body 裡說明原因（invalid_client / redirect_uri_mismatch…）
+            print("Google token endpoint replied:", resp.status_code, resp.text)
         resp.raise_for_status()
         return resp.json()
 

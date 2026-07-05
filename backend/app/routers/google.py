@@ -30,10 +30,15 @@ def google_callback(
     session: Session = Depends(get_session),
 ):
     if error or not code:
+        print(f"Google OAuth callback error param: {error!r}")
         return RedirectResponse(f"{settings.frontend_url}/dashboard?google=error")
     try:
         gcal.connect_with_code(session, code)
     except Exception:
+        import traceback
+
+        print("Google OAuth token exchange failed:")
+        traceback.print_exc()
         return RedirectResponse(f"{settings.frontend_url}/dashboard?google=error")
     return RedirectResponse(f"{settings.frontend_url}/dashboard?google=connected")
 
