@@ -132,14 +132,31 @@ async def schedule_from_image(
     ]
 
     try:
+        # 視覺模型第一次載入 VRAM 可能要很久，逾時放寬到 5 分鐘
         content = await ollama_client.chat(
-            model or settings.vision_model, messages, format="json"
+            model or settings.vision_model, messages, format="json", timeout=300.0
         )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "視覺模型回應逾時（超過 5 分鐘）。"
+                "通常是模型正在載入或機器忙碌，稍等一下再試一次。"
+            ),
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Ollama 回應錯誤（HTTP {exc.response.status_code}）："
+                f"{exc.response.text[:300]}"
+            ),
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,
             detail=(
-                f"無法呼叫視覺模型：{exc}。"
+                f"無法連到 Ollama：{exc!r}。"
                 "請確認 Ollama 正在執行，且已安裝視覺模型（例如 qwen2.5vl:7b）。"
             ),
         ) from exc
