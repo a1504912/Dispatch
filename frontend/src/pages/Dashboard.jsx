@@ -7,7 +7,7 @@ import zhTwLocale from "@fullcalendar/core/locales/zh-tw";
 import { listEvents, setEventCompleted } from "../api/events";
 import { listAgents } from "../api/agents";
 import { listCategories } from "../api/categories";
-import { listSubtasks } from "../api/subtasks";
+import { listSubtasks, updateSubtask } from "../api/subtasks";
 import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
@@ -181,12 +181,20 @@ export default function Dashboard() {
       .catch(() => setRawEvents([]));
   }
 
-  // 每個行程的明細進度 {event_id: {done, total}}
+  // 每個行程的明細進度 {event_id: {done, total}} 與分組明細
   const subtaskCounts = {};
+  const subtasksByEvent = {};
   for (const st of subtasks) {
     const c = (subtaskCounts[st.event_id] ??= { done: 0, total: 0 });
     c.total += 1;
     if (st.done) c.done += 1;
+    (subtasksByEvent[st.event_id] ??= []).push(st);
+  }
+
+  // 看板上直接打勾明細
+  async function toggleSubtask(st) {
+    await updateSubtask(st.id, { done: !st.done });
+    loadEvents();
   }
 
   // 點行事曆上的事件 → 開啟編輯
@@ -355,7 +363,8 @@ export default function Dashboard() {
         {viewMode === "board" ? (
           <WeekBoard
             events={visibleRaw}
-            subtaskCounts={subtaskCounts}
+            subtasksByEvent={subtasksByEvent}
+            onToggleSubtask={toggleSubtask}
             onToggle={toggleCompleted}
             onEdit={openNewEvent}
             onAdd={(d) => {
