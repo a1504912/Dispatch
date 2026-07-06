@@ -401,6 +401,8 @@ export default function Dashboard() {
             }}
             height={620}
             nowIndicator
+            eventDisplay="block"
+            dayMaxEventRows={4}
             scrollTime="08:00:00"
             datesSet={(arg) =>
               setViewRange({
