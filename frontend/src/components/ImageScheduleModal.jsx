@@ -36,6 +36,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
   const [saving, setSaving] = useState(false);
   const [proposals, setProposals] = useState(null);
   const [editingIdx, setEditingIdx] = useState(null);
+  const [hint, setHint] = useState("");
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
 
@@ -44,6 +45,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     if (!open) return;
     setProposals(null);
     setEditingIdx(null);
+    setHint("");
     setError("");
     if (initialFile) {
       pickFile(initialFile);
@@ -86,7 +88,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setLoading(true);
     setError("");
     try {
-      const data = await scheduleFromImage(file, model || undefined);
+      const data = await scheduleFromImage(file, model || undefined, hint.trim() || undefined);
       setProposals(data.events ?? []);
     } catch (err) {
       setError(
@@ -221,6 +223,22 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
             className="hidden"
             onChange={(e) => pickFile(e.target.files?.[0])}
           />
+
+          {/* 補充說明：幫 AI 判斷日期／安排 */}
+          {!proposals && (
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-500">
+                補充說明（選填，幫 AI 判斷更準）
+              </label>
+              <textarea
+                rows={2}
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                placeholder="例：這是 7/7 的待辦清單，每項排 1 小時，從早上 9 點開始"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+          )}
 
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

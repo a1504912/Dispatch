@@ -111,6 +111,7 @@ def _parse_events(content: str) -> list[EventCreate]:
 async def schedule_from_image(
     file: UploadFile = File(...),
     model: Optional[str] = Form(None),
+    hint: Optional[str] = Form(None),
 ):
     """Read a screenshot with a vision model and propose calendar events.
 
@@ -122,11 +123,16 @@ async def schedule_from_image(
         raise HTTPException(status_code=400, detail="空的圖片檔")
 
     image_b64 = base64.b64encode(raw).decode()
+    user_content = "請解析這張截圖中的所有行程／活動，只輸出 JSON。"
+    if hint and hint.strip():
+        user_content += (
+            f"\n使用者補充說明（判斷日期與安排時以此為準）：{hint.strip()}"
+        )
     messages = [
         {"role": "system", "content": _build_prompt()},
         {
             "role": "user",
-            "content": "請解析這張截圖中的所有行程／活動，只輸出 JSON。",
+            "content": user_content,
             "images": [image_b64],
         },
     ]
