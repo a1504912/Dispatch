@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { getToken } from "../api/client";
 import { logout } from "../api/auth";
+import { LOCAL_MODE } from "../localMode";
 
 function CalendarIcon({ className }) {
   return (
@@ -49,7 +50,8 @@ function GearIcon({ className }) {
 
 const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
-  { to: "/agents", label: "AI 員工", icon: UsersIcon },
+  // 離線模式沒有後端，AI 員工頁隱藏
+  ...(LOCAL_MODE ? [] : [{ to: "/agents", label: "AI 員工", icon: UsersIcon }]),
   { to: "/settings", label: "設定", icon: GearIcon },
 ];
 
@@ -95,10 +97,21 @@ export default function Layout() {
 
         <div className="mt-auto space-y-2 p-4">
           <div className="rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
-            <p className="text-xs font-medium text-slate-300">🦙 本地模型驅動</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-              所有對話都在你的電腦上完成，資料不出門。
-            </p>
+            {LOCAL_MODE ? (
+              <>
+                <p className="text-xs font-medium text-slate-300">📦 離線模式</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  資料儲存在此瀏覽器，換裝置不會同步；AI 功能請用筆電版。
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-medium text-slate-300">🦙 本地模型驅動</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  所有對話都在你的電腦上完成，資料不出門。
+                </p>
+              </>
+            )}
           </div>
           {getToken() && (
             <button
