@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # 行事曆時區（推/拉 Google 事件時換算用）
     timezone: str = "Asia/Taipei"
 
+    # 登入密碼（留空 = 不啟用登入，適合純本機使用；部署到公開網址時必設）
+    auth_password: str = ""
+
     # Google 日曆 OAuth
     google_client_id: str = ""
     google_client_secret: str = ""

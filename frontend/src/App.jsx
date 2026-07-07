@@ -3,10 +3,12 @@ import Layout from "./components/Layout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Agents from "./pages/Agents.jsx";
 import Settings from "./pages/Settings.jsx";
+import Login from "./pages/Login.jsx";
 
 export default function App() {
   return (
     <Routes>
+      <Route path="/login" element={<Login />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />

@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { getToken } from "../api/client";
+import { logout } from "../api/auth";
 
 function CalendarIcon({ className }) {
   return (
@@ -91,13 +93,21 @@ export default function Layout() {
           <NavItems vertical />
         </nav>
 
-        <div className="mt-auto p-4">
+        <div className="mt-auto space-y-2 p-4">
           <div className="rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
             <p className="text-xs font-medium text-slate-300">🦙 本地模型驅動</p>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
               所有對話都在你的電腦上完成，資料不出門。
             </p>
           </div>
+          {getToken() && (
+            <button
+              onClick={logout}
+              className="w-full rounded-xl px-4 py-2 text-left text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
+            >
+              ⏻ 登出
+            </button>
+          )}
         </div>
       </aside>
 
