@@ -1,8 +1,8 @@
 import client from "./client";
-import { LOCAL_MODE } from "../localMode";
+import { NO_BACKEND } from "../localMode";
 
 export async function listAgents() {
-  if (LOCAL_MODE) return []; // 離線模式沒有 AI 員工
+  if (NO_BACKEND) return []; // 沒有後端就沒有 AI 員工
   const { data } = await client.get("/api/agents");
   return data;
 }

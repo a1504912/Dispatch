@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getToken } from "../api/client";
 import { logout } from "../api/auth";
-import { LOCAL_MODE } from "../localMode";
+import { LOCAL_MODE, NO_BACKEND } from "../localMode";
+import { SUPABASE_MODE, supabase } from "../supabase";
 
 function CalendarIcon({ className }) {
   return (
@@ -50,8 +52,8 @@ function GearIcon({ className }) {
 
 const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
-  // 離線模式沒有後端，AI 員工頁隱藏
-  ...(LOCAL_MODE ? [] : [{ to: "/agents", label: "AI 員工", icon: UsersIcon }]),
+  // 沒有後端（離線/雲端同步模式）時，AI 員工頁隱藏
+  ...(NO_BACKEND ? [] : [{ to: "/agents", label: "AI 員工", icon: UsersIcon }]),
   { to: "/settings", label: "設定", icon: GearIcon },
 ];
 
@@ -77,6 +79,19 @@ function NavItems({ vertical }) {
 }
 
 export default function Layout() {
+  const [supaAuthed, setSupaAuthed] = useState(false);
+
+  // Supabase 模式：沒有登入 session 就導回登入頁
+  useEffect(() => {
+    if (!SUPABASE_MODE) return;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) window.location.replace("/login");
+      else setSupaAuthed(true);
+    });
+  }, []);
+
+  const showLogout = SUPABASE_MODE ? supaAuthed : Boolean(getToken());
+
   return (
     <div className="flex h-full flex-col md:flex-row">
       {/* 桌面版側邊欄 */}
@@ -97,7 +112,14 @@ export default function Layout() {
 
         <div className="mt-auto space-y-2 p-4">
           <div className="rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
-            {LOCAL_MODE ? (
+            {SUPABASE_MODE ? (
+              <>
+                <p className="text-xs font-medium text-slate-300">☁️ 雲端同步</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  資料存在雲端，所有裝置同步；AI 功能請用筆電版。
+                </p>
+              </>
+            ) : LOCAL_MODE ? (
               <>
                 <p className="text-xs font-medium text-slate-300">📦 離線模式</p>
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
@@ -113,7 +135,7 @@ export default function Layout() {
               </>
             )}
           </div>
-          {getToken() && (
+          {showLogout && (
             <button
               onClick={logout}
               className="w-full rounded-xl px-4 py-2 text-left text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-200"

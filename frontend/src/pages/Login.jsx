@@ -1,32 +1,37 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAuthStatus, login } from "../api/auth";
+import { getAuthStatus, login, loginSupabase } from "../api/auth";
+import { SUPABASE_MODE } from "../supabase";
 
 export default function Login() {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // 沒開登入功能就直接進主頁
+  // 已登入或沒開登入功能 → 直接進主頁
   useEffect(() => {
     getAuthStatus()
       .then((s) => {
-        if (!s.auth_required) navigate("/dashboard", { replace: true });
+        if (!s.auth_required || s.logged_in) navigate("/dashboard", { replace: true });
       })
       .catch(() => {});
   }, [navigate]);
 
+  const canSubmit = SUPABASE_MODE ? email && password : Boolean(password);
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!password || loading) return;
+    if (!canSubmit || loading) return;
     setLoading(true);
     setError("");
     try {
-      await login(password);
+      if (SUPABASE_MODE) await loginSupabase(email, password);
+      else await login(password);
       navigate("/dashboard", { replace: true });
     } catch {
-      setError("密碼錯誤，再試一次。");
+      setError(SUPABASE_MODE ? "帳號或密碼錯誤，再試一次。" : "密碼錯誤，再試一次。");
     } finally {
       setLoading(false);
     }
@@ -42,16 +47,28 @@ export default function Login() {
             </svg>
           </div>
           <h1 className="text-2xl font-black text-white">Dispatch</h1>
-          <p className="mt-1 text-sm text-slate-400">輸入密碼進入你的 AI 助理團隊</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {SUPABASE_MODE ? "登入你的雲端行事曆" : "輸入密碼進入你的 AI 助理團隊"}
+          </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
           className="space-y-4 rounded-2xl bg-white p-6 shadow-2xl"
         >
+          {SUPABASE_MODE && (
+            <input
+              type="email"
+              autoFocus
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            />
+          )}
           <input
             type="password"
-            autoFocus
+            autoFocus={!SUPABASE_MODE}
             placeholder="密碼"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -60,7 +77,7 @@ export default function Login() {
           {error && <p className="text-sm text-red-500">{error}</p>}
           <button
             type="submit"
-            disabled={!password || loading}
+            disabled={!canSubmit || loading}
             className="w-full rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 py-3 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-[0.99] disabled:opacity-40"
           >
             {loading ? "登入中…" : "登入"}

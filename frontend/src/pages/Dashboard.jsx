@@ -8,7 +8,7 @@ import { listEvents, setEventCompleted } from "../api/events";
 import { listAgents } from "../api/agents";
 import { listCategories } from "../api/categories";
 import { listSubtasks, updateSubtask } from "../api/subtasks";
-import { LOCAL_MODE } from "../localMode";
+import { NO_BACKEND } from "../localMode";
 import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
@@ -157,7 +157,7 @@ export default function Dashboard() {
 
   // 在總覽頁任何地方 Ctrl+V 貼圖，直接開啟截圖排程（離線模式無 AI，停用）
   useEffect(() => {
-    if (LOCAL_MODE) return;
+    if (NO_BACKEND) return;
     function onPaste(e) {
       if (imageModalOpen || eventModalOpen) return; // 視窗開著時交給視窗自己處理
       const item = [...(e.clipboardData?.items ?? [])].find((i) =>
@@ -281,14 +281,14 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!LOCAL_MODE && <GoogleSync onSynced={loadEvents} />}
+          {!NO_BACKEND && <GoogleSync onSynced={loadEvents} />}
           <button
             onClick={() => openNewEvent()}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-95"
           >
             ＋ 新增行程
           </button>
-          {!LOCAL_MODE && (
+          {!NO_BACKEND && (
             <button
               onClick={() => setImageModalOpen(true)}
               className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
@@ -301,8 +301,8 @@ export default function Dashboard() {
 
       {/* 統計卡 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {!LOCAL_MODE && <StatCard emoji="🧑‍💻" label="AI 員工" value={agents.length} hint="位" />}
-        {!LOCAL_MODE && <StatCard emoji="⚡" label="工作中" value={activeCount} hint="位" />}
+        {!NO_BACKEND && <StatCard emoji="🧑‍💻" label="AI 員工" value={agents.length} hint="位" />}
+        {!NO_BACKEND && <StatCard emoji="⚡" label="工作中" value={activeCount} hint="位" />}
         <StatCard
           emoji="📌"
           label="今日行程"
@@ -313,7 +313,7 @@ export default function Dashboard() {
 
       {/* 行事曆 + 清單 + 對話 */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className={`space-y-6 ${LOCAL_MODE ? "xl:col-span-3" : "xl:col-span-2"}`}>
+        <div className={`space-y-6 ${NO_BACKEND ? "xl:col-span-3" : "xl:col-span-2"}`}>
         {/* 檢視切換 + 篩選 */}
         <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-fit rounded-xl bg-slate-100 p-1 text-sm font-medium">
@@ -481,7 +481,7 @@ export default function Dashboard() {
         )}
         </div>
 
-        {!LOCAL_MODE && (
+        {!NO_BACKEND && (
           <div className="h-[640px] xl:col-span-1 xl:h-auto">
             <ChatBox agents={agents} />
           </div>
