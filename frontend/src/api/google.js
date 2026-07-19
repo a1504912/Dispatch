@@ -2,7 +2,9 @@ import client, { getToken } from "./client";
 
 const baseURL =
   import.meta.env.VITE_API_BASE_URL ||
-  `${window.location.protocol}//${window.location.hostname}:8000`;
+  (window.location.port === "5173"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : window.location.origin);
 
 export async function getGoogleStatus() {
   const { data } = await client.get("/api/google/status");

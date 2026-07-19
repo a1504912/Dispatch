@@ -1,10 +1,12 @@
 import axios from "axios";
 
-// 預設跟著目前網址的主機走：用 localhost 開就打 localhost:8000、
-// 用區網/Tailscale IP 開就打同一台的 :8000，遠端連線才不會打錯機器。
+// 預設規則：Vite 開發模式（port 5173）打同主機的 :8000；
+// 其他情況（由後端直接供應網頁）就打同一個網址。
 const baseURL =
   import.meta.env.VITE_API_BASE_URL ||
-  `${window.location.protocol}//${window.location.hostname}:8000`;
+  (window.location.port === "5173"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : window.location.origin);
 
 const client = axios.create({
   baseURL,
