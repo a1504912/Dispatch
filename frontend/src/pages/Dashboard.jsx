@@ -16,6 +16,9 @@ import EventList from "../components/EventList.jsx";
 import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
 
+// 手機上行事曆改用精簡設定（預設日檢視、短標題）
+const IS_MOBILE = typeof window !== "undefined" && window.innerWidth < 768;
+
 function StatCard({ emoji, label, value, hint }) {
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
@@ -397,13 +400,21 @@ export default function Dashboard() {
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             locale={zhTwLocale}
-            initialView="timeGridWeek"
+            initialView={IS_MOBILE ? "timeGridDay" : "timeGridWeek"}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
               right: "dayGridMonth,timeGridWeek,timeGridDay",
             }}
-            height={620}
+            titleFormat={
+              IS_MOBILE ? { month: "numeric", day: "numeric" } : undefined
+            }
+            dayHeaderFormat={
+              IS_MOBILE
+                ? { month: "numeric", day: "numeric", weekday: "narrow" }
+                : undefined
+            }
+            height={IS_MOBILE ? 560 : 620}
             nowIndicator
             eventDisplay="block"
             dayMaxEventRows={4}
