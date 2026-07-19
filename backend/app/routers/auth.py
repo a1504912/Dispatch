@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from sqlmodel import SQLModel
@@ -14,7 +15,7 @@ def expected_token() -> str:
     return hashlib.sha256(f"dispatch-auth:{settings.auth_password}".encode()).hexdigest()
 
 
-def verify_token(token: str | None) -> bool:
+def verify_token(token: Optional[str]) -> bool:
     if not settings.auth_password:
         return True
     if not token:

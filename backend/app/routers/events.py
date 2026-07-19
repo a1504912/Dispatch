@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
@@ -18,7 +20,7 @@ def _propagate_push(session: Session, event: Event) -> None:
         print("Google push failed:", exc)
 
 
-def _propagate_delete(session: Session, google_event_id: str | None) -> None:
+def _propagate_delete(session: Session, google_event_id: Optional[str]) -> None:
     if not google_event_id:
         return
     try:

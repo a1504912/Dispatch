@@ -1,3 +1,5 @@
+from typing import Optional, Union
+
 import httpx
 
 from app.config import settings
@@ -7,7 +9,7 @@ async def chat(
     model: str,
     messages: list[dict],
     *,
-    format: str | dict | None = None,
+    format: Optional[Union[str, dict]] = None,
     timeout: float = 120.0,
 ) -> str:
     """Send a chat request to the Ollama bridge and return the reply text.
