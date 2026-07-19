@@ -78,8 +78,8 @@ export default function WeekBoard({
         </div>
       </div>
 
-      {/* 一天一欄，七欄平均分配填滿寬度 */}
-      <div className="mt-4 grid grid-cols-7 gap-1.5">
+      {/* 手機：一天一列（清單式）；桌面：七欄平均分配 */}
+      <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-7 md:gap-1.5">
         {days.map((d) => {
           const list = eventsOf(d);
           return (
@@ -108,7 +108,7 @@ export default function WeekBoard({
 
               <div className="space-y-1.5">
                 {list.length === 0 && (
-                  <p className="py-3 text-center text-xs text-slate-300">－</p>
+                  <p className="py-1 text-center text-xs text-slate-300 md:py-3">－</p>
                 )}
                 {list.map((ev) => {
                   const subs = subtasksByEvent[ev.id] ?? [];

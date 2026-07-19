@@ -63,8 +63,8 @@ function NavItems({ vertical }) {
       key={to}
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-          vertical ? "" : "flex-1 justify-center"
+        `flex items-center whitespace-nowrap rounded-xl font-medium transition ${
+          vertical ? "gap-3 px-3 py-2.5 text-sm" : "shrink-0 gap-1.5 px-2.5 py-1.5 text-xs"
         } ${
           isActive
             ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
@@ -72,7 +72,7 @@ function NavItems({ vertical }) {
         }`
       }
     >
-      <Icon className="h-5 w-5 shrink-0" />
+      <Icon className={vertical ? "h-5 w-5 shrink-0" : "h-4 w-4 shrink-0"} />
       {label}
     </NavLink>
   ));
