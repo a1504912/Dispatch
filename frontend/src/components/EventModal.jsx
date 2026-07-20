@@ -243,10 +243,10 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-6 pb-4 pt-6">
           <h2 className="text-lg font-black text-slate-900">
             {isEdit ? "編輯行程" : "新增行程"}
           </h2>
@@ -263,7 +263,9 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          {/* 欄位區：超過高度自己捲動 */}
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto border-t border-slate-100 px-6 py-4">
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">標題 *</label>
             <input
@@ -542,7 +544,10 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
             />
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          </div>
+
+          {/* 按鈕列：固定在視窗底部，永遠看得到 */}
+          <div className="flex items-center gap-2 border-t border-slate-100 px-6 py-4">
             {isEdit && (
               <button
                 type="button"
