@@ -278,9 +278,12 @@ def sync(session: Session) -> dict:
             if not page_token:
                 break
 
-        # ----- PUSH new local-only events -----
+        # ----- PUSH new local-only events (待辦事項不推) -----
         to_push = session.exec(
-            select(Event).where(Event.google_event_id == None)  # noqa: E711
+            select(Event).where(
+                Event.google_event_id == None,  # noqa: E711
+                Event.is_task == False,  # noqa: E712
+            )
         ).all()
         for ev in to_push:
             resp = client.post(CAL_BASE, headers=_headers(token), json=_to_google_body(ev))

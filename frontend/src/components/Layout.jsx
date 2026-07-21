@@ -37,6 +37,18 @@ function PlaneIcon({ className }) {
   );
 }
 
+function TodoIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+      />
+    </svg>
+  );
+}
+
 function GearIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
@@ -52,6 +64,7 @@ function GearIcon({ className }) {
 
 const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
+  { to: "/todos", label: "待辦", icon: TodoIcon },
   // 沒有後端（離線/雲端同步模式）時，AI 員工頁隱藏
   ...(NO_BACKEND ? [] : [{ to: "/agents", label: "AI 員工", icon: UsersIcon }]),
   { to: "/settings", label: "設定", icon: GearIcon },

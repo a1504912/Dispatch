@@ -53,6 +53,8 @@ class Event(SQLModel, table=True):
     source: str = "local"
     # 對應的 Google 日曆事件 id（未同步則為 None）
     google_event_id: Optional[str] = Field(default=None, index=True)
+    # 待辦事項（無特定日期，不進行事曆、不同步 Google）
+    is_task: bool = False
 
 
 class Subtask(SQLModel, table=True):

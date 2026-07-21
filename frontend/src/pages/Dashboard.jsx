@@ -229,8 +229,9 @@ export default function Dashboard() {
       .catch(() => setCategories([]));
   }, []);
 
-  // 套用篩選後的原始事件
+  // 套用篩選後的原始事件（待辦事項不進行事曆）
   const visibleRaw = rawEvents.filter((e) => {
+    if (e.is_task) return false;
     if (!showGoogle && e.source === "google") return false;
     if (catFilter.length > 0) {
       const key = e.category_id != null ? String(e.category_id) : "none";

@@ -13,6 +13,8 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 
 def _propagate_push(session: Session, event: Event) -> None:
     """把本地新增/修改推到 Google（盡力而為，失敗不影響本地操作）。"""
+    if event.is_task:
+        return  # 待辦事項不進 Google 日曆
     try:
         if gcal.connected(session):
             gcal.push_event(session, event)

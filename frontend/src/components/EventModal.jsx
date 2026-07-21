@@ -110,6 +110,7 @@ function DateTimeField({ value, onChange, fieldClass }) {
 }
 
 export default function EventModal({ open, onClose, onSaved, initial, agents = [], categories = [] }) {
+  const taskMode = Boolean(initial?.is_task); // 待辦事項模式：隱藏日期相關欄位
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [subtasks, setSubtasks] = useState([]);
@@ -161,6 +162,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       all_day: initial?.all_day ?? false,
       image: initial?.image ?? "",
       category_id: initial?.category_id != null ? String(initial.category_id) : "",
+      is_task: Boolean(initial?.is_task),
     });
     setNewSub("");
     setSubtasks([]);
@@ -211,6 +213,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       all_day: form.all_day,
       image: form.image || null,
       category_id: form.category_id ? Number(form.category_id) : null,
+      is_task: form.is_task,
     };
     try {
       if (isEdit) await updateEvent(initial.id, payload);
@@ -248,7 +251,13 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       >
         <div className="flex items-center justify-between px-6 pb-4 pt-6">
           <h2 className="text-lg font-black text-slate-900">
-            {isEdit ? "編輯行程" : "新增行程"}
+            {taskMode
+              ? isEdit
+                ? "編輯待辦"
+                : "新增待辦"
+              : isEdit
+                ? "編輯行程"
+                : "新增行程"}
           </h2>
           <button
             type="button"
@@ -277,6 +286,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
             />
           </div>
 
+          {!taskMode && (
+          <>
           <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
             <input
               type="checkbox"
@@ -369,6 +380,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           )}
           {!form.all_day && form.end_time < form.start_time && (
             <p className="text-xs text-red-500">⚠️ 結束時間早於開始時間</p>
+          )}
+          </>
           )}
 
           <div>

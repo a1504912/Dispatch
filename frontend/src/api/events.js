@@ -13,6 +13,7 @@ const defaults = {
   category_id: null,
   source: "local",
   google_event_id: null,
+  is_task: false,
 };
 
 export async function listEvents() {

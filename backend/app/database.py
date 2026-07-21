@@ -49,6 +49,10 @@ def init_db() -> None:
                             "WHERE google_event_id IS NOT NULL AND color = '#4285F4'"
                         )
                     )
+                if "is_task" not in columns:
+                    conn.execute(
+                        text("ALTER TABLE event ADD COLUMN is_task BOOLEAN NOT NULL DEFAULT 0")
+                    )
                 conn.commit()
 
 

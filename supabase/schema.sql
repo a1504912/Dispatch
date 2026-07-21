@@ -22,7 +22,8 @@ create table if not exists events (
   image text,
   category_id bigint references categories(id) on delete set null,
   source text not null default 'local',
-  google_event_id text
+  google_event_id text,
+  is_task boolean not null default false
 );
 
 create table if not exists subtasks (

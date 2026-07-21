@@ -31,6 +31,7 @@ class EventCreate(SQLModel):
     all_day: bool = False
     image: Optional[str] = None
     category_id: Optional[int] = None
+    is_task: bool = False
 
 
 # ---------- Category ----------
