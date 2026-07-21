@@ -115,6 +115,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [saving, setSaving] = useState(false);
   const [subtasks, setSubtasks] = useState([]);
   const [newSub, setNewSub] = useState("");
+  const [editingSubId, setEditingSubId] = useState(null);
+  const [editingSubText, setEditingSubText] = useState("");
   const fileInputRef = useRef(null);
   const isEdit = Boolean(initial?.id);
 
@@ -138,6 +140,21 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
 
   async function handleToggleSubtask(st) {
     await updateSubtask(st.id, { done: !st.done });
+    refreshSubtasks();
+    onSaved?.();
+  }
+
+  function startEditSubtask(st) {
+    setEditingSubId(st.id);
+    setEditingSubText(st.title);
+  }
+
+  async function saveEditSubtask() {
+    const id = editingSubId;
+    const text = editingSubText.trim();
+    setEditingSubId(null);
+    if (!id || !text) return;
+    await updateSubtask(id, { title: text });
     refreshSubtasks();
     onSaved?.();
   }
@@ -468,13 +485,34 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                       onChange={() => handleToggleSubtask(st)}
                       className="h-4 w-4 shrink-0 cursor-pointer accent-emerald-500"
                     />
-                    <span
-                      className={`min-w-0 flex-1 break-words text-sm ${
-                        st.done ? "text-slate-400 line-through" : "text-slate-700"
-                      }`}
-                    >
-                      {st.title}
-                    </span>
+                    {editingSubId === st.id ? (
+                      <input
+                        autoFocus
+                        value={editingSubText}
+                        onChange={(e) => setEditingSubText(e.target.value)}
+                        onBlur={saveEditSubtask}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveEditSubtask();
+                          } else if (e.key === "Escape") {
+                            setEditingSubId(null);
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded-md border border-indigo-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditSubtask(st)}
+                        title="點一下編輯"
+                        className={`min-w-0 flex-1 break-words text-left text-sm ${
+                          st.done ? "text-slate-400 line-through" : "text-slate-700"
+                        }`}
+                      >
+                        {st.title}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDeleteSubtask(st.id)}
