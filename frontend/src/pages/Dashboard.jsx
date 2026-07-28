@@ -649,26 +649,40 @@ export default function Dashboard() {
             const subs = subtasksByEvent[e.id] ?? [];
             const done = subs.filter((s) => s.done).length;
             return (
-              <button
+              <div
                 key={e.id}
-                onClick={() => {
-                  setStatModal(null);
-                  openNewEvent(e);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left transition hover:bg-slate-50"
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 transition hover:bg-slate-50"
                 style={{ borderLeft: `4px solid ${e.color}` }}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-800">{e.title}</p>
-                  <p className="text-xs text-slate-400">
-                    {eventDateStr(e).slice(5).replace("-", "/")}
-                    {subs.length > 0 && `　·　明細 ${done}/${subs.length}`}
-                  </p>
-                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(e.completed)}
+                  onChange={async () => {
+                    await setEventCompleted(e.id, !e.completed);
+                    loadEvents();
+                  }}
+                  className="h-5 w-5 shrink-0 cursor-pointer accent-emerald-500"
+                  title="標記為已完成"
+                />
+                <button
+                  onClick={() => {
+                    setStatModal(null);
+                    openNewEvent(e);
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{e.title}</p>
+                    <p className="text-xs text-slate-400">
+                      {eventDateStr(e).slice(5).replace("-", "/")}
+                      {subs.length > 0 && `　·　明細 ${done}/${subs.length}`}
+                    </p>
+                  </div>
+                </button>
                 <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 ring-1 ring-red-200">
                   逾期
                 </span>
-              </button>
+              </div>
             );
           })}
       </StatListModal>
