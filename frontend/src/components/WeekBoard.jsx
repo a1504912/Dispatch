@@ -7,6 +7,8 @@ function startOfWeek(base) {
   return d;
 }
 
+const pad = (n) => String(n).padStart(2, "0");
+const dateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fmtDay = (d) =>
   `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleDateString("zh-TW", { weekday: "short" })}`;
 const fmtTime = (x) =>
@@ -21,14 +23,12 @@ export default function WeekBoard({
   onAdd,
 }) {
   const [offset, setOffset] = useState(0);
-  // 展開明細的行程 id
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [expanded, setExpanded] = useState(() => new Set()); // 展開明細，key = `${eventId}:${dayStr}`
 
-  function toggleExpanded(id) {
+  function toggleExpanded(key) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   }
@@ -42,14 +42,26 @@ export default function WeekBoard({
   });
   const isToday = (d) => d.toDateString() === new Date().toDateString();
 
-  function eventsOf(d) {
-    return events
-      .filter((e) => new Date(e.start_time).toDateString() === d.toDateString())
-      .sort(
-        (a, b) =>
-          Number(b.all_day) - Number(a.all_day) ||
-          new Date(a.start_time) - new Date(b.start_time)
-      );
+  const sortedEvents = [...events].sort(
+    (a, b) =>
+      Number(b.all_day) - Number(a.all_day) || new Date(a.start_time) - new Date(b.start_time)
+  );
+
+  // 某一天要顯示的卡片：主項卡（該天的行程）+ 分身卡（明細被延到該天）
+  function cardsOf(day) {
+    const ds = dateStr(day);
+    const cards = [];
+    for (const ev of sortedEvents) {
+      const evStr = dateStr(new Date(ev.start_time));
+      const subs = subtasksByEvent[ev.id] ?? [];
+      const subsForDay = subs.filter((s) => (s.due_date || evStr) === ds);
+      if (evStr === ds) {
+        cards.push({ ev, subs: subsForDay, spillover: false });
+      } else if (subsForDay.length > 0) {
+        cards.push({ ev, subs: subsForDay, spillover: true });
+      }
+    }
+    return cards;
   }
 
   const navBtn =
@@ -81,7 +93,7 @@ export default function WeekBoard({
       {/* 手機：一天一列（清單式）；桌面：七欄平均分配 */}
       <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-7 md:gap-1.5">
         {days.map((d) => {
-          const list = eventsOf(d);
+          const cards = cardsOf(d);
           return (
             <div
               key={d.toISOString()}
@@ -107,106 +119,137 @@ export default function WeekBoard({
               </div>
 
               <div className="space-y-1.5">
-                {list.length === 0 && (
+                {cards.length === 0 && (
                   <p className="py-1 text-center text-xs text-slate-300 md:py-3">－</p>
                 )}
-                {list.map((ev) => {
-                  const subs = subtasksByEvent[ev.id] ?? [];
+                {cards.map(({ ev, subs, spillover }) => {
                   const done = subs.filter((s) => s.done).length;
-                  const isOpen = expanded.has(ev.id);
+                  const key = `${ev.id}:${dateStr(d)}`;
+                  const isOpen = expanded.has(key);
                   return (
                     <div
-                      key={ev.id}
+                      key={key}
                       onClick={() => onEdit(ev)}
-                      className="cursor-pointer rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow"
+                      className={`cursor-pointer rounded-lg border p-1.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow ${
+                        spillover ? "border-dashed border-slate-300 bg-slate-50/60" : "border-slate-200 bg-white"
+                      }`}
                       style={{ borderLeft: `3px solid ${ev.color}` }}
                     >
                       <div className="flex items-start gap-1">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(ev.completed)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => onToggle(ev.id, !ev.completed)}
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-emerald-500"
-                        />
+                        {spillover ? (
+                          <span className="mt-0.5 shrink-0 text-[10px]" title="明細延期到這天">
+                            ↪
+                          </span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={Boolean(ev.completed)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => onToggle(ev.id, !ev.completed)}
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-emerald-500"
+                          />
+                        )}
                         <div className="min-w-0 flex-1">
                           <p
                             className={`break-words text-xs font-medium leading-snug ${
-                              ev.completed ? "text-slate-400 line-through" : "text-slate-800"
+                              !spillover && ev.completed
+                                ? "text-slate-400 line-through"
+                                : "text-slate-800"
                             }`}
                           >
                             {ev.title}
                           </p>
                           <p className="text-[10px] text-slate-400">
-                            {ev.all_day
-                              ? "整天"
-                              : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
+                            {spillover
+                              ? "延期明細"
+                              : ev.all_day
+                                ? "整天"
+                                : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
                           </p>
                         </div>
                       </div>
 
-                      {/* 明細：點徽章展開／收合，直接打勾 */}
-                      {subs.length > 0 && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleExpanded(ev.id);
-                            }}
-                            className={`mt-1 flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-medium transition hover:bg-slate-50 ${
-                              done === subs.length ? "text-emerald-500" : "text-indigo-500"
-                            }`}
+                      {/* 明細：分身卡預設展開；主項卡點徽章展開 */}
+                      {subs.length > 0 &&
+                        (spillover ? (
+                          <div
+                            className="mt-1 space-y-0.5 border-t border-slate-100 pt-1"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            ☑ {done}/{subs.length}
-                            <svg
-                              className={`h-2.5 w-2.5 transition-transform ${
-                                isOpen ? "rotate-180" : ""
-                              }`}
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth="3"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                              />
-                            </svg>
-                          </button>
-                          {isOpen && (
-                            <div
-                              className="mt-0.5 space-y-0.5 border-t border-slate-100 pt-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {subs.map((st) => (
-                                <label
-                                  key={st.id}
-                                  className="flex cursor-pointer items-start gap-1.5 rounded-md px-1 py-0.5 hover:bg-slate-50"
+                            {subs.map((st) => (
+                              <label
+                                key={st.id}
+                                className="flex cursor-pointer items-start gap-1.5 rounded-md px-1 py-0.5 hover:bg-white"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={st.done}
+                                  onChange={() => onToggleSubtask(st)}
+                                  className="mt-0.5 h-3 w-3 shrink-0 cursor-pointer accent-emerald-500"
+                                />
+                                <span
+                                  className={`break-words text-[11px] leading-snug ${
+                                    st.done ? "text-slate-400 line-through" : "text-slate-600"
+                                  }`}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={st.done}
-                                    onChange={() => onToggleSubtask(st)}
-                                    className="mt-0.5 h-3 w-3 shrink-0 cursor-pointer accent-emerald-500"
-                                  />
-                                  <span
-                                    className={`break-words text-[11px] leading-snug ${
-                                      st.done
-                                        ? "text-slate-400 line-through"
-                                        : "text-slate-600"
-                                    }`}
+                                  {st.title}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpanded(key);
+                              }}
+                              className={`mt-1 flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-medium transition hover:bg-slate-50 ${
+                                done === subs.length ? "text-emerald-500" : "text-indigo-500"
+                              }`}
+                            >
+                              ☑ {done}/{subs.length}
+                              <svg
+                                className={`h-2.5 w-2.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth="3"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                              </svg>
+                            </button>
+                            {isOpen && (
+                              <div
+                                className="mt-0.5 space-y-0.5 border-t border-slate-100 pt-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {subs.map((st) => (
+                                  <label
+                                    key={st.id}
+                                    className="flex cursor-pointer items-start gap-1.5 rounded-md px-1 py-0.5 hover:bg-slate-50"
                                   >
-                                    {st.title}
-                                  </span>
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
+                                    <input
+                                      type="checkbox"
+                                      checked={st.done}
+                                      onChange={() => onToggleSubtask(st)}
+                                      className="mt-0.5 h-3 w-3 shrink-0 cursor-pointer accent-emerald-500"
+                                    />
+                                    <span
+                                      className={`break-words text-[11px] leading-snug ${
+                                        st.done ? "text-slate-400 line-through" : "text-slate-600"
+                                      }`}
+                                    >
+                                      {st.title}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        ))}
 
-                      {ev.image && (
+                      {!spillover && ev.image && (
                         <img
                           src={ev.image}
                           alt=""

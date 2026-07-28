@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
@@ -64,6 +64,8 @@ class Subtask(SQLModel, table=True):
     event_id: int = Field(foreign_key="event.id", index=True)
     title: str
     done: bool = False
+    # 明細自己的到期日；設了就會延到那天顯示（未設 = 跟主項同一天）
+    due_date: Optional[date] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

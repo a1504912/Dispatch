@@ -41,10 +41,9 @@ def update_subtask(
     subtask = session.get(Subtask, subtask_id)
     if not subtask:
         raise HTTPException(status_code=404, detail="Subtask not found")
-    if payload.title is not None:
-        subtask.title = payload.title
-    if payload.done is not None:
-        subtask.done = payload.done
+    # 只更新有帶進來的欄位（due_date 可明確設為 null 清除）
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(subtask, key, value)
     session.add(subtask)
     session.commit()
     session.refresh(subtask)

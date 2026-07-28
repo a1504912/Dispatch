@@ -117,6 +117,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [newSub, setNewSub] = useState("");
   const [editingSubId, setEditingSubId] = useState(null);
   const [editingSubText, setEditingSubText] = useState("");
+  const [dateSubId, setDateSubId] = useState(null);
   const fileInputRef = useRef(null);
   const isEdit = Boolean(initial?.id);
 
@@ -155,6 +156,13 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     setEditingSubId(null);
     if (!id || !text) return;
     await updateSubtask(id, { title: text });
+    refreshSubtasks();
+    onSaved?.();
+  }
+
+  async function handleSubtaskDate(id, dueDate) {
+    setDateSubId(null);
+    await updateSubtask(id, { due_date: dueDate || null });
     refreshSubtasks();
     onSaved?.();
   }
@@ -511,6 +519,44 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                         }`}
                       >
                         {st.title}
+                      </button>
+                    )}
+                    {dateSubId === st.id ? (
+                      <input
+                        type="date"
+                        autoFocus
+                        defaultValue={st.due_date || ""}
+                        onBlur={(e) => handleSubtaskDate(st.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSubtaskDate(st.id, e.target.value);
+                          if (e.key === "Escape") setDateSubId(null);
+                        }}
+                        className="shrink-0 rounded-md border border-indigo-300 bg-white px-1.5 py-1 text-xs outline-none"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDateSubId(st.id)}
+                        title={st.due_date ? `延到 ${st.due_date}（點此改）` : "設定日期"}
+                        className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium transition ${
+                          st.due_date
+                            ? "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                            : "text-slate-300 hover:text-indigo-500 group-hover:text-slate-400"
+                        }`}
+                      >
+                        {st.due_date
+                          ? `📅 ${Number(st.due_date.slice(5, 7))}/${Number(st.due_date.slice(8, 10))}`
+                          : "📅"}
+                      </button>
+                    )}
+                    {st.due_date && dateSubId !== st.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleSubtaskDate(st.id, "")}
+                        title="取消日期"
+                        className="shrink-0 rounded-md px-0.5 text-[10px] text-slate-300 hover:text-red-500"
+                      >
+                        清
                       </button>
                     )}
                     <button

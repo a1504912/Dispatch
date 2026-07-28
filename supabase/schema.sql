@@ -31,6 +31,7 @@ create table if not exists subtasks (
   event_id bigint not null references events(id) on delete cascade,
   title text not null,
   done boolean not null default false,
+  due_date date,
   created_at timestamptz not null default now()
 );
 

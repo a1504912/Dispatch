@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlmodel import SQLModel
@@ -49,6 +49,7 @@ class SubtaskCreate(SQLModel):
 class SubtaskUpdate(SQLModel):
     title: Optional[str] = None
     done: Optional[bool] = None
+    due_date: Optional[date] = None
 
 
 class EventCompletedUpdate(SQLModel):

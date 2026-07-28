@@ -204,7 +204,9 @@ export default function Dashboard() {
 
   // 點行事曆上的事件 → 開啟編輯
   function handleEventClick(info) {
-    const raw = rawEvents.find((e) => String(e.id) === info.event.id);
+    // 分身事件：點了打開主項
+    const parentId = info.event.extendedProps.parentId ?? info.event.id;
+    const raw = rawEvents.find((e) => String(e.id) === String(parentId));
     if (raw) openNewEvent(raw);
   }
 
@@ -251,6 +253,33 @@ export default function Dashboard() {
     completed: e.completed,
     classNames: e.completed ? ["event-done"] : [],
   }));
+
+  // 明細延期 → 在目標日補一個整天的「分身」事件
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const eventDateStr = (e) => {
+    const d = new Date(e.start_time);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  };
+  for (const e of visibleRaw) {
+    const evStr = eventDateStr(e);
+    const byDate = {};
+    for (const st of subtasksByEvent[e.id] ?? []) {
+      if (st.due_date && st.due_date !== evStr) {
+        (byDate[st.due_date] ??= []).push(st);
+      }
+    }
+    for (const [date, subs] of Object.entries(byDate)) {
+      events.push({
+        id: `spill-${e.id}-${date}`,
+        title: `${e.title}（${subs.length} 項明細）`,
+        start: date,
+        allDay: true,
+        color: e.color,
+        spillover: true,
+        parentId: e.id,
+      });
+    }
+  }
 
   // 落在目前檢視範圍內的事項（給下方清單用）
   const rangedEvents = viewRange
@@ -434,6 +463,16 @@ export default function Dashboard() {
             select={handleSelect}
             eventContent={(arg) => {
               const completed = arg.event.extendedProps.completed;
+              const spillover = arg.event.extendedProps.spillover;
+              // 分身事件：只顯示 ↪ + 標題，不給完成勾選框
+              if (spillover) {
+                return (
+                  <div className="flex items-center gap-1 overflow-hidden px-0.5">
+                    <span className="shrink-0 text-[10px]">↪</span>
+                    <span className="truncate">{arg.event.title}</span>
+                  </div>
+                );
+              }
               const checkbox = (
                 <input
                   type="checkbox"
