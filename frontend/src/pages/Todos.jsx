@@ -3,6 +3,7 @@ import { listEvents, setEventCompleted } from "../api/events";
 import { listCategories } from "../api/categories";
 import { listSubtasks, updateSubtask } from "../api/subtasks";
 import EventModal from "../components/EventModal.jsx";
+import { openImage } from "../lightbox";
 
 function TodoCard({ todo, category, subs, expanded, onExpand, onToggle, onToggleSub, onEdit }) {
   const done = subs.filter((s) => s.done).length;
@@ -89,7 +90,8 @@ function TodoCard({ todo, category, subs, expanded, onExpand, onToggle, onToggle
         <img
           src={todo.image}
           alt=""
-          className="mt-3 max-h-40 w-full rounded-lg border border-slate-100 object-contain"
+          onClick={() => openImage(todo.image)}
+          className="mt-3 max-h-40 w-full cursor-zoom-in rounded-lg border border-slate-100 object-contain"
         />
       )}
     </div>

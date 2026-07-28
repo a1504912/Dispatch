@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createEvent, updateEvent, deleteEvent } from "../api/events";
+import { openImage } from "../lightbox";
 import {
   createSubtask,
   deleteSubtask,
@@ -661,7 +662,9 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                 <img
                   src={form.image}
                   alt=""
-                  className="max-h-44 w-full bg-slate-50 object-contain"
+                  onClick={() => openImage(form.image)}
+                  className="max-h-44 w-full cursor-zoom-in bg-slate-50 object-contain"
+                  title="點擊放大"
                 />
                 <button
                   type="button"

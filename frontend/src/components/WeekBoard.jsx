@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TW_CITIES, weatherIcon } from "../api/weather";
+import { openImage } from "../lightbox";
 
 function startOfWeek(base) {
   const d = new Date(base);
@@ -289,7 +290,11 @@ export default function WeekBoard({
                         <img
                           src={ev.image}
                           alt=""
-                          className="mt-1 w-full rounded-md border border-slate-100 object-cover"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openImage(ev.image);
+                          }}
+                          className="mt-1 w-full cursor-zoom-in rounded-md border border-slate-100 object-cover"
                         />
                       )}
                     </div>

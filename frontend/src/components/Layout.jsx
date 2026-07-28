@@ -4,6 +4,7 @@ import { getToken } from "../api/client";
 import { logout } from "../api/auth";
 import { LOCAL_MODE, NO_BACKEND } from "../localMode";
 import { SUPABASE_MODE, supabase } from "../supabase";
+import Lightbox from "./Lightbox.jsx";
 
 function CalendarIcon({ className }) {
   return (
@@ -175,6 +176,8 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+
+      <Lightbox />
     </div>
   );
 }
