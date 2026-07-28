@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TW_CITIES, weatherIcon } from "../api/weather";
 
 function startOfWeek(base) {
   const d = new Date(base);
@@ -17,6 +18,9 @@ const fmtTime = (x) =>
 export default function WeekBoard({
   events,
   subtasksByEvent = {},
+  weather = {},
+  weatherLoc,
+  onChangeCity,
   onToggleSubtask,
   onToggle,
   onEdit,
@@ -77,7 +81,24 @@ export default function WeekBoard({
             {fmtDay(days[0])} – {fmtDay(days[6])}
           </span>
         </h2>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
+          {onChangeCity && (
+            <select
+              value={weatherLoc?.label ?? ""}
+              onChange={(e) => {
+                const loc = TW_CITIES.find((c) => c.label === e.target.value);
+                if (loc) onChangeCity(loc);
+              }}
+              className="mr-1 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-600 shadow-sm transition hover:bg-slate-50"
+              title="選擇天氣城市"
+            >
+              {TW_CITIES.map((c) => (
+                <option key={c.label} value={c.label}>
+                  🌤 {c.label}
+                </option>
+              ))}
+            </select>
+          )}
           <button className={navBtn} onClick={() => setOffset((o) => o - 1)}>
             ‹
           </button>
@@ -101,7 +122,7 @@ export default function WeekBoard({
                 isToday(d) ? "bg-indigo-50/70 ring-1 ring-indigo-200" : "bg-slate-50"
               }`}
             >
-              <div className="flex items-center justify-between pb-1.5 pl-1">
+              <div className="flex items-center justify-between pb-1 pl-1">
                 <span
                   className={`truncate text-xs font-bold ${
                     isToday(d) ? "text-indigo-700" : "text-slate-600"
@@ -117,6 +138,21 @@ export default function WeekBoard({
                   ＋
                 </button>
               </div>
+              {weather[dateStr(d)] &&
+                (() => {
+                  const w = weather[dateStr(d)];
+                  const { emoji } = weatherIcon(w.code);
+                  return (
+                    <div className="mb-1.5 flex items-center justify-center gap-1 rounded-lg bg-white/70 px-1.5 py-1 text-[11px] ring-1 ring-slate-100">
+                      <span>{emoji}</span>
+                      <span className="font-semibold text-slate-700">{Math.round(w.max)}°</span>
+                      <span className="text-slate-400">{Math.round(w.min)}°</span>
+                      {w.rain != null && w.rain >= 40 && (
+                        <span className="text-sky-600">💧{w.rain}%</span>
+                      )}
+                    </div>
+                  );
+                })()}
 
               <div className="space-y-1.5">
                 {cards.length === 0 && (

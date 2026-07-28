@@ -15,7 +15,7 @@ import EventModal from "../components/EventModal.jsx";
 import EventList from "../components/EventList.jsx";
 import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
-import WeatherStrip from "../components/WeatherStrip.jsx";
+import { getWeatherLoc, setWeatherLoc, getWeekForecast } from "../api/weather";
 
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
 const IS_MOBILE = typeof window !== "undefined" && window.innerWidth < 768;
@@ -201,6 +201,35 @@ export default function Dashboard() {
 
   // 統計卡點開的清單視窗："overdue" | "postponed" | null
   const [statModal, setStatModal] = useState(null);
+
+  // 天氣（併進週看板）
+  const [weatherLoc, setWeatherLocState] = useState(getWeatherLoc);
+  const [weather, setWeather] = useState({});
+  useEffect(() => {
+    let alive = true;
+    getWeekForecast(weatherLoc)
+      .then((d) => {
+        if (!alive) return;
+        const map = {};
+        d.daily.time.forEach((day, i) => {
+          map[day] = {
+            code: d.daily.weather_code[i],
+            max: d.daily.temperature_2m_max[i],
+            min: d.daily.temperature_2m_min[i],
+            rain: d.daily.precipitation_probability_max?.[i],
+          };
+        });
+        setWeather(map);
+      })
+      .catch(() => alive && setWeather({}));
+    return () => {
+      alive = false;
+    };
+  }, [weatherLoc]);
+  function changeCity(loc) {
+    setWeatherLoc(loc);
+    setWeatherLocState(loc);
+  }
 
   function openNewEvent(initial = null) {
     setEditingEvent(initial);
@@ -451,9 +480,6 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* 本週天氣 */}
-      <WeatherStrip />
-
       {/* 行事曆 + 清單 + 對話 */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className={`space-y-6 ${NO_BACKEND ? "xl:col-span-3" : "xl:col-span-2"}`}>
@@ -511,6 +537,9 @@ export default function Dashboard() {
           <WeekBoard
             events={visibleRaw}
             subtasksByEvent={subtasksByEvent}
+            weather={weather}
+            weatherLoc={weatherLoc}
+            onChangeCity={changeCity}
             onToggleSubtask={toggleSubtask}
             onToggle={toggleCompleted}
             onEdit={openNewEvent}
