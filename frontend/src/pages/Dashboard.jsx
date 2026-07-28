@@ -19,18 +19,63 @@ import WeekBoard from "../components/WeekBoard.jsx";
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
 const IS_MOBILE = typeof window !== "undefined" && window.innerWidth < 768;
 
-function StatCard({ emoji, label, value, hint }) {
+function StatCard({ emoji, label, value, hint, onClick, accent }) {
+  const clickable = Boolean(onClick);
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 text-xl ring-1 ring-indigo-100">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      className={`flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition ${
+        clickable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md" : "cursor-default"
+      }`}
+    >
+      <div
+        className={`flex h-11 w-11 items-center justify-center rounded-xl text-xl ring-1 ${
+          accent === "red"
+            ? "bg-red-50 ring-red-100"
+            : accent === "amber"
+              ? "bg-amber-50 ring-amber-100"
+              : "bg-gradient-to-br from-indigo-50 to-violet-50 ring-indigo-100"
+        }`}
+      >
         {emoji}
       </div>
-      <div>
-        <p className="text-xs font-medium text-slate-400">{label}</p>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-slate-400">
+          {label}
+          {clickable && <span className="ml-1 text-slate-300">›</span>}
+        </p>
         <p className="text-xl font-black text-slate-800">
           {value}
           {hint && <span className="ml-1 text-xs font-medium text-slate-400">{hint}</span>}
         </p>
+      </div>
+    </button>
+  );
+}
+
+// 統計卡點開後列出項目的視窗
+function StatListModal({ open, title, empty, children, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h2 className="text-lg font-black text-slate-900">{title}</h2>
+          <button onClick={onClose} className="rounded-md px-2 text-slate-400 hover:text-slate-600">
+            ✕
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-6 py-4">
+          {children ?? <p className="py-10 text-center text-sm text-slate-400">{empty}</p>}
+        </div>
       </div>
     </div>
   );
@@ -152,6 +197,9 @@ export default function Dashboard() {
     setViewMode(mode);
     localStorage.setItem("dispatch.viewMode", mode);
   }
+
+  // 統計卡點開的清單視窗："overdue" | "postponed" | null
+  const [statModal, setStatModal] = useState(null);
 
   function openNewEvent(initial = null) {
     setEditingEvent(initial);
@@ -295,7 +343,21 @@ export default function Dashboard() {
     return d.toDateString() === today.toDateString();
   });
   const todayDone = todayEvents.filter((e) => e.completed).length;
-  const activeCount = agents.filter((a) => a.status === "active").length;
+
+  // 逾期未完成：日期在今天之前、且尚未完成的行程（不含待辦）
+  const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+  const overdueEvents = rawEvents
+    .filter((e) => !e.is_task && !e.completed && eventDateStr(e) < todayStr)
+    .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+  // 延期項目：設了到期日的明細（附主項資訊）
+  const eventById = {};
+  for (const e of rawEvents) eventById[e.id] = e;
+  const postponed = subtasks
+    .filter((s) => s.due_date)
+    .map((s) => ({ ...s, parent: eventById[s.event_id] }))
+    .filter((s) => s.parent)
+    .sort((a, b) => a.due_date.localeCompare(b.due_date));
 
   return (
     <div className="space-y-6">
@@ -334,8 +396,22 @@ export default function Dashboard() {
 
       {/* 統計卡 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {!NO_BACKEND && <StatCard emoji="🧑‍💻" label="AI 員工" value={agents.length} hint="位" />}
-        {!NO_BACKEND && <StatCard emoji="⚡" label="工作中" value={activeCount} hint="位" />}
+        <StatCard
+          emoji="🔴"
+          accent="red"
+          label="逾期未完成"
+          value={overdueEvents.length}
+          hint="件"
+          onClick={() => setStatModal("overdue")}
+        />
+        <StatCard
+          emoji="📮"
+          accent="amber"
+          label="延期項目"
+          value={postponed.length}
+          hint="項"
+          onClick={() => setStatModal("postponed")}
+        />
         <StatCard
           emoji="📌"
           label="今日行程"
@@ -560,6 +636,87 @@ export default function Dashboard() {
         }}
         onSaved={loadEvents}
       />
+
+      {/* 逾期未完成 */}
+      <StatListModal
+        open={statModal === "overdue"}
+        title="🔴 逾期未完成"
+        empty="太棒了，沒有逾期的項目！"
+        onClose={() => setStatModal(null)}
+      >
+        {overdueEvents.length > 0 &&
+          overdueEvents.map((e) => {
+            const subs = subtasksByEvent[e.id] ?? [];
+            const done = subs.filter((s) => s.done).length;
+            return (
+              <button
+                key={e.id}
+                onClick={() => {
+                  setStatModal(null);
+                  openNewEvent(e);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left transition hover:bg-slate-50"
+                style={{ borderLeft: `4px solid ${e.color}` }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-800">{e.title}</p>
+                  <p className="text-xs text-slate-400">
+                    {eventDateStr(e).slice(5).replace("-", "/")}
+                    {subs.length > 0 && `　·　明細 ${done}/${subs.length}`}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 ring-1 ring-red-200">
+                  逾期
+                </span>
+              </button>
+            );
+          })}
+      </StatListModal>
+
+      {/* 延期項目 */}
+      <StatListModal
+        open={statModal === "postponed"}
+        title="📮 延期項目"
+        empty="沒有延期的明細。"
+        onClose={() => setStatModal(null)}
+      >
+        {postponed.length > 0 &&
+          postponed.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => {
+                setStatModal(null);
+                openNewEvent(s.parent);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left transition hover:bg-slate-50"
+              style={{ borderLeft: `4px solid ${s.parent.color}` }}
+            >
+              <input
+                type="checkbox"
+                checked={s.done}
+                onClick={(e) => e.stopPropagation()}
+                onChange={async () => {
+                  await updateSubtask(s.id, { done: !s.done });
+                  loadEvents();
+                }}
+                className="h-4 w-4 shrink-0 cursor-pointer accent-emerald-500"
+              />
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`truncate text-sm font-semibold ${
+                    s.done ? "text-slate-400 line-through" : "text-slate-800"
+                  }`}
+                >
+                  {s.title}
+                </p>
+                <p className="truncate text-xs text-slate-400">來自「{s.parent.title}」</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600 ring-1 ring-amber-200">
+                📅 {Number(s.due_date.slice(5, 7))}/{Number(s.due_date.slice(8, 10))}
+              </span>
+            </button>
+          ))}
+      </StatListModal>
     </div>
   );
 }
