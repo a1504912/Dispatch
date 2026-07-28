@@ -47,6 +47,36 @@ function addDays(dateStr, n) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 把整項（含時長）移到 targetDate，回傳新的 {start_time, end_time}。 */
+function shiftToDate(form, targetDate) {
+  if (form.all_day) {
+    const spanDays = Math.max(
+      0,
+      Math.round(
+        (new Date(`${form.end_time.slice(0, 10)}T00:00`) -
+          new Date(`${form.start_time.slice(0, 10)}T00:00`)) /
+          86400000
+      )
+    );
+    return {
+      start_time: `${targetDate}T00:00`,
+      end_time: `${addDays(targetDate, spanDays)}T00:00`,
+    };
+  }
+  const dur = new Date(form.end_time) - new Date(form.start_time);
+  const newStart = `${targetDate}T${form.start_time.slice(11, 16)}`;
+  const e = new Date(new Date(newStart).getTime() + dur);
+  const newEnd = `${e.getFullYear()}-${pad(e.getMonth() + 1)}-${pad(e.getDate())}T${pad(
+    e.getHours()
+  )}:${pad(e.getMinutes())}`;
+  return { start_time: newStart, end_time: newEnd };
+}
+
 const MINUTE_OPTIONS = ["00", "15", "30", "45"];
 
 /** 日期 + 上午/下午 + 時 + 分 的組合選擇器（value 為 "YYYY-MM-DDTHH:MM"）。 */
@@ -341,6 +371,35 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
             />
             整天
           </label>
+
+          {/* 整項改期：整個主項連同時長一起挪到別天 */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-bold text-slate-500">整項改期</span>
+            {[
+              ["今天", todayStr()],
+              ["明天", addDays(todayStr(), 1)],
+              ["+1週", addDays(form.start_time.slice(0, 10), 7)],
+            ].map(([label, target]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, ...shiftToDate(f, target) }))}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-600 active:scale-95"
+              >
+                {label}
+              </button>
+            ))}
+            <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-600">
+              📅 選日期
+              <input
+                type="date"
+                className="sr-only"
+                onChange={(e) =>
+                  e.target.value && setForm((f) => ({ ...f, ...shiftToDate(f, e.target.value) }))
+                }
+              />
+            </label>
+          </div>
 
           {form.all_day ? (
             <div className="grid grid-cols-2 gap-3">
