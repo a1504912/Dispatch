@@ -5,6 +5,36 @@ import {
   listCategories,
   updateCategory,
 } from "../api/categories";
+import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
+
+function WeatherSettings() {
+  const [city, setCity] = useState(() => getWeatherLoc().label);
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-bold text-slate-500">所在城市</label>
+      <select
+        value={city}
+        onChange={(e) => {
+          const loc = TW_CITIES.find((c) => c.label === e.target.value);
+          if (loc) {
+            setWeatherLoc(loc);
+            setCity(loc.label);
+          }
+        }}
+        className="w-full max-w-xs cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+      >
+        {TW_CITIES.map((c) => (
+          <option key={c.label} value={c.label}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+      <p className="mt-2 text-xs text-slate-400">
+        總覽頁的「本週天氣」會依這個城市顯示。改完回總覽頁即更新。
+      </p>
+    </div>
+  );
+}
 
 const CATEGORY_COLORS = [
   "#6366f1",
@@ -196,6 +226,10 @@ export default function Settings() {
         description="建立自己的分類（工作、家裡、出遊…），行程可以掛上分類，總覽頁就能用分類篩選。"
       >
         <CategorySettings />
+      </SettingSection>
+
+      <SettingSection title="🌤️ 天氣" description="設定你所在的城市，總覽頁會顯示本週天氣預報。">
+        <WeatherSettings />
       </SettingSection>
 
       {/* 之後的新設定往下加 SettingSection 即可 */}

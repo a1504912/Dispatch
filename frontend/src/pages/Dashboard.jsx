@@ -15,6 +15,7 @@ import EventModal from "../components/EventModal.jsx";
 import EventList from "../components/EventList.jsx";
 import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
+import WeatherStrip from "../components/WeatherStrip.jsx";
 
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
 const IS_MOBILE = typeof window !== "undefined" && window.innerWidth < 768;
@@ -449,6 +450,9 @@ export default function Dashboard() {
           hint={todayEvents.length === 0 ? "件" : "件完成"}
         />
       </div>
+
+      {/* 本週天氣 */}
+      <WeatherStrip />
 
       {/* 行事曆 + 清單 + 對話 */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
