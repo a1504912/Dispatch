@@ -4,7 +4,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import zhTwLocale from "@fullcalendar/core/locales/zh-tw";
-import { listEvents, setEventCompleted } from "../api/events";
+import { listEvents, setEventCompleted, updateEvent } from "../api/events";
 import { listAgents } from "../api/agents";
 import { listCategories } from "../api/categories";
 import { listSubtasks, updateSubtask } from "../api/subtasks";
@@ -247,6 +247,36 @@ export default function Dashboard() {
   // 看板上直接打勾明細
   async function toggleSubtask(st) {
     await updateSubtask(st.id, { done: !st.done });
+    loadEvents();
+  }
+
+  // 整項遞延：把主項（含時長）移到 targetDate（"YYYY-MM-DD"），保留時間點
+  async function rescheduleEvent(e, targetDate) {
+    const p2 = (n) => String(n).padStart(2, "0");
+    let start_time, end_time;
+    if (e.all_day) {
+      const spanDays = Math.max(
+        0,
+        Math.round(
+          (new Date(`${e.end_time.slice(0, 10)}T00:00`) -
+            new Date(`${e.start_time.slice(0, 10)}T00:00`)) /
+            86400000
+        )
+      );
+      const endD = new Date(`${targetDate}T00:00`);
+      endD.setDate(endD.getDate() + spanDays);
+      start_time = `${targetDate}T00:00:00`;
+      end_time = `${endD.getFullYear()}-${p2(endD.getMonth() + 1)}-${p2(endD.getDate())}T00:00:00`;
+    } else {
+      const dur = new Date(e.end_time) - new Date(e.start_time);
+      const t = new Date(e.start_time);
+      start_time = `${targetDate}T${p2(t.getHours())}:${p2(t.getMinutes())}:00`;
+      const ne = new Date(new Date(start_time).getTime() + dur);
+      end_time = `${ne.getFullYear()}-${p2(ne.getMonth() + 1)}-${p2(ne.getDate())}T${p2(
+        ne.getHours()
+      )}:${p2(ne.getMinutes())}:00`;
+    }
+    await updateEvent(e.id, { ...e, start_time, end_time });
     loadEvents();
   }
 
@@ -679,9 +709,17 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </button>
-                <span className="shrink-0 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 ring-1 ring-red-200">
-                  逾期
-                </span>
+                <label
+                  className="shrink-0 cursor-pointer rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-600 ring-1 ring-amber-200 transition hover:bg-amber-100"
+                  title="整項遞延到別天"
+                >
+                  遞延
+                  <input
+                    type="date"
+                    className="sr-only"
+                    onChange={(ev) => ev.target.value && rescheduleEvent(e, ev.target.value)}
+                  />
+                </label>
               </div>
             );
           })}
