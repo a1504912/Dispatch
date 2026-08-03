@@ -140,7 +140,7 @@ async def schedule_from_image(
     try:
         # 視覺模型第一次載入 VRAM 可能要很久，逾時放寬到 5 分鐘
         content = await ollama_client.chat(
-            model or settings.vision_model, messages, format="json", timeout=300.0
+            model or settings.vision_model, messages, format="json", timeout=600.0
         )
     except httpx.TimeoutException as exc:
         raise HTTPException(

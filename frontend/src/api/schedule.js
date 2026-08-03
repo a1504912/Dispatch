@@ -15,7 +15,7 @@ export async function scheduleFromImage(file, model, hint) {
   if (hint) formData.append("hint", hint);
   const { data } = await client.post("/api/schedule/from-image", formData, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 180000,
+    timeout: 600000, // CPU 推論較慢，給 10 分鐘
   });
   return data;
 }
