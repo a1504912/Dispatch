@@ -9,7 +9,6 @@ import { listAgents } from "../api/agents";
 import { listCategories } from "../api/categories";
 import { listSubtasks, updateSubtask } from "../api/subtasks";
 import { NO_BACKEND } from "../localMode";
-import ChatBox from "../components/ChatBox.jsx";
 import ImageScheduleModal from "../components/ImageScheduleModal.jsx";
 import EventModal from "../components/EventModal.jsx";
 import EventList from "../components/EventList.jsx";
@@ -455,14 +454,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 搜尋 */}
-      <EventSearch
-        events={rawEvents}
-        subtasks={subtasks}
-        categories={categories}
-        onOpen={openNewEvent}
-      />
-
       {/* 統計卡 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
@@ -490,9 +481,9 @@ export default function Dashboard() {
       </div>
 
       {/* 行事曆 + 清單 + 對話 */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className={`space-y-6 ${NO_BACKEND ? "xl:col-span-3" : "xl:col-span-2"}`}>
-        {/* 檢視切換 + 篩選 */}
+      <div>
+        <div className="space-y-6">
+        {/* 檢視切換 + 搜尋 + 篩選 */}
         <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-fit rounded-xl bg-slate-100 p-1 text-sm font-medium">
           <button
@@ -530,8 +521,18 @@ export default function Dashboard() {
           />
         )}
 
+        {/* 搜尋（填滿中間空間） */}
+        <div className="min-w-[200px] flex-1">
+          <EventSearch
+            events={rawEvents}
+            subtasks={subtasks}
+            categories={categories}
+            onOpen={openNewEvent}
+          />
+        </div>
+
         {/* Google 事件開關 */}
-        <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
           <input
             type="checkbox"
             checked={showGoogle}
@@ -679,12 +680,6 @@ export default function Dashboard() {
           </>
         )}
         </div>
-
-        {!NO_BACKEND && (
-          <div className="h-[640px] xl:col-span-1 xl:h-auto">
-            <ChatBox agents={agents} />
-          </div>
-        )}
       </div>
 
       <ImageScheduleModal
