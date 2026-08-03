@@ -2,14 +2,23 @@ import { useEffect, useState } from "react";
 import {
   disconnectGoogle,
   getGoogleStatus,
+  previewGoogleSync,
   startGoogleLogin,
   syncGoogle,
 } from "../api/google";
+
+function fmtWhen(ev) {
+  const s = new Date(ev.start_time);
+  const date = s.toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", weekday: "short" });
+  if (ev.all_day) return `${date}　整天`;
+  return `${date}　${s.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+}
 
 export default function GoogleSync({ onSynced }) {
   const [status, setStatus] = useState(null); // {configured, connected, email}
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState("");
+  const [picker, setPicker] = useState(null); // { events, selected:Set } | null
 
   async function refresh() {
     try {
@@ -38,19 +47,46 @@ export default function GoogleSync({ onSynced }) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // 按同步：先預覽有哪些新項目 → 有的話跳選單，沒有就直接套用（更新/推送）
   async function handleSync() {
     setSyncing(true);
     try {
-      const r = await syncGoogle();
+      const { new_events } = await previewGoogleSync();
+      if (new_events.length > 0) {
+        setPicker({ events: new_events, selected: new Set(new_events.map((e) => e.google_event_id)) });
+        setSyncing(false);
+        return;
+      }
+      await applySync([]);
+    } catch {
+      setToast("同步失敗，請確認連線。");
+      setSyncing(false);
+    }
+  }
+
+  // selectedIds: 陣列（可空）
+  async function applySync(selectedIds) {
+    setSyncing(true);
+    try {
+      const r = await syncGoogle(selectedIds);
       setToast(
-        `同步完成：拉入 ${r.pulled_created} 筆、更新 ${r.pulled_updated} 筆、推送 ${r.pushed} 筆`
+        `同步完成：新增 ${r.pulled_created} 筆、更新 ${r.pulled_updated} 筆、推送 ${r.pushed} 筆`
       );
       onSynced?.();
     } catch {
       setToast("同步失敗，請確認連線。");
     } finally {
       setSyncing(false);
+      setPicker(null);
     }
+  }
+
+  function togglePick(id) {
+    setPicker((p) => {
+      const selected = new Set(p.selected);
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      return { ...p, selected };
+    });
   }
 
   async function handleDisconnect() {
@@ -105,6 +141,82 @@ export default function GoogleSync({ onSynced }) {
             ✕
           </button>
         </>
+      )}
+
+      {picker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          onClick={() => setPicker(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white text-left shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2 className="text-lg font-black text-slate-900">從 Google 匯入行程</h2>
+              <p className="mt-0.5 text-sm text-slate-400">
+                Google 上有 {picker.events.length} 筆新行程，勾選要匯入的（已全選）。
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-2">
+              <button
+                onClick={() =>
+                  setPicker((p) => ({
+                    ...p,
+                    selected:
+                      p.selected.size === p.events.length
+                        ? new Set()
+                        : new Set(p.events.map((e) => e.google_event_id)),
+                  }))
+                }
+                className="text-xs font-bold text-indigo-600 hover:underline"
+              >
+                {picker.selected.size === picker.events.length ? "全部取消" : "全選"}
+              </button>
+              <span className="text-xs text-slate-400">已選 {picker.selected.size} 筆</span>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 py-3">
+              {picker.events.map((ev) => {
+                const on = picker.selected.has(ev.google_event_id);
+                return (
+                  <label
+                    key={ev.google_event_id}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => togglePick(ev.google_event_id)}
+                      className="h-4 w-4 shrink-0 cursor-pointer accent-indigo-600"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">{ev.title}</p>
+                      <p className="text-xs text-slate-400">{fmtWhen(ev)}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                onClick={() => setPicker(null)}
+                className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => applySync([...picker.selected])}
+                disabled={syncing}
+                className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+              >
+                {syncing ? "匯入中…" : `匯入 ${picker.selected.size} 筆`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -207,8 +207,73 @@ def delete_event(session: Session, google_event_id: str) -> None:
             resp.raise_for_status()
 
 
+def _window():
+    tz = _tz()
+    now = dt.datetime.now(tz)
+    return (
+        (now - dt.timedelta(days=PULL_PAST_DAYS)).isoformat(),
+        (now + dt.timedelta(days=PULL_FUTURE_DAYS)).isoformat(),
+    )
+
+
+def _fetch_google_events(client, token):
+    """抓回時間範圍內的所有 Google 事件（含 nextPageToken 分頁）。"""
+    time_min, time_max = _window()
+    items, page_token = [], None
+    while True:
+        params = {
+            "timeMin": time_min,
+            "timeMax": time_max,
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": "250",
+            "showDeleted": "true",
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        resp = client.get(CAL_BASE, headers=_headers(token), params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        items.extend(data.get("items", []))
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+    return items
+
+
+# ---------- preview：列出「即將新增」的項目，不改資料庫 ----------
+def preview(session: Session) -> list[dict]:
+    token = _access_token(session)
+    with httpx.Client(timeout=30) as client:
+        items = _fetch_google_events(client, token)
+
+    new_events = []
+    for g in items:
+        gid = g.get("id")
+        if not gid or g.get("status") == "cancelled":
+            continue
+        exists = session.exec(select(Event).where(Event.google_event_id == gid)).first()
+        if exists:
+            continue
+        start_node, end_node = g.get("start") or {}, g.get("end") or {}
+        if not start_node or not end_node:
+            continue
+        new_events.append(
+            {
+                "google_event_id": gid,
+                "title": g.get("summary") or "(無標題)",
+                "start_time": _parse_node(start_node).isoformat(),
+                "end_time": _parse_node(end_node).isoformat(),
+                "all_day": bool(start_node.get("date")),
+            }
+        )
+    return new_events
+
+
 # ---------- full sync ----------
-def sync(session: Session) -> dict:
+def sync(session: Session, selected_ids=None) -> dict:
+    # selected_ids=None → 匯入全部新項目；給 list → 只匯入清單內的（其餘略過）
+    selected = set(selected_ids) if selected_ids is not None else None
     token = _access_token(session)
     tz = _tz()
     now = dt.datetime.now(tz)
@@ -259,7 +324,7 @@ def sync(session: Session) -> dict:
                     local.description, local.all_day = desc, all_day
                     session.add(local)
                     pulled_updated += 1
-                else:
+                elif selected is None or gid in selected:
                     session.add(
                         Event(
                             title=title,

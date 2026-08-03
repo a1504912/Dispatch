@@ -19,8 +19,14 @@ export function startGoogleLogin() {
   window.location.href = `${baseURL}/api/google/login${query}`;
 }
 
-export async function syncGoogle() {
-  const { data } = await client.post("/api/google/sync");
+export async function previewGoogleSync() {
+  const { data } = await client.post("/api/google/sync/preview");
+  return data; // { new_events: [...] }
+}
+
+// selectedIds: null = 匯入全部新項目；陣列 = 只匯入這些
+export async function syncGoogle(selectedIds = null) {
+  const { data } = await client.post("/api/google/sync", { selected_ids: selectedIds });
   return data;
 }
 

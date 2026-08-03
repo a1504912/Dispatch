@@ -1,14 +1,19 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from sqlmodel import Session
+from sqlmodel import Session, SQLModel
 
 from app import google_calendar as gcal
 from app.config import settings
 from app.database import get_session
 
 router = APIRouter(prefix="/api/google", tags=["google"])
+
+
+class SyncRequest(SQLModel):
+    # None = 匯入全部新項目；給清單 = 只匯入這些 Google 事件 id
+    selected_ids: Optional[List[str]] = None
 
 
 @router.get("/status")
@@ -43,10 +48,21 @@ def google_callback(
     return RedirectResponse(f"{settings.frontend_url}/dashboard?google=connected")
 
 
-@router.post("/sync")
-def google_sync(session: Session = Depends(get_session)):
+@router.post("/sync/preview")
+def google_sync_preview(session: Session = Depends(get_session)):
     try:
-        return gcal.sync(session)
+        return {"new_events": gcal.preview(session)}
+    except gcal.NotConnected:
+        raise HTTPException(status_code=400, detail="尚未連接 Google 日曆")
+
+
+@router.post("/sync")
+def google_sync(
+    payload: Optional[SyncRequest] = None,
+    session: Session = Depends(get_session),
+):
+    try:
+        return gcal.sync(session, selected_ids=payload.selected_ids if payload else None)
     except gcal.NotConnected:
         raise HTTPException(status_code=400, detail="尚未連接 Google 日曆")
 
