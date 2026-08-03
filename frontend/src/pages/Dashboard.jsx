@@ -15,6 +15,7 @@ import EventModal from "../components/EventModal.jsx";
 import EventList from "../components/EventList.jsx";
 import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
+import EventSearch from "../components/EventSearch.jsx";
 import { getWeatherLoc, setWeatherLoc, getWeekForecast } from "../api/weather";
 
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
@@ -453,6 +454,14 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* 搜尋 */}
+      <EventSearch
+        events={rawEvents}
+        subtasks={subtasks}
+        categories={categories}
+        onOpen={openNewEvent}
+      />
 
       {/* 統計卡 */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
