@@ -414,7 +414,7 @@ export default function Dashboard() {
   const eventById = {};
   for (const e of rawEvents) eventById[e.id] = e;
   const postponed = subtasks
-    .filter((s) => s.due_date)
+    .filter((s) => s.due_date && !s.done) // 已完成的不算延期項目
     .map((s) => ({ ...s, parent: eventById[s.event_id] }))
     .filter((s) => s.parent)
     .sort((a, b) => a.due_date.localeCompare(b.due_date));
