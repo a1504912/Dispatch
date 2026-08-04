@@ -37,7 +37,8 @@ export function setWeatherLoc(loc) {
 }
 
 export async function getWeekForecast(loc) {
-  const key = `${loc.lat},${loc.lon}`;
+  // 版本號：資料格式改變（加了逐時）就改版本，讓舊快取自動失效
+  const key = `${loc.lat},${loc.lon}:v2-hourly`;
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
     if (cached && cached.key === key && Date.now() - cached.ts < CACHE_MS) {
