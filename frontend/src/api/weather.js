@@ -50,6 +50,7 @@ export async function getWeekForecast(loc) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+    `&hourly=precipitation_probability,temperature_2m,weather_code` +
     `&timezone=auto&forecast_days=7`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("weather fetch failed");

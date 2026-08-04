@@ -205,6 +205,7 @@ export default function Dashboard() {
   // 天氣（併進週看板）
   const [weatherLoc, setWeatherLocState] = useState(getWeatherLoc);
   const [weather, setWeather] = useState({});
+  const [weatherHourly, setWeatherHourly] = useState({});
   useEffect(() => {
     let alive = true;
     getWeekForecast(weatherLoc)
@@ -220,8 +221,27 @@ export default function Dashboard() {
           };
         });
         setWeather(map);
+
+        const hourly = {};
+        if (d.hourly) {
+          d.hourly.time.forEach((t, i) => {
+            const day = t.slice(0, 10);
+            (hourly[day] ??= []).push({
+              time: t.slice(11, 16),
+              rain: d.hourly.precipitation_probability?.[i],
+              temp: d.hourly.temperature_2m?.[i],
+              code: d.hourly.weather_code?.[i],
+            });
+          });
+        }
+        setWeatherHourly(hourly);
       })
-      .catch(() => alive && setWeather({}));
+      .catch(() => {
+        if (alive) {
+          setWeather({});
+          setWeatherHourly({});
+        }
+      });
     return () => {
       alive = false;
     };
@@ -548,6 +568,7 @@ export default function Dashboard() {
             events={visibleRaw}
             subtasksByEvent={subtasksByEvent}
             weather={weather}
+            hourly={weatherHourly}
             weatherLoc={weatherLoc}
             onChangeCity={changeCity}
             onToggleSubtask={toggleSubtask}

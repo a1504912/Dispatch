@@ -20,6 +20,7 @@ export default function WeekBoard({
   events,
   subtasksByEvent = {},
   weather = {},
+  hourly = {},
   weatherLoc,
   onChangeCity,
   onToggleSubtask,
@@ -29,6 +30,7 @@ export default function WeekBoard({
 }) {
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState(() => new Set()); // 展開明細，key = `${eventId}:${dayStr}`
+  const [weatherDay, setWeatherDay] = useState(null); // 點開逐時天氣的日期字串
 
   function toggleExpanded(key) {
     setExpanded((prev) => {
@@ -143,15 +145,20 @@ export default function WeekBoard({
                 (() => {
                   const w = weather[dateStr(d)];
                   const { emoji } = weatherIcon(w.code);
+                  const ds = dateStr(d);
                   return (
-                    <div className="mb-1.5 flex items-center justify-center gap-1 rounded-lg bg-white/70 px-1.5 py-1 text-[11px] ring-1 ring-slate-100">
+                    <button
+                      onClick={() => hourly[ds]?.length && setWeatherDay(ds)}
+                      className="mb-1.5 flex w-full items-center justify-center gap-1 rounded-lg bg-white/70 px-1.5 py-1 text-[11px] ring-1 ring-slate-100 transition hover:bg-white hover:ring-sky-200"
+                      title="點看逐時降雨"
+                    >
                       <span>{emoji}</span>
                       <span className="font-semibold text-slate-700">{Math.round(w.max)}°</span>
                       <span className="text-slate-400">{Math.round(w.min)}°</span>
                       {w.rain != null && w.rain >= 40 && (
                         <span className="text-sky-600">💧{w.rain}%</span>
                       )}
-                    </div>
+                    </button>
                   );
                 })()}
 
@@ -305,6 +312,67 @@ export default function WeekBoard({
           );
         })}
       </div>
+
+      {weatherDay && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          onClick={() => setWeatherDay(null)}
+        >
+          <div
+            className="flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+              <h3 className="font-black text-slate-900">
+                逐時天氣
+                <span className="ml-2 text-sm font-medium text-slate-400">
+                  {new Date(`${weatherDay}T00:00`).toLocaleDateString("zh-TW", {
+                    month: "numeric",
+                    day: "numeric",
+                    weekday: "short",
+                  })}
+                  {weatherLoc?.label ? `・${weatherLoc.label}` : ""}
+                </span>
+              </h3>
+              <button
+                onClick={() => setWeatherDay(null)}
+                className="rounded-md px-2 text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+              {(hourly[weatherDay] ?? []).map((h) => {
+                const { emoji } = weatherIcon(h.code);
+                const rain = h.rain ?? 0;
+                return (
+                  <div key={h.time} className="flex items-center gap-2 px-2 py-1.5">
+                    <span className="w-12 shrink-0 text-sm font-medium text-slate-600">{h.time}</span>
+                    <span className="w-5 shrink-0 text-center">{emoji}</span>
+                    <span className="w-10 shrink-0 text-sm text-slate-500">
+                      {h.temp != null ? `${Math.round(h.temp)}°` : ""}
+                    </span>
+                    {/* 降雨機率長條 */}
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-sky-500"
+                        style={{ width: `${rain}%` }}
+                      />
+                    </div>
+                    <span
+                      className={`w-12 shrink-0 text-right text-sm font-semibold ${
+                        rain >= 60 ? "text-sky-600" : rain >= 30 ? "text-sky-500" : "text-slate-400"
+                      }`}
+                    >
+                      💧{rain}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
