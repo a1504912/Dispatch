@@ -8,15 +8,21 @@ from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/news", tags=["news"])
 
-# 中央社 CNA RSS（連結直達文章，封面圖抓得到）
+# 中央社 CNA RSS（連結直達文章，封面圖抓得到）。
+# 每個分類可放多個候選網址，用第一個有料的。
 _CNA = "https://feeds.feedburner.com/rsscna"
 FEEDS = {
-    "nation": f"{_CNA}/politics",
-    "world": f"{_CNA}/intworld",
-    "business": f"{_CNA}/finance",
-    "technology": f"{_CNA}/technology",
-    "sports": f"{_CNA}/sport",
-    "entertainment": f"{_CNA}/entertainment",
+    "nation": [f"{_CNA}/politics"],
+    "world": [f"{_CNA}/intworld"],
+    "business": [f"{_CNA}/finance"],
+    "technology": [f"{_CNA}/technology"],
+    "sports": [f"{_CNA}/sport"],
+    "entertainment": [
+        f"{_CNA}/stars",
+        f"{_CNA}/movie",
+        f"{_CNA}/entertainment",
+        f"{_CNA}/culture",
+    ],
 }
 # 頭條：沒有單一「即時」feed，改把多個分類合併依時間排序
 TOP_FEEDS = ["nation", "world", "business", "technology", "entertainment"]
@@ -95,14 +101,21 @@ async def _fetch_og_image(client: httpx.AsyncClient, link: str) -> str:
     return ""
 
 
+async def _fetch_topic(client: httpx.AsyncClient, topic: str) -> list[dict]:
+    """依候選網址順序抓，回傳第一個有料的分類。"""
+    for url in FEEDS.get(topic, FEEDS["nation"]):
+        items = await _fetch_feed(client, url)
+        if items:
+            return items
+    return []
+
+
 @router.get("")
 async def get_news(topic: str = "top"):
-    urls = (
-        [FEEDS[k] for k in TOP_FEEDS] if topic == "top" else [FEEDS.get(topic, FEEDS["nation"])]
-    )
+    topics = TOP_FEEDS if topic == "top" else [topic]
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        feeds = await asyncio.gather(*(_fetch_feed(client, u) for u in urls))
+        feeds = await asyncio.gather(*(_fetch_topic(client, t) for t in topics))
 
     # 合併、去重、依時間新到舊排序
     seen, merged = set(), []
