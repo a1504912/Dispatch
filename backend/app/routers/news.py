@@ -7,36 +7,49 @@ from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/news", tags=["news"])
 
-_BASE = "https://news.google.com/rss"
-_SUFFIX = "hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-
+# 中央社 CNA RSS（連結直達文章，封面圖抓得到）
+_CNA = "https://feeds.feedburner.com/rsscna"
 TOPICS = {
-    "top": f"{_BASE}?{_SUFFIX}",
-    "nation": f"{_BASE}/headlines/section/topic/NATION?{_SUFFIX}",
-    "world": f"{_BASE}/headlines/section/topic/WORLD?{_SUFFIX}",
-    "business": f"{_BASE}/headlines/section/topic/BUSINESS?{_SUFFIX}",
-    "technology": f"{_BASE}/headlines/section/topic/TECHNOLOGY?{_SUFFIX}",
-    "sports": f"{_BASE}/headlines/section/topic/SPORTS?{_SUFFIX}",
-    "entertainment": f"{_BASE}/headlines/section/topic/ENTERTAINMENT?{_SUFFIX}",
+    "top": f"{_CNA}/realtimenews",
+    "nation": f"{_CNA}/politics",
+    "world": f"{_CNA}/intworld",
+    "business": f"{_CNA}/finance",
+    "technology": f"{_CNA}/technology",
+    "sports": f"{_CNA}/sport",
+    "entertainment": f"{_CNA}/entertainment",
 }
 
 MAX_ITEMS = 20
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+_img_in_desc = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.I)
 _og_patterns = [
     re.compile(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', re.I),
     re.compile(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', re.I),
 ]
-
-# 簡單的圖片快取：連結 → 圖片網址（避免重複抓）
 _img_cache: dict[str, str] = {}
 
 
-async def _fetch_image(client: httpx.AsyncClient, link: str) -> str:
+def _image_from_item(item, description: str) -> str:
+    """先從 RSS 內容找圖：enclosure / media / description 裡的 <img>。"""
+    enc = item.find("enclosure")
+    if enc is not None and (enc.get("type") or "").startswith("image") and enc.get("url"):
+        return enc.get("url")
+    for child in item:
+        tag = child.tag.lower()
+        if ("thumbnail" in tag or "content" in tag) and child.get("url"):
+            t = child.get("type") or ""
+            if t.startswith("image") or re.search(r"\.(jpe?g|png|webp)", child.get("url"), re.I):
+                return child.get("url")
+    m = _img_in_desc.search(description or "")
+    return m.group(1) if m else ""
+
+
+async def _fetch_og_image(client: httpx.AsyncClient, link: str) -> str:
     if link in _img_cache:
         return _img_cache[link]
     try:
         resp = await client.get(link, headers={"User-Agent": _UA}, timeout=6.0)
-        html = resp.text[:200_000]  # 只看前段（og:image 在 <head>）
+        html = resp.text[:200_000]
         for pat in _og_patterns:
             m = pat.search(html)
             if m:
@@ -64,23 +77,31 @@ async def get_news(topic: str = "top"):
         title = (item.findtext("title") or "").strip()
         link = (item.findtext("link") or "").strip()
         pub = (item.findtext("pubDate") or "").strip()
-        source_el = item.find("source")
-        source = source_el.text.strip() if source_el is not None and source_el.text else ""
-        if source and title.endswith(f" - {source}"):
-            title = title[: -(len(source) + 3)]
-        if title and link:
-            items.append({"title": title, "link": link, "source": source, "published": pub, "image": ""})
+        desc = item.findtext("description") or ""
+        if not (title and link):
+            continue
+        items.append(
+            {
+                "title": title,
+                "link": link,
+                "source": "中央社",
+                "published": pub,
+                "image": _image_from_item(item, desc),
+            }
+        )
         if len(items) >= MAX_ITEMS:
             break
 
-    # 並行抓封面圖（最多同時 10 個）
-    sem = asyncio.Semaphore(10)
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    # RSS 裡沒圖的，去文章頁抓 og:image（連結是直達文章，抓得到）
+    missing = [it for it in items if not it["image"]]
+    if missing:
+        sem = asyncio.Semaphore(10)
+        async with httpx.AsyncClient(follow_redirects=True) as client:
 
-        async def enrich(it):
-            async with sem:
-                it["image"] = await _fetch_image(client, it["link"])
+            async def enrich(it):
+                async with sem:
+                    it["image"] = await _fetch_og_image(client, it["link"])
 
-        await asyncio.gather(*(enrich(it) for it in items))
+            await asyncio.gather(*(enrich(it) for it in missing))
 
     return {"items": items}
