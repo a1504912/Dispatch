@@ -86,14 +86,25 @@ export default function News() {
               href={it.link}
               target="_blank"
               rel="noreferrer"
-              className="block px-5 py-3.5 transition hover:bg-slate-50"
+              className="flex items-start gap-3 px-5 py-3.5 transition hover:bg-slate-50"
             >
-              <p className="font-semibold leading-snug text-slate-800">{it.title}</p>
-              <p className="mt-1 text-xs text-slate-400">
-                {it.source}
-                {it.source && it.published && " · "}
-                {timeAgo(it.published)}
-              </p>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold leading-snug text-slate-800">{it.title}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {it.source}
+                  {it.source && it.published && " · "}
+                  {timeAgo(it.published)}
+                </p>
+              </div>
+              {it.image && (
+                <img
+                  src={it.image}
+                  alt=""
+                  loading="lazy"
+                  onError={(e) => (e.currentTarget.style.display = "none")}
+                  className="h-16 w-24 shrink-0 rounded-lg border border-slate-100 object-cover"
+                />
+              )}
             </a>
           ))}
         </div>
