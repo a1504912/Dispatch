@@ -1,6 +1,7 @@
 import asyncio
 import re
 import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 
 import httpx
 from fastapi import APIRouter
@@ -9,8 +10,7 @@ router = APIRouter(prefix="/api/news", tags=["news"])
 
 # 中央社 CNA RSS（連結直達文章，封面圖抓得到）
 _CNA = "https://feeds.feedburner.com/rsscna"
-TOPICS = {
-    "top": f"{_CNA}/realtimenews",
+FEEDS = {
     "nation": f"{_CNA}/politics",
     "world": f"{_CNA}/intworld",
     "business": f"{_CNA}/finance",
@@ -18,6 +18,8 @@ TOPICS = {
     "sports": f"{_CNA}/sport",
     "entertainment": f"{_CNA}/entertainment",
 }
+# 頭條：沒有單一「即時」feed，改把多個分類合併依時間排序
+TOP_FEEDS = ["nation", "world", "business", "technology", "entertainment"]
 
 MAX_ITEMS = 20
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -30,7 +32,6 @@ _img_cache: dict[str, str] = {}
 
 
 def _image_from_item(item, description: str) -> str:
-    """先從 RSS 內容找圖：enclosure / media / description 裡的 <img>。"""
     enc = item.find("enclosure")
     if enc is not None and (enc.get("type") or "").startswith("image") and enc.get("url"):
         return enc.get("url")
@@ -42,6 +43,39 @@ def _image_from_item(item, description: str) -> str:
                 return child.get("url")
     m = _img_in_desc.search(description or "")
     return m.group(1) if m else ""
+
+
+def _sort_key(pub: str) -> float:
+    try:
+        return parsedate_to_datetime(pub).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def _fetch_feed(client: httpx.AsyncClient, url: str) -> list[dict]:
+    try:
+        resp = await client.get(url, headers={"User-Agent": _UA})
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+    except (httpx.HTTPError, ET.ParseError):
+        return []
+    out = []
+    for item in root.iter("item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        if not (title and link):
+            continue
+        pub = (item.findtext("pubDate") or "").strip()
+        out.append(
+            {
+                "title": title,
+                "link": link,
+                "source": "中央社",
+                "published": pub,
+                "image": _image_from_item(item, item.findtext("description") or ""),
+            }
+        )
+    return out
 
 
 async def _fetch_og_image(client: httpx.AsyncClient, link: str) -> str:
@@ -63,36 +97,25 @@ async def _fetch_og_image(client: httpx.AsyncClient, link: str) -> str:
 
 @router.get("")
 async def get_news(topic: str = "top"):
-    url = TOPICS.get(topic, TOPICS["top"])
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"User-Agent": _UA})
-            resp.raise_for_status()
-            root = ET.fromstring(resp.text)
-    except (httpx.HTTPError, ET.ParseError):
-        return {"items": []}
+    urls = (
+        [FEEDS[k] for k in TOP_FEEDS] if topic == "top" else [FEEDS.get(topic, FEEDS["nation"])]
+    )
 
-    items = []
-    for item in root.iter("item"):
-        title = (item.findtext("title") or "").strip()
-        link = (item.findtext("link") or "").strip()
-        pub = (item.findtext("pubDate") or "").strip()
-        desc = item.findtext("description") or ""
-        if not (title and link):
-            continue
-        items.append(
-            {
-                "title": title,
-                "link": link,
-                "source": "中央社",
-                "published": pub,
-                "image": _image_from_item(item, desc),
-            }
-        )
-        if len(items) >= MAX_ITEMS:
-            break
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        feeds = await asyncio.gather(*(_fetch_feed(client, u) for u in urls))
 
-    # RSS 裡沒圖的，去文章頁抓 og:image（連結是直達文章，抓得到）
+    # 合併、去重、依時間新到舊排序
+    seen, merged = set(), []
+    for feed in feeds:
+        for it in feed:
+            if it["link"] in seen:
+                continue
+            seen.add(it["link"])
+            merged.append(it)
+    merged.sort(key=lambda it: _sort_key(it["published"]), reverse=True)
+    items = merged[:MAX_ITEMS]
+
+    # 沒圖的去抓 og:image
     missing = [it for it in items if not it["image"]]
     if missing:
         sem = asyncio.Semaphore(10)
