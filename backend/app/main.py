@@ -16,6 +16,7 @@ from app.routers import (
     events,
     google,
     models,
+    news,
     schedule,
     subtasks,
 )
@@ -91,6 +92,7 @@ app.include_router(models.router)
 app.include_router(google.router)
 app.include_router(categories.router)
 app.include_router(subtasks.router)
+app.include_router(news.router)
 
 
 @app.get("/api/health")
