@@ -30,6 +30,7 @@ class EventCreate(SQLModel):
     completed: bool = False
     all_day: bool = False
     image: Optional[str] = None
+    images: Optional[str] = None
     category_id: Optional[int] = None
     is_task: bool = False
 

@@ -10,6 +10,7 @@ const defaults = {
   completed: false,
   all_day: false,
   image: null,
+  images: null,
   category_id: null,
   source: "local",
   google_event_id: null,

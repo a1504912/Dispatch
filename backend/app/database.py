@@ -34,6 +34,8 @@ def init_db() -> None:
                     )
                 if "image" not in columns:
                     conn.execute(text("ALTER TABLE event ADD COLUMN image TEXT"))
+                if "images" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN images TEXT"))
                 if "category_id" not in columns:
                     conn.execute(text("ALTER TABLE event ADD COLUMN category_id INTEGER"))
                 if "source" not in columns:

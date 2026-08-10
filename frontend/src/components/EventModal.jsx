@@ -21,6 +21,20 @@ const COLORS = [
 
 const pad = (n) => String(n).padStart(2, "0");
 
+/** 從事件取出圖片陣列（相容舊的單張 image 欄位）。 */
+export function parseImages(ev) {
+  if (!ev) return [];
+  if (ev.images) {
+    try {
+      const arr = JSON.parse(ev.images);
+      if (Array.isArray(arr)) return arr.filter(Boolean);
+    } catch {
+      // ignore
+    }
+  }
+  return ev.image ? [ev.image] : [];
+}
+
 /** Date 或 ISO 字串 → datetime-local 需要的 "YYYY-MM-DDTHH:MM"（本地時間）。 */
 function toInputValue(value) {
   if (!value) return "";
@@ -216,7 +230,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       description: initial?.description ?? "",
       completed: initial?.completed ?? false,
       all_day: initial?.all_day ?? false,
-      image: initial?.image ?? "",
+      images: parseImages(initial),
       category_id: initial?.category_id != null ? String(initial.category_id) : "",
       is_task: Boolean(initial?.is_task),
     });
@@ -247,7 +261,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   function readImageFile(file) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, image: reader.result }));
+    reader.onload = () => setForm((f) => ({ ...f, images: [...(f.images ?? []), reader.result] }));
     reader.readAsDataURL(file);
   }
 
@@ -267,7 +281,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       agent_id: form.agent_id ? Number(form.agent_id) : null,
       completed: form.completed,
       all_day: form.all_day,
-      image: form.image || null,
+      image: form.images?.[0] || null, // 第一張給看板縮圖
+      images: form.images?.length ? JSON.stringify(form.images) : null,
       category_id: form.category_id ? Number(form.category_id) : null,
       is_task: form.is_task,
     };
@@ -656,39 +671,57 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-slate-500">圖片</label>
-            {form.image ? (
-              <div className="relative overflow-hidden rounded-xl border border-slate-200">
-                <img
-                  src={form.image}
-                  alt=""
-                  onClick={() => openImage(form.image)}
-                  className="max-h-44 w-full cursor-zoom-in bg-slate-50 object-contain"
-                  title="點擊放大"
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, image: "" })}
-                  className="absolute right-2 top-2 rounded-lg bg-white/90 px-2.5 py-1 text-xs font-medium text-red-600 shadow ring-1 ring-slate-200 hover:bg-white"
-                >
-                  移除
-                </button>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">
+              圖片
+              {form.images?.length > 0 && (
+                <span className="ml-2 font-normal text-slate-400">{form.images.length} 張</span>
+              )}
+            </label>
+            {form.images?.length > 0 && (
+              <div className="mb-2 grid grid-cols-3 gap-2">
+                {form.images.map((img, idx) => (
+                  <div
+                    key={idx}
+                    className="group relative overflow-hidden rounded-lg border border-slate-200"
+                  >
+                    <img
+                      src={img}
+                      alt=""
+                      onClick={() => openImage(img)}
+                      className="h-20 w-full cursor-zoom-in bg-slate-50 object-cover"
+                      title="點擊放大"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }))
+                      }
+                      className="absolute right-1 top-1 rounded-md bg-white/90 px-1.5 text-xs font-bold text-red-600 opacity-0 shadow transition group-hover:opacity-100"
+                      title="移除這張"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 py-4 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40"
-              >
-                📷 直接 Ctrl + V 貼上圖片，或點此選擇檔案
-              </button>
             )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 py-3 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40"
+            >
+              📷 直接 Ctrl + V 貼上，或點此新增圖片（可放多張）
+            </button>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={(e) => readImageFile(e.target.files?.[0])}
+              onChange={(e) => {
+                [...(e.target.files ?? [])].forEach(readImageFile);
+                e.target.value = "";
+              }}
             />
           </div>
 

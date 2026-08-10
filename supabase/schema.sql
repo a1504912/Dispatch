@@ -20,6 +20,7 @@ create table if not exists events (
   completed boolean not null default false,
   all_day boolean not null default false,
   image text,
+  images text,
   category_id bigint references categories(id) on delete set null,
   source text not null default 'local',
   google_event_id text,
