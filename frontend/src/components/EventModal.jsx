@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createEvent, updateEvent, deleteEvent } from "../api/events";
 import { openImage } from "../lightbox";
+import { parseImages } from "../images";
 import {
   createSubtask,
   deleteSubtask,
@@ -20,20 +21,6 @@ const COLORS = [
 ];
 
 const pad = (n) => String(n).padStart(2, "0");
-
-/** 從事件取出圖片陣列（相容舊的單張 image 欄位）。 */
-export function parseImages(ev) {
-  if (!ev) return [];
-  if (ev.images) {
-    try {
-      const arr = JSON.parse(ev.images);
-      if (Array.isArray(arr)) return arr.filter(Boolean);
-    } catch {
-      // ignore
-    }
-  }
-  return ev.image ? [ev.image] : [];
-}
 
 /** Date 或 ISO 字串 → datetime-local 需要的 "YYYY-MM-DDTHH:MM"（本地時間）。 */
 function toInputValue(value) {

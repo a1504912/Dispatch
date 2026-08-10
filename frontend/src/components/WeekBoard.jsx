@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { TW_CITIES, weatherIcon } from "../api/weather";
 import { openImage } from "../lightbox";
+import { parseImages } from "../images";
 
 function startOfWeek(base) {
   const d = new Date(base);
@@ -293,17 +294,40 @@ export default function WeekBoard({
                           </>
                         ))}
 
-                      {!spillover && ev.image && (
-                        <img
-                          src={ev.image}
-                          alt=""
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openImage(ev.image);
-                          }}
-                          className="mt-1 w-full cursor-zoom-in rounded-md border border-slate-100 object-cover"
-                        />
-                      )}
+                      {!spillover &&
+                        (() => {
+                          const imgs = parseImages(ev);
+                          if (imgs.length === 0) return null;
+                          if (imgs.length === 1) {
+                            return (
+                              <img
+                                src={imgs[0]}
+                                alt=""
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openImage(imgs[0]);
+                                }}
+                                className="mt-1 w-full cursor-zoom-in rounded-md border border-slate-100 object-cover"
+                              />
+                            );
+                          }
+                          return (
+                            <div className="mt-1 grid grid-cols-2 gap-1">
+                              {imgs.map((img, i) => (
+                                <img
+                                  key={i}
+                                  src={img}
+                                  alt=""
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openImage(img);
+                                  }}
+                                  className="h-14 w-full cursor-zoom-in rounded-md border border-slate-100 object-cover"
+                                />
+                              ))}
+                            </div>
+                          );
+                        })()}
                     </div>
                   );
                 })}
