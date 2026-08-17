@@ -706,6 +706,7 @@ export default function Dashboard() {
       <ImageScheduleModal
         open={imageModalOpen}
         initialFile={pastedFile}
+        categories={categories}
         onClose={() => {
           setImageModalOpen(false);
           setPastedFile(null);
