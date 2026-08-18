@@ -39,7 +39,15 @@ export default function Games() {
   function load() {
     setLoading(true);
     getGames()
-      .then((d) => setGames((d.games ?? []).map((g) => ({ ...g, tags: tagsOf(g.platforms) }))))
+      .then((d) =>
+        setGames(
+          (d.games ?? []).map((g) => ({
+            ...g,
+            tags: tagsOf(g.platforms),
+            isKey: /\bkey\b|序號|序号|cd key/i.test(g.title || ""),
+          }))
+        )
+      )
       .catch(() => setGames([]))
       .finally(() => setLoading(false));
   }
@@ -67,6 +75,9 @@ export default function Games() {
           <h1 className="text-2xl font-black text-slate-900">免費遊戲</h1>
           <p className="mt-1 text-sm text-slate-500">
             各平台限免好康，每 30 分鐘自動更新。點平台可篩選。
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            🏷️ 標「序號」的是領 Key（到領取頁拿序號 → 自己在 Steam 啟用）；其餘為商店直接限免。
           </p>
         </div>
         <button
@@ -145,6 +156,13 @@ export default function Games() {
                           {t.label}
                         </span>
                       ))}
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-bold text-white shadow ${
+                          g.isKey ? "bg-amber-500" : "bg-emerald-600"
+                        }`}
+                      >
+                        {g.isKey ? "序號" : "商店限免"}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -157,7 +175,7 @@ export default function Games() {
                     <span className="font-bold text-emerald-600">免費</span>
                   </div>
                   <span className="mt-3 inline-flex w-fit rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition group-hover:bg-indigo-700">
-                    前往領取 →
+                    {g.isKey ? "領取序號 →" : "前往商店 →"}
                   </span>
                 </div>
               </a>
