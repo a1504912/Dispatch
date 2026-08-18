@@ -62,6 +62,18 @@ function NewsIcon({ className }) {
   );
 }
 
+function GameIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 9.75h1.5m-.75-.75v1.5m5.03-.375h.008m2.212-.75h.008M6.911 5.25h10.178a2.25 2.25 0 0 1 2.174 1.671l1.35 5.115a2.652 2.652 0 0 1-4.977 1.815 2.25 2.25 0 0 0-2.087-1.416H10.05a2.25 2.25 0 0 0-2.086 1.416 2.652 2.652 0 0 1-4.978-1.815l1.35-5.115A2.25 2.25 0 0 1 6.911 5.25Z"
+      />
+    </svg>
+  );
+}
+
 function GearIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
@@ -83,6 +95,7 @@ const navItems = [
     ? []
     : [
         { to: "/news", label: "新聞", icon: NewsIcon },
+        { to: "/games", label: "免費遊戲", icon: GameIcon },
         { to: "/agents", label: "AI 員工", icon: UsersIcon },
       ]),
   { to: "/settings", label: "設定", icon: GearIcon },

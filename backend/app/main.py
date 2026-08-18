@@ -14,6 +14,7 @@ from app.routers import (
     categories,
     chat,
     events,
+    games,
     google,
     models,
     news,
@@ -93,6 +94,7 @@ app.include_router(google.router)
 app.include_router(categories.router)
 app.include_router(subtasks.router)
 app.include_router(news.router)
+app.include_router(games.router)
 
 
 @app.get("/api/health")
