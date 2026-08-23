@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { getToken } from "../api/client";
 import { logout } from "../api/auth";
 import { LOCAL_MODE, NO_BACKEND } from "../localMode";
@@ -74,6 +74,26 @@ function GameIcon({ className }) {
   );
 }
 
+function InfoIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z"
+      />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="2.2" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+    </svg>
+  );
+}
+
 function GearIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
@@ -90,36 +110,121 @@ function GearIcon({ className }) {
 const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
   { to: "/todos", label: "待辦", icon: TodoIcon },
-  // 新聞與 AI 員工需要後端；離線/雲端同步模式隱藏
+  // 新聞、免費遊戲收進「情報站」群組；AI 員工需要後端，離線/雲端同步模式隱藏
   ...(NO_BACKEND
     ? []
     : [
-        { to: "/news", label: "新聞", icon: NewsIcon },
-        { to: "/games", label: "免費遊戲", icon: GameIcon },
+        {
+          label: "情報站",
+          icon: InfoIcon,
+          children: [
+            { to: "/news", label: "新聞", icon: NewsIcon },
+            { to: "/games", label: "免費遊戲", icon: GameIcon },
+          ],
+        },
         { to: "/agents", label: "AI 員工", icon: UsersIcon },
       ]),
   { to: "/settings", label: "設定", icon: GearIcon },
 ];
 
-function NavItems({ vertical }) {
-  return navItems.map(({ to, label, icon: Icon }) => (
-    <NavLink
-      key={to}
-      to={to}
-      className={({ isActive }) =>
-        `flex items-center whitespace-nowrap rounded-xl font-medium transition ${
-          vertical ? "gap-3 px-3 py-2.5 text-sm" : "shrink-0 gap-1.5 px-2.5 py-1.5 text-xs"
-        } ${
-          isActive
-            ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
-            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-        }`
-      }
-    >
+// 一般連結
+function navLinkClass(vertical) {
+  return ({ isActive }) =>
+    `flex items-center whitespace-nowrap rounded-xl font-medium transition ${
+      vertical ? "gap-3 px-3 py-2.5 text-sm" : "shrink-0 gap-1.5 px-2.5 py-1.5 text-xs"
+    } ${
+      isActive
+        ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
+        : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+    }`;
+}
+
+function NavLeaf({ to, label, icon: Icon, vertical }) {
+  return (
+    <NavLink to={to} className={navLinkClass(vertical)}>
       <Icon className={vertical ? "h-5 w-5 shrink-0" : "h-4 w-4 shrink-0"} />
       {label}
     </NavLink>
-  ));
+  );
+}
+
+// 可展開的分類（桌面版往下展開、手機版跳出小選單）
+function NavGroup({ label, icon: Icon, children, vertical }) {
+  const location = useLocation();
+  const childActive = children.some((c) => location.pathname.startsWith(c.to));
+  const [open, setOpen] = useState(vertical ? childActive : false);
+  const ref = useRef(null);
+
+  // 進入子頁時，桌面版自動展開；手機版選完自動收起
+  useEffect(() => {
+    if (vertical) {
+      if (childActive) setOpen(true);
+    } else {
+      setOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // 手機版：點外面自動收起
+  useEffect(() => {
+    if (vertical || !open) return;
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [vertical, open]);
+
+  const headerActive = childActive || (!vertical && open);
+
+  return (
+    <div ref={ref} className={vertical ? "" : "relative"}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex w-full items-center whitespace-nowrap rounded-xl font-medium transition ${
+          vertical ? "gap-3 px-3 py-2.5 text-sm" : "shrink-0 gap-1.5 px-2.5 py-1.5 text-xs"
+        } ${
+          headerActive
+            ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
+            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+        }`}
+      >
+        <Icon className={vertical ? "h-5 w-5 shrink-0" : "h-4 w-4 shrink-0"} />
+        {label}
+        <ChevronIcon
+          className={`${vertical ? "ml-auto h-3.5 w-3.5" : "h-3 w-3"} shrink-0 transition-transform ${
+            open ? "rotate-90" : ""
+          }`}
+        />
+      </button>
+
+      {open &&
+        (vertical ? (
+          <div className="mt-1 flex flex-col gap-1 pl-4">
+            {children.map((c) => (
+              <NavLeaf key={c.to} {...c} vertical />
+            ))}
+          </div>
+        ) : (
+          <div className="absolute right-0 top-full z-20 mt-1 flex min-w-[9rem] flex-col gap-1 rounded-xl bg-slate-800 p-1.5 shadow-xl ring-1 ring-white/10">
+            {children.map((c) => (
+              <NavLeaf key={c.to} {...c} vertical />
+            ))}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function NavItems({ vertical }) {
+  return navItems.map((item) =>
+    item.children ? (
+      <NavGroup key={item.label} {...item} vertical={vertical} />
+    ) : (
+      <NavLeaf key={item.to} {...item} vertical={vertical} />
+    )
+  );
 }
 
 export default function Layout() {
