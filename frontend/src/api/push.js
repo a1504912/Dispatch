@@ -96,6 +96,24 @@ export async function sendTestPush() {
   return data; // { sent, devices }
 }
 
+// 本機測試：不經過伺服器，直接叫 Service Worker 顯示一則通知。
+// 用來分辨「是傳送問題」還是「Windows/Chrome 把通知關掉了」。
+export async function showLocalTest() {
+  if (Notification.permission !== "granted") {
+    throw new Error("尚未允許通知權限");
+  }
+  const reg = await getRegistration();
+  await navigator.serviceWorker.ready;
+  await reg.showNotification("🔔 本機測試", {
+    body: "如果你看到這則，代表通知顯示是正常的。",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: "local-test",
+    data: { url: "/dashboard" },
+  });
+  return true;
+}
+
 export async function getNotifySettings() {
   const { data } = await client.get("/api/push/settings");
   return data;

@@ -17,6 +17,7 @@ import {
   sendTestPush,
   getNotifySettings,
   saveNotifySettings,
+  showLocalTest,
 } from "../api/push";
 
 function WeatherSettings() {
@@ -119,6 +120,16 @@ function NotificationSettings() {
     }
   }
 
+  async function handleLocalTest() {
+    setMsg("");
+    try {
+      await showLocalTest();
+      setMsg("已觸發本機測試。有跳出來 → 顯示正常；沒跳 → 是 Windows/Chrome 的通知被關了。");
+    } catch (err) {
+      setMsg("⚠️ " + (err?.message ?? "本機測試失敗"));
+    }
+  }
+
   async function handleSavePrefs(next) {
     setPrefs(next);
     try {
@@ -171,6 +182,13 @@ function NotificationSettings() {
               className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700 disabled:opacity-40"
             >
               測試通知
+            </button>
+            <button
+              onClick={handleLocalTest}
+              disabled={busy}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+            >
+              本機測試
             </button>
           </>
         ) : (
