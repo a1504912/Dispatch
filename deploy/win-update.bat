@@ -1,19 +1,19 @@
 @echo off
-rem Dispatch 更新（Windows）：拉新程式 -> 建前端 -> 補後端套件
+rem Dispatch update (Windows): pull latest -> build frontend -> sync backend deps
 cd /d "%~dp0.."
-echo == 拉取最新程式 ==
+echo == Pulling latest code ==
 git pull origin claude/clever-cray-o05a2o
-echo == 建置前端 ==
+echo == Building frontend ==
 cd frontend
 call npm install
 call npm run build
-echo == 更新後端套件 ==
+echo == Updating backend packages ==
 cd ..\backend
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt
 echo.
 echo ============================================
-echo  更新完成！請關掉舊的 win-start 視窗，
-echo  再重新執行 win-start.bat 即可。
+echo  Update done! Close the old win-start window,
+echo  then run win-start.bat again.
 echo ============================================
 pause
