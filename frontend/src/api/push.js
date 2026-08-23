@@ -62,6 +62,9 @@ export async function enablePush() {
   await navigator.serviceWorker.ready;
 
   const { data } = await client.get("/api/push/public-key");
+  if (!data || typeof data.key !== "string" || !data.key) {
+    throw new Error("後端尚未更新，請關掉舊的 win-start 視窗、重新執行 win-start.bat 後再試。");
+  }
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     sub = await reg.pushManager.subscribe({
