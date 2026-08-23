@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createEvent, updateEvent, deleteEvent } from "../api/events";
 import { openImage } from "../lightbox";
 import { parseImages } from "../images";
+import { compressImageFile } from "../imageCompress";
 import {
   createSubtask,
   deleteSubtask,
@@ -247,9 +248,9 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
 
   function readImageFile(file) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, images: [...(f.images ?? []), reader.result] }));
-    reader.readAsDataURL(file);
+    compressImageFile(file).then((dataUrl) => {
+      if (dataUrl) setForm((f) => ({ ...f, images: [...(f.images ?? []), dataUrl] }));
+    });
   }
 
   if (!open || !form) return null;
