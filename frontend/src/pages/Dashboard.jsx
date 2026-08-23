@@ -541,8 +541,8 @@ export default function Dashboard() {
           />
         )}
 
-        {/* 搜尋（填滿中間空間） */}
-        <div className="min-w-[200px] flex-1">
+        {/* 搜尋（手機整行、桌面填滿中間空間） */}
+        <div className="w-full sm:min-w-[200px] sm:flex-1">
           <EventSearch
             events={rawEvents}
             subtasks={subtasks}
@@ -596,7 +596,7 @@ export default function Dashboard() {
           onEdit={openNewEvent}
         />
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             locale={zhTwLocale}

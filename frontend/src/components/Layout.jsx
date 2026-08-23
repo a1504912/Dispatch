@@ -127,37 +127,41 @@ const navItems = [
   { to: "/settings", label: "設定", icon: GearIcon },
 ];
 
-// 一般連結
-function navLinkClass(vertical) {
-  return ({ isActive }) =>
-    `flex items-center whitespace-nowrap rounded-xl font-medium transition ${
-      vertical ? "gap-3 px-3 py-2.5 text-sm" : "shrink-0 gap-1.5 px-2.5 py-1.5 text-xs"
-    } ${
-      isActive
-        ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
-        : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-    }`;
-}
+// 側邊欄（桌面）連結樣式
+const sideLink = (active) =>
+  `flex w-full items-center gap-3 whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+    active
+      ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
+      : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+  }`;
 
-function NavLeaf({ to, label, icon: Icon, vertical }) {
+// 底部分頁（手機）連結樣式：圖示在上、小字在下
+const tabLink = (active) =>
+  `flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[10px] font-medium transition ${
+    active ? "text-indigo-300" : "text-slate-400 active:text-slate-200"
+  }`;
+
+function NavLeaf({ to, label, icon: Icon, variant }) {
+  const tab = variant === "tab";
   return (
-    <NavLink to={to} className={navLinkClass(vertical)}>
-      <Icon className={vertical ? "h-5 w-5 shrink-0" : "h-4 w-4 shrink-0"} />
+    <NavLink to={to} className={({ isActive }) => (tab ? tabLink(isActive) : sideLink(isActive))}>
+      <Icon className="h-5 w-5 shrink-0" />
       {label}
     </NavLink>
   );
 }
 
-// 可展開的分類（桌面版往下展開、手機版跳出小選單）
-function NavGroup({ label, icon: Icon, children, vertical }) {
+// 可展開的分類（桌面往下展開、手機底部跳出上浮小選單）
+function NavGroup({ label, icon: Icon, children, variant }) {
   const location = useLocation();
   const childActive = children.some((c) => location.pathname.startsWith(c.to));
-  const [open, setOpen] = useState(vertical ? childActive : false);
+  const isSide = variant === "side";
+  const [open, setOpen] = useState(isSide ? childActive : false);
   const ref = useRef(null);
 
-  // 進入子頁時，桌面版自動展開；手機版選完自動收起
+  // 進入子頁時，桌面自動展開；手機選完自動收起
   useEffect(() => {
-    if (vertical) {
+    if (isSide) {
       if (childActive) setOpen(true);
     } else {
       setOpen(false);
@@ -165,64 +169,64 @@ function NavGroup({ label, icon: Icon, children, vertical }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  // 手機版：點外面自動收起
+  // 手機：點外面自動收起
   useEffect(() => {
-    if (vertical || !open) return;
+    if (isSide || !open) return;
     const onDown = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [vertical, open]);
+  }, [isSide, open]);
 
-  const headerActive = childActive || (!vertical && open);
+  const headerActive = childActive || (!isSide && open);
 
+  // 手機底部分頁版：上浮選單
+  if (!isSide) {
+    return (
+      <div ref={ref} className="relative flex flex-1">
+        <button type="button" onClick={() => setOpen((v) => !v)} className={tabLink(headerActive)}>
+          <Icon className="h-5 w-5 shrink-0" />
+          {label}
+        </button>
+        {open && (
+          <div className="absolute bottom-full left-1/2 z-40 mb-2 flex min-w-[10rem] -translate-x-1/2 flex-col gap-1 rounded-2xl bg-slate-800 p-1.5 shadow-2xl ring-1 ring-white/10">
+            {children.map((c) => (
+              <NavLeaf key={c.to} {...c} variant="side" />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 桌面側邊欄版：往下展開
   return (
-    <div ref={ref} className={vertical ? "" : "relative"}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-center whitespace-nowrap rounded-xl font-medium transition ${
-          vertical ? "gap-3 px-3 py-2.5 text-sm" : "shrink-0 gap-1.5 px-2.5 py-1.5 text-xs"
-        } ${
-          headerActive
-            ? "bg-indigo-500/15 text-white shadow-inner ring-1 ring-indigo-400/30"
-            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-        }`}
-      >
-        <Icon className={vertical ? "h-5 w-5 shrink-0" : "h-4 w-4 shrink-0"} />
+    <div ref={ref}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className={sideLink(headerActive)}>
+        <Icon className="h-5 w-5 shrink-0" />
         {label}
         <ChevronIcon
-          className={`${vertical ? "ml-auto h-3.5 w-3.5" : "h-3 w-3"} shrink-0 transition-transform ${
-            open ? "rotate-90" : ""
-          }`}
+          className={`ml-auto h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
         />
       </button>
-
-      {open &&
-        (vertical ? (
-          <div className="mt-1 flex flex-col gap-1 pl-4">
-            {children.map((c) => (
-              <NavLeaf key={c.to} {...c} vertical />
-            ))}
-          </div>
-        ) : (
-          <div className="absolute right-0 top-full z-20 mt-1 flex min-w-[9rem] flex-col gap-1 rounded-xl bg-slate-800 p-1.5 shadow-xl ring-1 ring-white/10">
-            {children.map((c) => (
-              <NavLeaf key={c.to} {...c} vertical />
-            ))}
-          </div>
-        ))}
+      {open && (
+        <div className="mt-1 flex flex-col gap-1 pl-4">
+          {children.map((c) => (
+            <NavLeaf key={c.to} {...c} variant="side" />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function NavItems({ vertical }) {
+function NavItems({ variant }) {
   return navItems.map((item) =>
     item.children ? (
-      <NavGroup key={item.label} {...item} vertical={vertical} />
+      <NavGroup key={item.label} {...item} variant={variant} />
     ) : (
-      <NavLeaf key={item.to} {...item} vertical={vertical} />
+      <NavLeaf key={item.to} {...item} variant={variant} />
     )
   );
 }
@@ -256,7 +260,7 @@ export default function Layout() {
         </div>
 
         <nav className="flex flex-col gap-1 px-3">
-          <NavItems vertical />
+          <NavItems variant="side" />
         </nav>
 
         <div className="mt-auto space-y-2 p-4">
@@ -295,22 +299,32 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* 手機版頂欄 */}
-      <header className="flex items-center gap-3 bg-slate-900 px-4 py-3 md:hidden">
+      {/* 手機版頂欄（只有品牌 + 登出，導覽移到底部分頁） */}
+      <header className="sticky top-0 z-30 flex items-center gap-3 bg-slate-900 px-4 py-3 md:hidden">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600">
           <PlaneIcon className="h-4 w-4 text-white" />
         </div>
         <span className="font-black text-white">Dispatch</span>
-        <nav className="ml-auto flex gap-1">
-          <NavItems />
-        </nav>
+        {showLogout && (
+          <button
+            onClick={logout}
+            className="ml-auto rounded-lg px-3 py-1.5 text-sm font-medium text-slate-400 transition active:bg-white/5 active:text-slate-200"
+          >
+            ⏻ 登出
+          </button>
+        )}
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        <div className="w-full px-4 py-6 md:px-8 md:py-8">
+        <div className="w-full px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
           <Outlet />
         </div>
       </main>
+
+      {/* 手機版底部分頁列 */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch gap-0.5 border-t border-white/10 bg-slate-900/95 px-1.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur md:hidden">
+        <NavItems variant="tab" />
+      </nav>
 
       <Lightbox />
     </div>

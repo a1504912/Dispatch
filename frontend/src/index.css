@@ -108,16 +108,23 @@ body {
 
 /* ---------- 手機版行事曆壓縮 ---------- */
 @media (max-width: 640px) {
+  /* 工具列改直排：導覽鈕、標題、檢視鈕各自置中一行，較不擁擠 */
   .fc .fc-toolbar.fc-header-toolbar {
-    flex-wrap: wrap;
-    row-gap: 0.5rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    justify-content: center;
   }
   .fc .fc-toolbar-title {
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     white-space: nowrap;
   }
   .fc .fc-button {
-    padding: 0.25rem 0.5rem;
+    padding: 0.3rem 0.6rem;
     font-size: 0.8rem;
   }
   .fc .fc-col-header-cell-cushion {
@@ -125,5 +132,8 @@ body {
   }
   .fc .fc-timegrid-slot {
     height: 2rem;
+  }
+  .fc .fc-event {
+    font-size: 0.7rem;
   }
 }
