@@ -6,6 +6,18 @@ import {
   updateCategory,
 } from "../api/categories";
 import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
+import { NO_BACKEND } from "../localMode";
+import {
+  pushSupported,
+  isIOS,
+  isStandalone,
+  getPushStatus,
+  enablePush,
+  disablePush,
+  sendTestPush,
+  getNotifySettings,
+  saveNotifySettings,
+} from "../api/push";
 
 function WeatherSettings() {
   const [city, setCity] = useState(() => getWeatherLoc().label);
@@ -31,6 +43,208 @@ function WeatherSettings() {
       </select>
       <p className="mt-2 text-xs text-slate-400">
         總覽頁的「本週天氣」會依這個城市顯示。改完回總覽頁即更新。
+      </p>
+    </div>
+  );
+}
+
+const REMIND_OPTIONS = [
+  { value: 0, label: "準時" },
+  { value: 5, label: "提前 5 分鐘" },
+  { value: 10, label: "提前 10 分鐘" },
+  { value: 15, label: "提前 15 分鐘" },
+  { value: 30, label: "提前 30 分鐘" },
+  { value: 60, label: "提前 1 小時" },
+];
+
+function NotificationSettings() {
+  const [status, setStatus] = useState({ supported: true });
+  const [prefs, setPrefs] = useState({ remind_before_minutes: 10, daily_summary_time: "08:00" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function refreshStatus() {
+    try {
+      setStatus(await getPushStatus());
+    } catch {
+      setStatus({ supported: pushSupported() });
+    }
+  }
+
+  useEffect(() => {
+    refreshStatus();
+    getNotifySettings()
+      .then(setPrefs)
+      .catch(() => {});
+  }, []);
+
+  async function handleEnable() {
+    setBusy(true);
+    setMsg("");
+    try {
+      await enablePush();
+      await refreshStatus();
+      setMsg("✅ 這台裝置的通知已開啟。");
+    } catch (err) {
+      setMsg("⚠️ " + (err?.message ?? "開啟失敗"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisable() {
+    setBusy(true);
+    setMsg("");
+    try {
+      await disablePush();
+      await refreshStatus();
+      setMsg("這台裝置的通知已關閉。");
+    } catch (err) {
+      setMsg("⚠️ " + (err?.message ?? "關閉失敗"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleTest() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await sendTestPush();
+      setMsg(r.sent > 0 ? "🔔 已送出測試通知，稍等一下就會跳出來。" : "沒有已開啟通知的裝置。");
+    } catch {
+      setMsg("⚠️ 測試通知送出失敗。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSavePrefs(next) {
+    setPrefs(next);
+    try {
+      const saved = await saveNotifySettings(next);
+      setPrefs(saved);
+    } catch {
+      setMsg("⚠️ 偏好儲存失敗。");
+    }
+  }
+
+  const field =
+    "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+
+  // 不支援（HTTP 或舊瀏覽器）
+  if (!status.supported) {
+    return (
+      <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        這個瀏覽器（或用 http:// 開啟）不支援通知。請改用手機/電腦的 Chrome、Edge，
+        並透過 <span className="font-mono">https://…ts.net</span> 這個網址開啟。
+      </p>
+    );
+  }
+
+  const iosNeedsInstall = isIOS() && !isStandalone();
+
+  return (
+    <div className="space-y-4">
+      {/* 這台裝置 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-bold text-slate-600">這台裝置：</span>
+        {status.permission === "denied" ? (
+          <span className="rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-600">
+            已被瀏覽器封鎖 — 請到瀏覽器網站設定手動允許通知
+          </span>
+        ) : status.subscribed ? (
+          <>
+            <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-600">
+              ● 已開啟
+            </span>
+            <button
+              onClick={handleDisable}
+              disabled={busy}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+            >
+              關閉通知
+            </button>
+            <button
+              onClick={handleTest}
+              disabled={busy}
+              className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700 disabled:opacity-40"
+            >
+              測試通知
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleEnable}
+            disabled={busy}
+            className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40"
+          >
+            🔔 開啟這台的通知
+          </button>
+        )}
+      </div>
+
+      {iosNeedsInstall && (
+        <p className="rounded-xl bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-700">
+          📱 iPhone / iPad 要先把這個網站「<b>加到主畫面</b>」：Safari 按下方分享鈕 → 加到主畫面 →
+          再從桌面的 Dispatch 圖示開啟，才能開啟通知。
+        </p>
+      )}
+
+      {msg && <p className="text-sm text-slate-500">{msg}</p>}
+
+      <hr className="border-slate-100" />
+
+      {/* 通知偏好（全帳號共用） */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-xs font-bold text-slate-500">行程提前提醒</label>
+          <select
+            value={prefs.remind_before_minutes}
+            onChange={(e) =>
+              handleSavePrefs({ ...prefs, remind_before_minutes: Number(e.target.value) })
+            }
+            className={`${field} w-full max-w-xs cursor-pointer`}
+          >
+            {REMIND_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-slate-400">有設定時間的行程，到點前會提醒。</p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-bold text-slate-500">每日摘要</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="time"
+              value={prefs.daily_summary_time || ""}
+              disabled={!prefs.daily_summary_time}
+              onChange={(e) => handleSavePrefs({ ...prefs, daily_summary_time: e.target.value })}
+              className={`${field} w-32 disabled:opacity-40`}
+            />
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-500">
+              <input
+                type="checkbox"
+                checked={Boolean(prefs.daily_summary_time)}
+                onChange={(e) =>
+                  handleSavePrefs({
+                    ...prefs,
+                    daily_summary_time: e.target.checked ? "08:00" : "",
+                  })
+                }
+              />
+              啟用
+            </label>
+          </div>
+          <p className="mt-1.5 text-xs text-slate-400">每天這個時間推一則：今天幾件、逾期、待辦。</p>
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-400">
+        通知由你的主機在背景送出，所以就算沒開網頁也會跳。每台想收通知的裝置都要各按一次「開啟這台的通知」。
       </p>
     </div>
   );
@@ -232,10 +446,19 @@ export default function Settings() {
         <WeatherSettings />
       </SettingSection>
 
+      {!NO_BACKEND && (
+        <SettingSection
+          title="🔔 通知"
+          description="行程到點、每日摘要會推播到電腦或手機，就算沒開網頁也會跳。"
+        >
+          <NotificationSettings />
+        </SettingSection>
+      )}
+
       {/* 之後的新設定往下加 SettingSection 即可 */}
       <SettingSection title="🚧 更多設定" description="陸續加入中——想到要什麼就告訴開發者。">
         <p className="text-sm text-slate-400">
-          預留位置：Ollama 模型管理、Google 同步偏好、通知、資料備份…
+          預留位置：Ollama 模型管理、Google 同步偏好、資料備份…
         </p>
       </SettingSection>
     </div>

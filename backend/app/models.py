@@ -78,3 +78,28 @@ class GoogleCredential(SQLModel, table=True):
     refresh_token: str = ""
     expiry: Optional[datetime] = None
     email: str = ""
+
+
+class Setting(SQLModel, table=True):
+    """通用 key-value 設定（存 VAPID 金鑰、通知偏好等）。"""
+
+    key: str = Field(primary_key=True)
+    value: str = ""
+
+
+class PushSubscription(SQLModel, table=True):
+    """一台裝置的 Web Push 訂閱資訊。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    endpoint: str = Field(index=True, unique=True)
+    p256dh: str = ""
+    auth: str = ""
+    ua: str = ""  # 瀏覽器 User-Agent，方便使用者辨識是哪台裝置
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SentNotification(SQLModel, table=True):
+    """已送出的通知標記，用來去重複（同一件事不重複提醒）。"""
+
+    tag: str = Field(primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)

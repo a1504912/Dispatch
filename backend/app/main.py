@@ -18,9 +18,11 @@ from app.routers import (
     google,
     models,
     news,
+    push,
     schedule,
     subtasks,
 )
+from app import scheduler
 
 # 若前端已 build（frontend/dist 存在），後端會直接供應網頁 → VM 上只需跑 uvicorn
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
@@ -29,7 +31,9 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "di
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    scheduler.start()  # 背景通知排程
     yield
+    scheduler.stop()
 
 
 app = FastAPI(title="Dispatch API", version="0.1.0", lifespan=lifespan)
@@ -95,6 +99,7 @@ app.include_router(categories.router)
 app.include_router(subtasks.router)
 app.include_router(news.router)
 app.include_router(games.router)
+app.include_router(push.router)
 
 
 @app.get("/api/health")
