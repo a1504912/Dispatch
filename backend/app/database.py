@@ -58,8 +58,11 @@ def init_db() -> None:
                 conn.commit()
 
             sub_columns = [row[1] for row in conn.execute(text("PRAGMA table_info(subtask)"))]
-            if sub_columns and "due_date" not in sub_columns:
-                conn.execute(text("ALTER TABLE subtask ADD COLUMN due_date DATE"))
+            if sub_columns:
+                if "due_date" not in sub_columns:
+                    conn.execute(text("ALTER TABLE subtask ADD COLUMN due_date DATE"))
+                if "images" not in sub_columns:
+                    conn.execute(text("ALTER TABLE subtask ADD COLUMN images TEXT"))
                 conn.commit()
 
 

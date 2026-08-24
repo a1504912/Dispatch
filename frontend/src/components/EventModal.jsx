@@ -206,6 +206,25 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     onSaved?.();
   }
 
+  // 針對「單一明細」加照片（可一次多張）
+  async function handleAddSubtaskImages(st, files) {
+    const list = [...(files ?? [])];
+    if (!list.length) return;
+    const dataUrls = (await Promise.all(list.map((f) => compressImageFile(f)))).filter(Boolean);
+    if (!dataUrls.length) return;
+    const next = [...parseImages(st), ...dataUrls];
+    await updateSubtask(st.id, { images: JSON.stringify(next) });
+    refreshSubtasks();
+    onSaved?.();
+  }
+
+  async function handleRemoveSubtaskImage(st, idx) {
+    const next = parseImages(st).filter((_, i) => i !== idx);
+    await updateSubtask(st.id, { images: next.length ? JSON.stringify(next) : null });
+    refreshSubtasks();
+    onSaved?.();
+  }
+
   useEffect(() => {
     if (!open) return;
     const fallback = defaultTimes();
@@ -545,11 +564,14 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               </p>
             ) : (
               <div className="space-y-1.5">
-                {subtasks.map((st) => (
+                {subtasks.map((st) => {
+                  const subImgs = parseImages(st);
+                  return (
                   <div
                     key={st.id}
-                    className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    className="group rounded-lg border border-slate-200 bg-white"
                   >
+                   <div className="flex items-center gap-2 px-3 py-2">
                     <input
                       type="checkbox"
                       checked={st.done}
@@ -584,6 +606,26 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                         {st.title}
                       </button>
                     )}
+                    <label
+                      title="幫這項明細加照片"
+                      className={`shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 text-xs font-medium transition ${
+                        subImgs.length > 0
+                          ? "bg-sky-50 text-sky-600 hover:bg-sky-100"
+                          : "text-slate-300 hover:text-sky-500 group-hover:text-slate-400"
+                      }`}
+                    >
+                      📷{subImgs.length > 0 ? subImgs.length : ""}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        onChange={(e) => {
+                          handleAddSubtaskImages(st, e.target.files);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
                     {dateSubId === st.id ? (
                       <input
                         type="date"
@@ -630,8 +672,32 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                     >
                       ✕
                     </button>
+                   </div>
+                   {subImgs.length > 0 && (
+                     <div className="flex flex-wrap gap-1.5 px-3 pb-2 pl-9">
+                       {subImgs.map((src, i) => (
+                         <div key={i} className="relative">
+                           <img
+                             src={src}
+                             alt=""
+                             onClick={() => openImage(src)}
+                             className="h-12 w-12 cursor-zoom-in rounded-md object-cover ring-1 ring-slate-200"
+                           />
+                           <button
+                             type="button"
+                             onClick={() => handleRemoveSubtaskImage(st, i)}
+                             className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-700 text-[10px] text-white shadow hover:bg-red-500"
+                             title="移除這張"
+                           >
+                             ✕
+                           </button>
+                         </div>
+                       ))}
+                     </div>
+                   )}
                   </div>
-                ))}
+                  );
+                })}
                 <div className="flex gap-1.5">
                   <input
                     className={`${field} flex-1`}

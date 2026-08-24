@@ -51,6 +51,7 @@ class SubtaskUpdate(SQLModel):
     title: Optional[str] = None
     done: Optional[bool] = None
     due_date: Optional[date] = None
+    images: Optional[str] = None
 
 
 class EventCompletedUpdate(SQLModel):

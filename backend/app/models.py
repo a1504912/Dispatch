@@ -67,6 +67,8 @@ class Subtask(SQLModel, table=True):
     done: bool = False
     # 明細自己的到期日；設了就會延到那天顯示（未設 = 跟主項同一天）
     due_date: Optional[date] = None
+    # 這項明細專屬的照片（JSON 陣列，和主行程的圖片分開存）
+    images: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
