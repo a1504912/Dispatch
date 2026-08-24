@@ -153,6 +153,9 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [dateSubId, setDateSubId] = useState(null);
   // 目前「已選要貼上照片」的明細 id：選了之後直接 Ctrl+V 就會貼進這一項
   const [pasteSubId, setPasteSubId] = useState(null);
+  // 開視窗時原圖 / 明細還在向後端載入（用來顯示載入動畫）
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [subtasksLoading, setSubtasksLoading] = useState(false);
   const fileInputRef = useRef(null);
   const isEdit = Boolean(initial?.id);
 
@@ -246,17 +249,32 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     setNewSub("");
     setSubtasks([]);
     setPasteSubId(null);
+    setImagesLoading(false);
+    setSubtasksLoading(false);
     if (initial?.id) {
       let alive = true;
+      const expectImages = (initial.image_count ?? (initial.thumb ? 1 : 0)) > 0;
+      setImagesLoading(expectImages);
+      setSubtasksLoading(true);
       // 列表沒帶原圖，開視窗時才向後端要完整圖片
       getEvent(initial.id)
         .then((full) => {
           if (alive && full) setForm((f) => (f ? { ...f, images: parseImages(full) } : f));
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (alive) setImagesLoading(false);
+        });
       listSubtasks(initial.id)
-        .then(setSubtasks)
-        .catch(() => setSubtasks([]));
+        .then((rows) => {
+          if (alive) setSubtasks(rows);
+        })
+        .catch(() => {
+          if (alive) setSubtasks([]);
+        })
+        .finally(() => {
+          if (alive) setSubtasksLoading(false);
+        });
       return () => {
         alive = false;
       };
@@ -586,6 +604,14 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               </p>
             ) : (
               <div className="space-y-1.5">
+                {subtasksLoading && subtasks.length === 0 && (
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-400">
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    載入明細與照片中…
+                  </div>
+                )}
                 {subtasks.map((st) => {
                   const subImgs = parseImages(st);
                   return (
@@ -752,11 +778,29 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">
               圖片
-              {form.images?.length > 0 && (
-                <span className="ml-2 font-normal text-slate-400">{form.images.length} 張</span>
+              {imagesLoading ? (
+                <span className="ml-2 inline-flex items-center gap-1 font-normal text-indigo-500">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  載入圖片中…
+                </span>
+              ) : (
+                form.images?.length > 0 && (
+                  <span className="ml-2 font-normal text-slate-400">{form.images.length} 張</span>
+                )
               )}
             </label>
-            {form.images?.length > 0 && (
+            {imagesLoading && (
+              <div className="mb-2 grid grid-cols-3 gap-2">
+                {Array.from({
+                  length: Math.min(Math.max(initial?.image_count ?? 1, 1), 6),
+                }).map((_, i) => (
+                  <div key={i} className="h-20 w-full animate-pulse rounded-lg bg-slate-200" />
+                ))}
+              </div>
+            )}
+            {!imagesLoading && form.images?.length > 0 && (
               <div className="mb-2 grid grid-cols-3 gap-2">
                 {form.images.map((img, idx) => (
                   <div

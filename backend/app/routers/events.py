@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -40,6 +41,17 @@ def list_events(session: Session = Depends(get_session)):
     result = []
     for e in events:
         data = e.model_dump()
+        # 先算出圖片張數（給前端顯示載入骨架用），再把大張圖片拿掉
+        count = 0
+        if e.images:
+            try:
+                arr = json.loads(e.images)
+                count = len(arr) if isinstance(arr, list) else 0
+            except (ValueError, TypeError):
+                count = 0
+        if count == 0 and e.image:
+            count = 1
+        data["image_count"] = count
         data.pop("image", None)
         data.pop("images", None)
         result.append(data)
