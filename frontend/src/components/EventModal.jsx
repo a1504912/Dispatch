@@ -151,6 +151,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [editingSubId, setEditingSubId] = useState(null);
   const [editingSubText, setEditingSubText] = useState("");
   const [dateSubId, setDateSubId] = useState(null);
+  // 目前「已選要貼上照片」的明細 id：選了之後直接 Ctrl+V 就會貼進這一項
+  const [pasteSubId, setPasteSubId] = useState(null);
   const fileInputRef = useRef(null);
   const isEdit = Boolean(initial?.id);
 
@@ -243,6 +245,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     });
     setNewSub("");
     setSubtasks([]);
+    setPasteSubId(null);
     if (initial?.id) {
       listSubtasks(initial.id)
         .then(setSubtasks)
@@ -251,6 +254,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   }, [open, initial]);
 
   // 視窗開著時可直接 Ctrl+V 貼圖（capture 讓它優先於總覽頁的貼圖排程）
+  // 若已「選定某項明細」（pasteSubId），就貼進那一項；否則貼到主行程圖片。
   useEffect(() => {
     if (!open) return;
     function onPaste(e) {
@@ -259,11 +263,19 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       );
       if (!item) return;
       e.stopPropagation();
-      readImageFile(item.getAsFile());
+      const file = item.getAsFile();
+      if (pasteSubId != null) {
+        const st = subtasks.find((s) => s.id === pasteSubId);
+        if (st) {
+          handleAddSubtaskImages(st, [file]);
+          return;
+        }
+      }
+      readImageFile(file);
     }
     window.addEventListener("paste", onPaste, true);
     return () => window.removeEventListener("paste", onPaste, true);
-  }, [open]);
+  }, [open, pasteSubId, subtasks]);
 
   function readImageFile(file) {
     if (!file) return;
@@ -606,26 +618,24 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                         {st.title}
                       </button>
                     )}
-                    <label
-                      title="幫這項明細加照片"
-                      className={`shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 text-xs font-medium transition ${
-                        subImgs.length > 0
-                          ? "bg-sky-50 text-sky-600 hover:bg-sky-100"
-                          : "text-slate-300 hover:text-sky-500 group-hover:text-slate-400"
+                    <button
+                      type="button"
+                      onClick={() => setPasteSubId((id) => (id === st.id ? null : st.id))}
+                      title={
+                        pasteSubId === st.id
+                          ? "已選這項，直接按 Ctrl+V 貼上照片"
+                          : "選這項，然後按 Ctrl+V 貼上照片"
+                      }
+                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium transition ${
+                        pasteSubId === st.id
+                          ? "bg-sky-500 text-white ring-2 ring-sky-200"
+                          : subImgs.length > 0
+                            ? "bg-sky-50 text-sky-600 hover:bg-sky-100"
+                            : "text-slate-300 hover:text-sky-500 group-hover:text-slate-400"
                       }`}
                     >
                       📷{subImgs.length > 0 ? subImgs.length : ""}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="sr-only"
-                        onChange={(e) => {
-                          handleAddSubtaskImages(st, e.target.files);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
+                    </button>
                     {dateSubId === st.id ? (
                       <input
                         type="date"
@@ -673,6 +683,11 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                       ✕
                     </button>
                    </div>
+                   {pasteSubId === st.id && (
+                     <p className="px-3 pb-1.5 pl-9 text-[11px] font-medium text-sky-600">
+                       📋 已選這項 —— 直接按 Ctrl+V 貼上截圖（可連續貼多張）；再按一次 📷 取消。
+                     </p>
+                   )}
                    {subImgs.length > 0 && (
                      <div className="flex flex-wrap gap-1.5 px-3 pb-2 pl-9">
                        {subImgs.map((src, i) => (
