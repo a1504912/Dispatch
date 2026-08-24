@@ -45,9 +45,10 @@ class Event(SQLModel, table=True):
     completed: bool = False
     # 整天活動（Google all-day；end_time 慣例上是「隔天 00:00」不含）
     all_day: bool = False
-    # 附加圖片：image 存第一張（給看板縮圖用），images 存全部（JSON 陣列）
+    # 附加圖片：image 存第一張，images 存全部（JSON 陣列），thumb 存很小的縮圖（列表用）
     image: Optional[str] = None
     images: Optional[str] = None
+    thumb: Optional[str] = None
     # 分類（可為空）
     category_id: Optional[int] = Field(default=None, foreign_key="category.id")
     # 來源：local（在 Dispatch 建立）/ google（從 Google 拉進來）

@@ -55,6 +55,8 @@ def init_db() -> None:
                     conn.execute(
                         text("ALTER TABLE event ADD COLUMN is_task BOOLEAN NOT NULL DEFAULT 0")
                     )
+                if "thumb" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN thumb TEXT"))
                 conn.commit()
 
             sub_columns = [row[1] for row in conn.execute(text("PRAGMA table_info(subtask)"))]
@@ -64,6 +66,34 @@ def init_db() -> None:
                 if "images" not in sub_columns:
                     conn.execute(text("ALTER TABLE subtask ADD COLUMN images TEXT"))
                 conn.commit()
+
+    # 幫既有、還沒有縮圖的行程補上縮圖（一次性；之後啟動就略過）
+    try:
+        _backfill_thumbs()
+    except Exception as exc:  # noqa: BLE001
+        print("thumbnail backfill skipped:", str(exc)[:200])
+
+
+def _backfill_thumbs() -> None:
+    from sqlmodel import Session, select
+
+    from app import thumbs
+    from app.models import Event
+
+    with Session(engine) as session:
+        events = session.exec(select(Event).where(Event.thumb == None)).all()  # noqa: E711
+        changed = 0
+        for ev in events:
+            if not (ev.image or ev.images):
+                continue
+            t = thumbs.thumb_for(ev.image, ev.images)
+            if t:
+                ev.thumb = t
+                session.add(ev)
+                changed += 1
+        if changed:
+            session.commit()
+            print(f"backfilled {changed} event thumbnails")
 
 
 def get_session() -> Generator[Session, None, None]:

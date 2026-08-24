@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app import google_calendar as gcal
+from app import thumbs
 from app.database import get_session
 from app.models import Event, Subtask
 from app.schemas import EventCompletedUpdate, EventCreate
@@ -32,14 +33,32 @@ def _propagate_delete(session: Session, google_event_id: Optional[str]) -> None:
         print("Google delete failed:", exc)
 
 
-@router.get("", response_model=list[Event])
+@router.get("")
 def list_events(session: Session = Depends(get_session)):
-    return session.exec(select(Event)).all()
+    # 列表只回小縮圖 thumb，拿掉大張的 image/images，大幅減少總覽讀取量。
+    events = session.exec(select(Event)).all()
+    result = []
+    for e in events:
+        data = e.model_dump()
+        data.pop("image", None)
+        data.pop("images", None)
+        result.append(data)
+    return result
+
+
+@router.get("/{event_id}", response_model=Event)
+def get_event(event_id: int, session: Session = Depends(get_session)):
+    """單一行程完整資料（含原圖），給編輯視窗點開時載入。"""
+    event = session.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
 
 
 @router.post("", response_model=Event, status_code=201)
 def create_event(payload: EventCreate, session: Session = Depends(get_session)):
     event = Event.model_validate(payload)
+    event.thumb = thumbs.thumb_for(event.image, event.images)
     session.add(event)
     session.commit()
     session.refresh(event)
@@ -58,6 +77,7 @@ def update_event(
         raise HTTPException(status_code=404, detail="Event not found")
     for key, value in payload.model_dump().items():
         setattr(event, key, value)
+    event.thumb = thumbs.thumb_for(event.image, event.images)
     session.add(event)
     session.commit()
     session.refresh(event)

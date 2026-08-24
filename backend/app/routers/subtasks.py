@@ -10,7 +10,7 @@ from app.schemas import SubtaskCreate, SubtaskUpdate
 router = APIRouter(prefix="/api/subtasks", tags=["subtasks"])
 
 
-@router.get("", response_model=list[Subtask])
+@router.get("")
 def list_subtasks(
     event_id: Optional[int] = None,
     session: Session = Depends(get_session),
@@ -18,7 +18,17 @@ def list_subtasks(
     query = select(Subtask).order_by(Subtask.created_at)
     if event_id is not None:
         query = query.where(Subtask.event_id == event_id)
-    return session.exec(query).all()
+    rows = session.exec(query).all()
+    # 只有針對「單一行程」查詢（編輯視窗）才回傳明細照片；
+    # 總覽拉全部明細時不帶照片，避免資料量過大拖慢讀取。
+    include_images = event_id is not None
+    result = []
+    for s in rows:
+        data = s.model_dump()
+        if not include_images:
+            data["images"] = None
+        result.append(data)
+    return result
 
 
 @router.post("", response_model=Subtask, status_code=201)

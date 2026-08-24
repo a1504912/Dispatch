@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createEvent, updateEvent, deleteEvent } from "../api/events";
+import { createEvent, updateEvent, deleteEvent, getEvent } from "../api/events";
 import { openImage } from "../lightbox";
 import { parseImages } from "../images";
 import { compressImageFile } from "../imageCompress";
@@ -247,9 +247,19 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     setSubtasks([]);
     setPasteSubId(null);
     if (initial?.id) {
+      let alive = true;
+      // 列表沒帶原圖，開視窗時才向後端要完整圖片
+      getEvent(initial.id)
+        .then((full) => {
+          if (alive && full) setForm((f) => (f ? { ...f, images: parseImages(full) } : f));
+        })
+        .catch(() => {});
       listSubtasks(initial.id)
         .then(setSubtasks)
         .catch(() => setSubtasks([]));
+      return () => {
+        alive = false;
+      };
     }
   }, [open, initial]);
 

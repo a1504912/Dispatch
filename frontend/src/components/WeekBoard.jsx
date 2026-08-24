@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { TW_CITIES, weatherIcon } from "../api/weather";
-import { openImage } from "../lightbox";
 import { parseImages } from "../images";
 
 function startOfWeek(base) {
@@ -296,36 +295,17 @@ export default function WeekBoard({
 
                       {!spillover &&
                         (() => {
-                          const imgs = parseImages(ev);
-                          if (imgs.length === 0) return null;
-                          if (imgs.length === 1) {
-                            return (
-                              <img
-                                src={imgs[0]}
-                                alt=""
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openImage(imgs[0]);
-                                }}
-                                className="mt-1 w-full cursor-zoom-in rounded-md border border-slate-100 object-cover"
-                              />
-                            );
-                          }
+                          // 列表只帶小縮圖 thumb（省流量）；離線模式沒 thumb 就退回原圖
+                          const thumb = ev.thumb || parseImages(ev)[0];
+                          if (!thumb) return null;
                           return (
-                            <div className="mt-1 grid grid-cols-2 gap-1">
-                              {imgs.map((img, i) => (
-                                <img
-                                  key={i}
-                                  src={img}
-                                  alt=""
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openImage(img);
-                                  }}
-                                  className="h-14 w-full cursor-zoom-in rounded-md border border-slate-100 object-cover"
-                                />
-                              ))}
-                            </div>
+                            <img
+                              src={thumb}
+                              alt=""
+                              loading="lazy"
+                              className="mt-1 max-h-24 w-full rounded-md border border-slate-100 object-cover"
+                              title="點卡片看完整圖片"
+                            />
                           );
                         })()}
                     </div>

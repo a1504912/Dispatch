@@ -26,6 +26,16 @@ export async function listEvents() {
   return data;
 }
 
+// 單一行程完整資料（含原圖）；列表為了速度不帶原圖，編輯視窗才用這個載入。
+export async function getEvent(id) {
+  if (SUPABASE_MODE) {
+    return orThrow(await supabase.from("events").select("*").eq("id", id).single());
+  }
+  if (LOCAL_MODE) return store.list(KEYS.events).find((e) => String(e.id) === String(id)) ?? null;
+  const { data } = await client.get(`/api/events/${id}`);
+  return data;
+}
+
 export async function createEvent(event) {
   if (SUPABASE_MODE) {
     return orThrow(
