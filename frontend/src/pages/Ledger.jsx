@@ -7,6 +7,7 @@ import {
 } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
+import SplitBills from "../components/SplitBills.jsx";
 
 const emojiFrom = (cats, kind, name) =>
   cats.find((c) => c.kind === kind && c.name === name)?.emoji ||
@@ -30,6 +31,7 @@ export default function Ledger() {
   const [saving, setSaving] = useState(false);
   const [allCats, setAllCats] = useState([]);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [tab, setTab] = useState("records"); // records（記錄）/ split（分帳）
 
   function load() {
     setLoading(true);
@@ -145,6 +147,30 @@ export default function Ledger() {
         <p className="mt-1 text-sm text-slate-500">記錄每天的收支，看看錢都花到哪去了。</p>
       </div>
 
+      {/* 分頁：記錄 / 分帳 */}
+      <div className="flex w-fit rounded-xl bg-slate-100 p-1 text-sm font-medium">
+        <button
+          onClick={() => setTab("records")}
+          className={`rounded-lg px-4 py-1.5 transition ${
+            tab === "records" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          📒 記錄
+        </button>
+        <button
+          onClick={() => setTab("split")}
+          className={`rounded-lg px-4 py-1.5 transition ${
+            tab === "split" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          🧾 分帳
+        </button>
+      </div>
+
+      {tab === "split" ? (
+        <SplitBills expenseCats={allCats.filter((c) => c.kind === "expense")} />
+      ) : (
+       <>
       {/* 月份切換 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
@@ -400,6 +426,8 @@ export default function Ledger() {
             );
           })}
         </div>
+      )}
+       </>
       )}
 
       <LedgerCategoryManager

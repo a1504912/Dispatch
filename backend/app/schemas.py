@@ -74,6 +74,22 @@ class LedgerCategoryCreate(SQLModel):
     sort: int = 0
 
 
+class LedgerMemberCreate(SQLModel):
+    name: str
+    emoji: str = "🙂"
+
+
+class SplitBillCreate(SQLModel):
+    title: str
+    total: float
+    date: date
+    category: str = ""
+    payer: str = "self"
+    method: str = "equal"
+    shares: str = ""
+    note: str = ""
+
+
 # ---------- Chat ----------
 class ChatRequest(SQLModel):
     agent_id: int

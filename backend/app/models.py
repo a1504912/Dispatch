@@ -94,6 +94,32 @@ class LedgerCategory(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class LedgerMember(SQLModel, table=True):
+    """分帳的常用成員（朋友、室友…）。「我」是隱含的，不存在這張表。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    emoji: str = "🙂"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SplitBill(SQLModel, table=True):
+    """一筆分帳。shares 存每個參與者分攤的金額（JSON）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    total: float
+    date: date
+    category: str = ""
+    payer: str = "self"  # "self"（我付）或成員 id 字串
+    method: str = "equal"  # equal 平均 / exact 各自指定 / shares 份數
+    # JSON: [{"who": "self"|"<member_id>", "value": <分攤金額>}]
+    shares: str = ""
+    note: str = ""
+    settled: bool = False  # 這筆是否已結清（Phase 2b 用）
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Transaction(SQLModel, table=True):
     """記帳的一筆收支。"""
 

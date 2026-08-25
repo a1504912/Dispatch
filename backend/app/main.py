@@ -17,8 +17,10 @@ from app.routers import (
     games,
     google,
     ledger_categories,
+    members,
     models,
     news,
+    splitbills,
     push,
     schedule,
     subtasks,
@@ -104,6 +106,8 @@ app.include_router(games.router)
 app.include_router(push.router)
 app.include_router(transactions.router)
 app.include_router(ledger_categories.router)
+app.include_router(members.router)
+app.include_router(splitbills.router)
 
 
 @app.get("/api/health")

@@ -58,4 +58,6 @@ export const KEYS = {
   subtasks: "dispatch.local.subtasks",
   transactions: "dispatch.local.transactions",
   ledgerCats: "dispatch.local.ledgerCats",
+  members: "dispatch.local.members",
+  splitbills: "dispatch.local.splitbills",
 };
