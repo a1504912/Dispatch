@@ -83,6 +83,18 @@ class GoogleCredential(SQLModel, table=True):
     email: str = ""
 
 
+class Transaction(SQLModel, table=True):
+    """記帳的一筆收支。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = "expense"  # expense（支出）/ income（收入）
+    amount: float = 0  # 正數金額
+    category: str = ""  # 分類名稱，例：餐飲、交通
+    note: str = ""
+    date: date  # 這筆的日期
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Setting(SQLModel, table=True):
     """通用 key-value 設定（存 VAPID 金鑰、通知偏好等）。"""
 

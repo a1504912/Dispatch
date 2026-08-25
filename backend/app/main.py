@@ -21,6 +21,7 @@ from app.routers import (
     push,
     schedule,
     subtasks,
+    transactions,
 )
 from app import scheduler
 
@@ -100,6 +101,7 @@ app.include_router(subtasks.router)
 app.include_router(news.router)
 app.include_router(games.router)
 app.include_router(push.router)
+app.include_router(transactions.router)
 
 
 @app.get("/api/health")

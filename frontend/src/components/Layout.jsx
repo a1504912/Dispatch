@@ -50,6 +50,18 @@ function TodoIcon({ className }) {
   );
 }
 
+function WalletIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3"
+      />
+    </svg>
+  );
+}
+
 function NewsIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
@@ -110,6 +122,7 @@ function GearIcon({ className }) {
 const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
   { to: "/todos", label: "待辦", icon: TodoIcon },
+  { to: "/ledger", label: "記帳", icon: WalletIcon },
   // 新聞、免費遊戲收進「情報站」群組；AI 員工需要後端，離線/雲端同步模式隱藏
   ...(NO_BACKEND
     ? []

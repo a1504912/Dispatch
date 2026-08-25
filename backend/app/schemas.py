@@ -58,6 +58,15 @@ class EventCompletedUpdate(SQLModel):
     completed: bool
 
 
+# ---------- Transaction（記帳） ----------
+class TransactionCreate(SQLModel):
+    kind: str = "expense"
+    amount: float
+    category: str = ""
+    note: str = ""
+    date: date
+
+
 # ---------- Chat ----------
 class ChatRequest(SQLModel):
     agent_id: int

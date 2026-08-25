@@ -56,4 +56,5 @@ export const KEYS = {
   events: "dispatch.local.events",
   categories: "dispatch.local.categories",
   subtasks: "dispatch.local.subtasks",
+  transactions: "dispatch.local.transactions",
 };
