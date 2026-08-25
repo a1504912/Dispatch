@@ -67,6 +67,13 @@ class TransactionCreate(SQLModel):
     date: date
 
 
+class LedgerCategoryCreate(SQLModel):
+    kind: str = "expense"
+    name: str
+    emoji: str = "📦"
+    sort: int = 0
+
+
 # ---------- Chat ----------
 class ChatRequest(SQLModel):
     agent_id: int

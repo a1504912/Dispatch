@@ -83,6 +83,17 @@ class GoogleCredential(SQLModel, table=True):
     email: str = ""
 
 
+class LedgerCategory(SQLModel, table=True):
+    """記帳分類（可自訂名稱、emoji；分支出/收入）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = "expense"  # expense / income
+    name: str
+    emoji: str = "📦"
+    sort: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Transaction(SQLModel, table=True):
     """記帳的一筆收支。"""
 

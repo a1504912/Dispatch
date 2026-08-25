@@ -5,32 +5,12 @@ import {
   updateTransaction,
   deleteTransaction,
 } from "../api/ledger";
+import { listLedgerCategories } from "../api/ledgerCategories";
+import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 
-// 預設分類（依收支切換）
-const CATS = {
-  expense: [
-    { name: "餐飲", emoji: "🍜" },
-    { name: "交通", emoji: "🚗" },
-    { name: "購物", emoji: "🛍️" },
-    { name: "娛樂", emoji: "🎮" },
-    { name: "居家", emoji: "🏠" },
-    { name: "醫療", emoji: "💊" },
-    { name: "學習", emoji: "📚" },
-    { name: "人情", emoji: "🎁" },
-    { name: "訂閱", emoji: "💳" },
-    { name: "其他", emoji: "📦" },
-  ],
-  income: [
-    { name: "薪水", emoji: "💰" },
-    { name: "獎金", emoji: "🎉" },
-    { name: "投資", emoji: "📈" },
-    { name: "退款", emoji: "↩️" },
-    { name: "其他", emoji: "💵" },
-  ],
-};
-
-const emojiOf = (kind, name) =>
-  CATS[kind]?.find((c) => c.name === name)?.emoji || (kind === "income" ? "💵" : "📦");
+const emojiFrom = (cats, kind, name) =>
+  cats.find((c) => c.kind === kind && c.name === name)?.emoji ||
+  (kind === "income" ? "💵" : "📦");
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const todayStr = () => {
@@ -39,7 +19,7 @@ const todayStr = () => {
 };
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
 
-const emptyForm = () => ({ kind: "expense", amount: "", category: "餐飲", note: "", date: todayStr() });
+const emptyForm = () => ({ kind: "expense", amount: "", category: "", note: "", date: todayStr() });
 
 export default function Ledger() {
   const [txs, setTxs] = useState([]);
@@ -48,6 +28,8 @@ export default function Ledger() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [allCats, setAllCats] = useState([]);
+  const [managerOpen, setManagerOpen] = useState(false);
 
   function load() {
     setLoading(true);
@@ -56,9 +38,25 @@ export default function Ledger() {
       .catch(() => setTxs([]))
       .finally(() => setLoading(false));
   }
+  function loadCats() {
+    listLedgerCategories()
+      .then(setAllCats)
+      .catch(() => setAllCats([]));
+  }
   useEffect(() => {
     load();
+    loadCats();
   }, []);
+
+  const cats = allCats.filter((c) => c.kind === form.kind);
+
+  // 分類載入後，若目前沒選到有效分類，預設選第一個
+  useEffect(() => {
+    if (cats.length && !cats.some((c) => c.name === form.category)) {
+      setForm((f) => ({ ...f, category: cats[0].name }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCats, form.kind]);
 
   // 目前選到的年月
   const base = new Date();
@@ -137,7 +135,6 @@ export default function Ledger() {
     load();
   }
 
-  const cats = CATS[form.kind];
   const field =
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
@@ -209,7 +206,11 @@ export default function Ledger() {
                 key={k}
                 type="button"
                 onClick={() =>
-                  setForm((f) => ({ ...f, kind: k, category: CATS[k][0].name }))
+                  setForm((f) => ({
+                    ...f,
+                    kind: k,
+                    category: allCats.find((c) => c.kind === k)?.name || "",
+                  }))
                 }
                 className={`rounded-lg px-4 py-1.5 transition ${
                   form.kind === k
@@ -266,7 +267,7 @@ export default function Ledger() {
         <div className="flex flex-wrap gap-1.5">
           {cats.map((c) => (
             <button
-              key={c.name}
+              key={c.id ?? c.name}
               type="button"
               onClick={() => setForm({ ...form, category: c.name })}
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
@@ -278,6 +279,14 @@ export default function Ledger() {
               {c.emoji} {c.name}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setManagerOpen(true)}
+            className="rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-400 transition hover:border-indigo-300 hover:text-indigo-500"
+            title="新增／改名／刪除分類"
+          >
+            ⚙️ 管理
+          </button>
         </div>
 
         <div className="flex gap-2">
@@ -306,7 +315,7 @@ export default function Ledger() {
               <div key={name}>
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <span className="font-medium text-slate-600">
-                    {emojiOf("expense", name)} {name}
+                    {emojiFrom(allCats, "expense", name)} {name}
                   </span>
                   <span className="text-slate-500">
                     {money(amt)}
@@ -356,7 +365,7 @@ export default function Ledger() {
                   {rows.map((t) => (
                     <div key={t.id} className="group flex items-center gap-3 px-4 py-2.5">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50 text-lg ring-1 ring-slate-100">
-                        {emojiOf(t.kind, t.category)}
+                        {emojiFrom(allCats, t.kind, t.category)}
                       </span>
                       <button
                         onClick={() => startEdit(t)}
@@ -392,6 +401,12 @@ export default function Ledger() {
           })}
         </div>
       )}
+
+      <LedgerCategoryManager
+        open={managerOpen}
+        onClose={() => setManagerOpen(false)}
+        onChanged={loadCats}
+      />
     </div>
   );
 }

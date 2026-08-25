@@ -73,6 +73,41 @@ def init_db() -> None:
     except Exception as exc:  # noqa: BLE001
         print("thumbnail backfill skipped:", str(exc)[:200])
 
+    _seed_ledger_categories()
+
+
+DEFAULT_LEDGER_CATEGORIES = [
+    ("expense", "餐飲", "🍜"),
+    ("expense", "交通", "🚗"),
+    ("expense", "購物", "🛍️"),
+    ("expense", "娛樂", "🎮"),
+    ("expense", "居家", "🏠"),
+    ("expense", "醫療", "💊"),
+    ("expense", "學習", "📚"),
+    ("expense", "人情", "🎁"),
+    ("expense", "訂閱", "💳"),
+    ("expense", "其他", "📦"),
+    ("income", "薪水", "💰"),
+    ("income", "獎金", "🎉"),
+    ("income", "投資", "📈"),
+    ("income", "退款", "↩️"),
+    ("income", "其他", "💵"),
+]
+
+
+def _seed_ledger_categories() -> None:
+    """第一次啟動時，若還沒有任何記帳分類，就塞入預設分類。"""
+    from sqlmodel import Session, select
+
+    from app.models import LedgerCategory
+
+    with Session(engine) as session:
+        if session.exec(select(LedgerCategory)).first():
+            return
+        for i, (kind, name, emoji) in enumerate(DEFAULT_LEDGER_CATEGORIES):
+            session.add(LedgerCategory(kind=kind, name=name, emoji=emoji, sort=i))
+        session.commit()
+
 
 def _backfill_thumbs() -> None:
     from sqlmodel import Session, select
