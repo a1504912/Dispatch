@@ -91,6 +91,8 @@ class LedgerCategory(SQLModel, table=True):
     name: str
     emoji: str = "📦"
     sort: int = 0
+    # 次分類：指向主分類的 id；主分類本身 parent_id 為 None
+    parent_id: Optional[int] = Field(default=None, foreign_key="ledgercategory.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -126,7 +128,8 @@ class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     kind: str = "expense"  # expense（支出）/ income（收入）
     amount: float = 0  # 正數金額
-    category: str = ""  # 分類名稱，例：餐飲、交通
+    category: str = ""  # 主分類名稱，例：飲食、交通
+    subcategory: str = ""  # 次分類名稱，例：早餐、午餐（可空）
     note: str = ""
     date: date  # 這筆的日期
     created_at: datetime = Field(default_factory=datetime.utcnow)

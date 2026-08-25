@@ -44,5 +44,10 @@ def delete_category(cat_id: int, session: Session = Depends(get_session)):
     cat = session.get(LedgerCategory, cat_id)
     if not cat:
         raise HTTPException(status_code=404, detail="Category not found")
+    # 刪主分類時，一併刪掉它底下的次分類
+    for child in session.exec(
+        select(LedgerCategory).where(LedgerCategory.parent_id == cat_id)
+    ).all():
+        session.delete(child)
     session.delete(cat)
     session.commit()

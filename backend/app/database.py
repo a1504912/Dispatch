@@ -67,6 +67,20 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE subtask ADD COLUMN images TEXT"))
                 conn.commit()
 
+            # 記帳分類：主分類 → 次分類（parent_id）
+            lc_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(ledgercategory)"))]
+            if lc_cols and "parent_id" not in lc_cols:
+                conn.execute(text("ALTER TABLE ledgercategory ADD COLUMN parent_id INTEGER"))
+                conn.commit()
+
+            # 記帳：次分類欄位（transaction 是保留字，需加引號）
+            tx_cols = [row[1] for row in conn.execute(text('PRAGMA table_info("transaction")'))]
+            if tx_cols and "subcategory" not in tx_cols:
+                conn.execute(
+                    text("ALTER TABLE \"transaction\" ADD COLUMN subcategory VARCHAR NOT NULL DEFAULT ''")
+                )
+                conn.commit()
+
     # 幫既有、還沒有縮圖的行程補上縮圖（一次性；之後啟動就略過）
     try:
         _backfill_thumbs()

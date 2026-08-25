@@ -20,7 +20,14 @@ const todayStr = () => {
 };
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
 
-const emptyForm = () => ({ kind: "expense", amount: "", category: "", note: "", date: todayStr() });
+const emptyForm = () => ({
+  kind: "expense",
+  amount: "",
+  category: "",
+  subcategory: "",
+  note: "",
+  date: todayStr(),
+});
 
 export default function Ledger() {
   const [txs, setTxs] = useState([]);
@@ -50,12 +57,15 @@ export default function Ledger() {
     loadCats();
   }, []);
 
-  const cats = allCats.filter((c) => c.kind === form.kind);
+  const cats = allCats.filter((c) => c.kind === form.kind && !c.parent_id);
+  // 目前選到的主分類底下的次分類
+  const selectedCat = cats.find((c) => c.name === form.category);
+  const subCats = selectedCat ? allCats.filter((c) => c.parent_id === selectedCat.id) : [];
 
   // 分類載入後，若目前沒選到有效分類，預設選第一個
   useEffect(() => {
     if (cats.length && !cats.some((c) => c.name === form.category)) {
-      setForm((f) => ({ ...f, category: cats[0].name }));
+      setForm((f) => ({ ...f, category: cats[0].name, subcategory: "" }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allCats, form.kind]);
@@ -101,13 +111,20 @@ export default function Ledger() {
       kind: form.kind,
       amount,
       category: form.category || "其他",
+      subcategory: form.subcategory || "",
       note: form.note.trim(),
       date: form.date || todayStr(),
     };
     try {
       if (editingId) await updateTransaction(editingId, payload);
       else await createTransaction(payload);
-      setForm((f) => ({ ...emptyForm(), kind: f.kind, category: f.category, date: f.date }));
+      setForm((f) => ({
+        ...emptyForm(),
+        kind: f.kind,
+        category: f.category,
+        subcategory: f.subcategory,
+        date: f.date,
+      }));
       setEditingId(null);
       load();
     } finally {
@@ -121,6 +138,7 @@ export default function Ledger() {
       kind: t.kind,
       amount: String(t.amount),
       category: t.category,
+      subcategory: t.subcategory || "",
       note: t.note || "",
       date: t.date,
     });
@@ -235,7 +253,8 @@ export default function Ledger() {
                   setForm((f) => ({
                     ...f,
                     kind: k,
-                    category: allCats.find((c) => c.kind === k)?.name || "",
+                    category: allCats.find((c) => c.kind === k && !c.parent_id)?.name || "",
+                    subcategory: "",
                   }))
                 }
                 className={`rounded-lg px-4 py-1.5 transition ${
@@ -295,7 +314,7 @@ export default function Ledger() {
             <button
               key={c.id ?? c.name}
               type="button"
-              onClick={() => setForm({ ...form, category: c.name })}
+              onClick={() => setForm({ ...form, category: c.name, subcategory: "" })}
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
                 form.category === c.name
                   ? "bg-indigo-600 text-white shadow"
@@ -314,6 +333,37 @@ export default function Ledger() {
             ⚙️ 管理
           </button>
         </div>
+
+        {/* 次分類（選了有次分類的主分類才出現） */}
+        {subCats.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-l-2 border-slate-100 pl-3">
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, subcategory: "" })}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                !form.subcategory
+                  ? "bg-slate-700 text-white"
+                  : "bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              不分
+            </button>
+            {subCats.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setForm({ ...form, subcategory: s.name })}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  form.subcategory === s.name
+                    ? "bg-indigo-500 text-white"
+                    : "bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex gap-2">
           <input
@@ -400,6 +450,9 @@ export default function Ledger() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-800">
                             {t.category}
+                            {t.subcategory && (
+                              <span className="font-normal text-slate-400"> · {t.subcategory}</span>
+                            )}
                           </p>
                           {t.note && <p className="truncate text-xs text-slate-400">{t.note}</p>}
                         </div>

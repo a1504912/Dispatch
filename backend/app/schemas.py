@@ -63,6 +63,7 @@ class TransactionCreate(SQLModel):
     kind: str = "expense"
     amount: float
     category: str = ""
+    subcategory: str = ""
     note: str = ""
     date: date
 
@@ -72,6 +73,7 @@ class LedgerCategoryCreate(SQLModel):
     name: str
     emoji: str = "📦"
     sort: int = 0
+    parent_id: Optional[int] = None
 
 
 class LedgerMemberCreate(SQLModel):
