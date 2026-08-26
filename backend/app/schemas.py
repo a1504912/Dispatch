@@ -67,8 +67,17 @@ class TransactionCreate(SQLModel):
     note: str = ""
     date: date
     account: str = ""
+    account_id: Optional[int] = None
+    to_account_id: Optional[int] = None
     event_id: Optional[int] = None
     split_bill_id: Optional[int] = None
+
+
+class AccountCreate(SQLModel):
+    name: str
+    emoji: str = "💰"
+    initial: float = 0
+    sort: int = 0
 
 
 class LedgerCategoryCreate(SQLModel):

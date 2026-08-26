@@ -96,6 +96,17 @@ class LedgerCategory(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Account(SQLModel, table=True):
+    """記帳帳戶（現金／銀行／信用卡…），有初始餘額；目前餘額由交易算出。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    emoji: str = "💰"
+    initial: float = 0  # 初始餘額
+    sort: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class LedgerMember(SQLModel, table=True):
     """分帳的常用成員（朋友、室友…）。「我」是隱含的，不存在這張表。"""
 
@@ -132,7 +143,9 @@ class Transaction(SQLModel, table=True):
     subcategory: str = ""  # 次分類名稱，例：早餐、午餐（可空）
     note: str = ""
     date: date  # 這筆的日期
-    account: str = ""  # 帳戶：現金／銀行帳戶／信用卡…（可空）
+    account: str = ""  # 帳戶名稱（顯示用；正式關聯看 account_id）
+    account_id: Optional[int] = Field(default=None, foreign_key="account.id")  # 支出/收入/轉出的帳戶
+    to_account_id: Optional[int] = Field(default=None, foreign_key="account.id")  # 轉帳的轉入帳戶
     event_id: Optional[int] = Field(default=None, foreign_key="event.id")  # 連結的行程
     split_bill_id: Optional[int] = Field(default=None, foreign_key="splitbill.id")  # 記帳時建立的分帳
     created_at: datetime = Field(default_factory=datetime.utcnow)

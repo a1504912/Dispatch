@@ -60,4 +60,5 @@ export const KEYS = {
   ledgerCats: "dispatch.local.ledgerCats",
   members: "dispatch.local.members",
   splitbills: "dispatch.local.splitbills",
+  accounts: "dispatch.local.accounts",
 };

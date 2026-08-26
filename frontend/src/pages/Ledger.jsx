@@ -3,6 +3,7 @@ import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 import SplitBills from "../components/SplitBills.jsx";
+import Assets from "../components/Assets.jsx";
 import TransactionModal from "../components/TransactionModal.jsx";
 
 const emojiFrom = (cats, kind, name) =>
@@ -110,10 +111,20 @@ export default function Ledger() {
         >
           🧾 分帳
         </button>
+        <button
+          onClick={() => setTab("assets")}
+          className={`rounded-lg px-4 py-1.5 transition ${
+            tab === "assets" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          🏦 資產
+        </button>
       </div>
 
       {tab === "split" ? (
         <SplitBills expenseCats={allCats.filter((c) => c.kind === "expense")} />
+      ) : tab === "assets" ? (
+        <Assets />
       ) : (
        <>
       {/* 月份切換 */}
@@ -217,7 +228,7 @@ export default function Ledger() {
         <div className="space-y-4">
           {grouped.map(([date, rows]) => {
             const daySum = rows.reduce(
-              (s, t) => s + (t.kind === "expense" ? -t.amount : t.amount),
+              (s, t) => s + (t.kind === "expense" ? -t.amount : t.kind === "income" ? t.amount : 0),
               0
             );
             return (
@@ -235,7 +246,7 @@ export default function Ledger() {
                   {rows.map((t) => (
                     <div key={t.id} className="group flex items-center gap-3 px-4 py-2.5">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50 text-lg ring-1 ring-slate-100">
-                        {emojiFrom(allCats, t.kind, t.category)}
+                        {t.kind === "transfer" ? "🔁" : emojiFrom(allCats, t.kind, t.category)}
                       </span>
                       <button
                         onClick={() => startEdit(t)}
@@ -243,7 +254,7 @@ export default function Ledger() {
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-800">
-                            {t.category}
+                            {t.kind === "transfer" ? "轉帳" : t.category}
                             {t.subcategory && (
                               <span className="font-normal text-slate-400"> · {t.subcategory}</span>
                             )}
@@ -259,10 +270,14 @@ export default function Ledger() {
                       </button>
                       <span
                         className={`shrink-0 text-sm font-bold ${
-                          t.kind === "expense" ? "text-slate-800" : "text-emerald-500"
+                          t.kind === "expense"
+                            ? "text-slate-800"
+                            : t.kind === "income"
+                              ? "text-emerald-500"
+                              : "text-sky-500"
                         }`}
                       >
-                        {t.kind === "expense" ? "-" : "+"}
+                        {t.kind === "expense" ? "-" : t.kind === "income" ? "+" : ""}
                         {money(t.amount)}
                       </span>
                       <button

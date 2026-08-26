@@ -3,15 +3,7 @@ import { createTransaction, updateTransaction } from "../api/ledger";
 import { listMembers } from "../api/members";
 import { createSplitBill } from "../api/splitbills";
 import { listEvents } from "../api/events";
-
-// 帳戶（先用預設清單；之後「資產」頁會做成可自訂＋有餘額）
-export const ACCOUNTS = [
-  { name: "現金", emoji: "💵" },
-  { name: "銀行帳戶", emoji: "🏦" },
-  { name: "信用卡", emoji: "💳" },
-  { name: "電子支付", emoji: "📱" },
-  { name: "外幣", emoji: "💱" },
-];
+import { listAccounts } from "../api/accounts";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
@@ -49,7 +41,7 @@ export default function TransactionModal({ open, initial, categories = [], onClo
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState([]);
   const [events, setEvents] = useState([]);
-  // 分帳
+  const [accounts, setAccounts] = useState([]);
   const [splitOn, setSplitOn] = useState(false);
   const [method, setMethod] = useState("equal");
   const [checked, setChecked] = useState({});
@@ -64,20 +56,32 @@ export default function TransactionModal({ open, initial, categories = [], onClo
       subcategory: initial?.subcategory ?? "",
       note: initial?.note ?? "",
       date: initial?.date ?? todayStr(),
-      account: initial?.account ?? "現金",
+      account: initial?.account ?? "",
+      account_id: initial?.account_id ?? null,
+      to_account_id: initial?.to_account_id ?? null,
       event_id: initial?.event_id ?? null,
     });
     setSplitOn(false);
     setMethod("equal");
     setSaving(false);
     listMembers().then(setMembers).catch(() => setMembers([]));
+    listAccounts()
+      .then((accs) => {
+        setAccounts(accs);
+        setForm((f) => {
+          if (!f) return f;
+          if (f.account_id) return f;
+          const first = accs[0];
+          return first ? { ...f, account_id: first.id, account: first.name } : f;
+        });
+      })
+      .catch(() => setAccounts([]));
     listEvents()
       .then((evs) => setEvents(evs.filter((e) => !e.is_task).sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))))
       .catch(() => setEvents([]));
   }, [open, initial]);
 
   useEffect(() => {
-    // 開啟分帳時，預設全員參與、份數 1
     const c = { self: true };
     const w = { self: "1" };
     members.forEach((m) => {
@@ -90,6 +94,7 @@ export default function TransactionModal({ open, initial, categories = [], onClo
 
   if (!open || !form) return null;
 
+  const isTransfer = form.kind === "transfer";
   const cats = categories.filter((c) => c.kind === form.kind && !c.parent_id);
   const selectedCat = cats.find((c) => c.name === form.category);
   const subCats = selectedCat ? categories.filter((c) => c.parent_id === selectedCat.id) : [];
@@ -106,14 +111,18 @@ export default function TransactionModal({ open, initial, categories = [], onClo
   const field =
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
-  const canSave = amountNum > 0 && !exactBad && !saving;
+  const transferBad = isTransfer && (!form.account_id || !form.to_account_id || form.account_id === form.to_account_id);
+  const canSave = amountNum > 0 && !exactBad && !transferBad && !saving;
+
+  function pickAccount(a) {
+    setForm({ ...form, account_id: a.id, account: a.name });
+  }
 
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
     try {
       let splitBillId = initial?.split_bill_id ?? null;
-      // 記帳時分帳：建立一筆分帳（你先付），別人欠你他們那份
       if (splitOn && !isEdit && form.kind === "expense" && parts.length > 1) {
         const arr = parts.map((p) => ({ who: p, value: shares[p] || 0 }));
         const bill = await createSplitBill({
@@ -131,11 +140,13 @@ export default function TransactionModal({ open, initial, categories = [], onClo
       const payload = {
         kind: form.kind,
         amount: amountNum,
-        category: form.kind === "income" || form.kind === "expense" ? form.category || "其他" : "",
-        subcategory: form.subcategory || "",
+        category: isTransfer ? "" : form.category || "其他",
+        subcategory: isTransfer ? "" : form.subcategory || "",
         note: form.note.trim(),
         date: form.date || todayStr(),
         account: form.account || "",
+        account_id: form.account_id ?? null,
+        to_account_id: isTransfer ? form.to_account_id ?? null : null,
         event_id: form.event_id ?? null,
         split_bill_id: splitBillId,
       };
@@ -156,36 +167,40 @@ export default function TransactionModal({ open, initial, categories = [], onClo
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          {/* 支出 / 收入 */}
+          {/* 支出 / 收入 / 轉帳 */}
           <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
-            {[["expense", "支出", "text-red-600"], ["income", "收入", "text-emerald-600"]].map(([k, label, col]) => (
+            {[["expense", "支出", "text-red-600"], ["income", "收入", "text-emerald-600"], ["transfer", "轉帳", "text-sky-600"]].map(([k, label, col]) => (
               <button key={k} type="button"
                 onClick={() => setForm((f) => ({ ...f, kind: k, category: "", subcategory: "" }))}
-                className={`flex-1 rounded-lg px-4 py-1.5 transition ${form.kind === k ? `bg-white ${col} shadow-sm` : "text-slate-500"}`}>
+                className={`flex-1 rounded-lg px-3 py-1.5 transition ${form.kind === k ? `bg-white ${col} shadow-sm` : "text-slate-500"}`}>
                 {label}
               </button>
             ))}
           </div>
 
-          {/* 分類（可橫向滑） */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {cats.map((c) => (
-              <button key={c.id ?? c.name} type="button"
-                onClick={() => setForm({ ...form, category: c.name, subcategory: "" })}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition ${form.category === c.name ? "bg-indigo-600 text-white shadow" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
-                {c.emoji} {c.name}
-              </button>
-            ))}
-          </div>
-          {subCats.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto border-l-2 border-slate-100 pl-3">
-              <button type="button" onClick={() => setForm({ ...form, subcategory: "" })}
-                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${!form.subcategory ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>不分</button>
-              {subCats.map((s) => (
-                <button key={s.id} type="button" onClick={() => setForm({ ...form, subcategory: s.name })}
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${form.subcategory === s.name ? "bg-indigo-500 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>{s.name}</button>
-              ))}
-            </div>
+          {/* 分類（支出/收入才有） */}
+          {!isTransfer && (
+            <>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {cats.map((c) => (
+                  <button key={c.id ?? c.name} type="button"
+                    onClick={() => setForm({ ...form, category: c.name, subcategory: "" })}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition ${form.category === c.name ? "bg-indigo-600 text-white shadow" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
+                    {c.emoji} {c.name}
+                  </button>
+                ))}
+              </div>
+              {subCats.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto border-l-2 border-slate-100 pl-3">
+                  <button type="button" onClick={() => setForm({ ...form, subcategory: "" })}
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${!form.subcategory ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>不分</button>
+                  {subCats.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setForm({ ...form, subcategory: s.name })}
+                      className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${form.subcategory === s.name ? "bg-indigo-500 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>{s.name}</button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* 金額 + 日期 */}
@@ -201,19 +216,38 @@ export default function TransactionModal({ open, initial, categories = [], onClo
           <input className={`${field} w-full`} placeholder="備註（可留空）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
 
           {/* 帳戶 */}
-          <div>
-            <p className="mb-1 text-xs font-bold text-slate-500">帳戶</p>
-            <div className="flex flex-wrap gap-1.5">
-              {ACCOUNTS.map((a) => (
-                <button key={a.name} type="button" onClick={() => setForm({ ...form, account: a.name })}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${form.account === a.name ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
-                  {a.emoji} {a.name}
-                </button>
-              ))}
+          {isTransfer ? (
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <p className="mb-1 text-xs font-bold text-slate-500">從</p>
+                <select value={form.account_id ?? ""} onChange={(e) => setForm({ ...form, account_id: Number(e.target.value) })} className={`${field} w-full`}>
+                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                </select>
+              </div>
+              <span className="mt-5 text-slate-400">→</span>
+              <div className="flex-1">
+                <p className="mb-1 text-xs font-bold text-slate-500">到</p>
+                <select value={form.to_account_id ?? ""} onChange={(e) => setForm({ ...form, to_account_id: Number(e.target.value) })} className={`${field} w-full`}>
+                  <option value="">選擇</option>
+                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                </select>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <p className="mb-1 text-xs font-bold text-slate-500">帳戶</p>
+              <div className="flex flex-wrap gap-1.5">
+                {accounts.map((a) => (
+                  <button key={a.id} type="button" onClick={() => pickAccount(a)}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${form.account_id === a.id ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
+                    {a.emoji} {a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-          {/* 記帳時分帳（只在支出、新增時） */}
+          {/* 記帳時分帳（支出、新增時） */}
           {form.kind === "expense" && !isEdit && (
             <div className="rounded-xl border border-slate-200 p-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-amber-600">

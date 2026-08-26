@@ -88,6 +88,10 @@ def init_db() -> None:
                     conn.execute(text('ALTER TABLE "transaction" ADD COLUMN event_id INTEGER'))
                 if "split_bill_id" not in tx_cols:
                     conn.execute(text('ALTER TABLE "transaction" ADD COLUMN split_bill_id INTEGER'))
+                if "account_id" not in tx_cols:
+                    conn.execute(text('ALTER TABLE "transaction" ADD COLUMN account_id INTEGER'))
+                if "to_account_id" not in tx_cols:
+                    conn.execute(text('ALTER TABLE "transaction" ADD COLUMN to_account_id INTEGER'))
                 conn.commit()
 
     # 幫既有、還沒有縮圖的行程補上縮圖（一次性；之後啟動就略過）
@@ -97,6 +101,7 @@ def init_db() -> None:
         print("thumbnail backfill skipped:", str(exc)[:200])
 
     _seed_ledger_categories()
+    _seed_accounts()
 
 
 DEFAULT_LEDGER_CATEGORIES = [
@@ -116,6 +121,28 @@ DEFAULT_LEDGER_CATEGORIES = [
     ("income", "退款", "↩️"),
     ("income", "其他", "💵"),
 ]
+
+
+DEFAULT_ACCOUNTS = [
+    ("現金", "💵"),
+    ("銀行帳戶", "🏦"),
+    ("信用卡", "💳"),
+    ("電子支付", "📱"),
+    ("外幣", "💱"),
+]
+
+
+def _seed_accounts() -> None:
+    from sqlmodel import Session, select
+
+    from app.models import Account
+
+    with Session(engine) as session:
+        if session.exec(select(Account)).first():
+            return
+        for i, (name, emoji) in enumerate(DEFAULT_ACCOUNTS):
+            session.add(Account(name=name, emoji=emoji, initial=0, sort=i))
+        session.commit()
 
 
 def _seed_ledger_categories() -> None:

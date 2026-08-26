@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import init_db
 from app.routers import (
+    accounts,
     agents,
     auth,
     categories,
@@ -108,6 +109,7 @@ app.include_router(transactions.router)
 app.include_router(ledger_categories.router)
 app.include_router(members.router)
 app.include_router(splitbills.router)
+app.include_router(accounts.router)
 
 
 @app.get("/api/health")
