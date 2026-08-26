@@ -3,6 +3,7 @@ import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import { listBudgets } from "../api/budgets";
 import Budget from "../components/Budget.jsx";
+import Analysis from "../components/Analysis.jsx";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 import SplitBills from "../components/SplitBills.jsx";
 import Assets from "../components/Assets.jsx";
@@ -102,11 +103,11 @@ export default function Ledger() {
         <p className="mt-1 text-sm text-slate-500">記錄每天的收支，看看錢都花到哪去了。</p>
       </div>
 
-      {/* 分頁：記錄 / 分帳 */}
-      <div className="flex w-fit rounded-xl bg-slate-100 p-1 text-sm font-medium">
+      {/* 分頁：記錄 / 分帳 / 預算 / 資產 / 分析 */}
+      <div className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-slate-100 p-1 text-sm font-medium">
         <button
           onClick={() => setTab("records")}
-          className={`rounded-lg px-4 py-1.5 transition ${
+          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
             tab === "records" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
           }`}
         >
@@ -114,7 +115,7 @@ export default function Ledger() {
         </button>
         <button
           onClick={() => setTab("split")}
-          className={`rounded-lg px-4 py-1.5 transition ${
+          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
             tab === "split" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
           }`}
         >
@@ -122,7 +123,7 @@ export default function Ledger() {
         </button>
         <button
           onClick={() => setTab("budget")}
-          className={`rounded-lg px-4 py-1.5 transition ${
+          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
             tab === "budget" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
           }`}
         >
@@ -130,11 +131,19 @@ export default function Ledger() {
         </button>
         <button
           onClick={() => setTab("assets")}
-          className={`rounded-lg px-4 py-1.5 transition ${
+          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
             tab === "assets" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
           }`}
         >
           🏦 資產
+        </button>
+        <button
+          onClick={() => setTab("analysis")}
+          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
+            tab === "analysis" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          📊 分析
         </button>
       </div>
 
@@ -144,6 +153,8 @@ export default function Ledger() {
         <Assets />
       ) : tab === "budget" ? (
         <Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} />
+      ) : tab === "analysis" ? (
+        <Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} />
       ) : (
        <>
       {/* 月份切換 */}
