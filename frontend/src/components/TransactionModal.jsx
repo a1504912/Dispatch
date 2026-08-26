@@ -4,25 +4,11 @@ import { listMembers } from "../api/members";
 import { createSplitBill } from "../api/splitbills";
 import { listEvents } from "../api/events";
 import { listAccounts } from "../api/accounts";
+import { evalExpr, hasOperator } from "../calc";
+import CalcButtons from "./CalcButtons.jsx";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
-
-// 金額欄可以打算式（120+80）；安全地只允許數字與運算子後計算。
-function evalExpr(s) {
-  const str = String(s ?? "").trim();
-  if (str === "") return 0;
-  if (!/^[0-9+\-*/×÷.()\s]+$/.test(str)) return 0;
-  const norm = str.replace(/×/g, "*").replace(/÷/g, "/");
-  try {
-    // eslint-disable-next-line no-new-func
-    const v = Function('"use strict";return (' + norm + ")")();
-    return typeof v === "number" && isFinite(v) ? v : 0;
-  } catch {
-    return 0;
-  }
-}
-const hasOperator = (s) => /[+*/×÷]/.test(String(s || "")) || /\d\s*-/.test(String(s || ""));
 const todayStr = () => {
   const d = new Date();
   const p = (x) => String(x).padStart(2, "0");
@@ -119,8 +105,6 @@ export default function TransactionModal({ open, initial, categories = [], onClo
 
   const amountNum = evalExpr(form.amount);
   const showCalc = hasOperator(form.amount);
-  const appendAmt = (ch) => setForm((f) => ({ ...f, amount: (f.amount || "") + ch }));
-  const backAmt = () => setForm((f) => ({ ...f, amount: String(f.amount || "").slice(0, -1) }));
   const everyone = ["self", ...members.map((m) => String(m.id))];
   const parts = everyone.filter((w) => checked[w]);
   const shares = computeShares(method, parts, amountNum, inputs);
@@ -250,17 +234,7 @@ export default function TransactionModal({ open, initial, categories = [], onClo
             <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${field} w-36`} />
           </div>
           {/* 計算機按鈕 */}
-          <div className="flex gap-1.5">
-            {["+", "−", "×", "÷"].map((op) => (
-              <button key={op} type="button" onClick={() => appendAmt(op === "−" ? "-" : op)}
-                className="flex-1 rounded-lg bg-slate-100 py-1.5 text-sm font-bold text-slate-600 transition hover:bg-slate-200 active:scale-95">
-                {op}
-              </button>
-            ))}
-            <button type="button" onClick={backAmt} className="flex-1 rounded-lg bg-slate-100 py-1.5 text-sm font-bold text-slate-600 transition hover:bg-slate-200 active:scale-95" title="退格">⌫</button>
-            <button type="button" onClick={() => showCalc && setForm((f) => ({ ...f, amount: String(evalExpr(f.amount)) }))}
-              className="flex-1 rounded-lg bg-slate-700 py-1.5 text-sm font-bold text-white transition hover:bg-slate-600 active:scale-95" title="算出結果">＝</button>
-          </div>
+          <CalcButtons value={form.amount} onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
 
           <input className={`${field} w-full`} placeholder="備註（可留空）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
 

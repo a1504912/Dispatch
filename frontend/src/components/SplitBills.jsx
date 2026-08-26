@@ -3,6 +3,8 @@ import { listMembers, createMember, updateMember, deleteMember } from "../api/me
 import { listSplitBills, createSplitBill, deleteSplitBill } from "../api/splitbills";
 import { listSettlements, createSettlement, deleteSettlement } from "../api/settlements";
 import { listAccounts } from "../api/accounts";
+import { evalExpr, hasOperator } from "../calc";
+import CalcButtons from "./CalcButtons.jsx";
 
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -130,7 +132,7 @@ function SplitBillModal({ open, members, expenseCats, onClose, onSaved }) {
 
   if (!open) return null;
 
-  const totalNum = Number(total) || 0;
+  const totalNum = evalExpr(total);
   const everyone = ["self", ...members.map((m) => String(m.id))];
   const parts = everyone.filter((w) => checked[w]);
   const shares = computeShares(method, parts, totalNum, inputs);
@@ -174,10 +176,14 @@ function SplitBillModal({ open, members, expenseCats, onClose, onSaved }) {
           <div className="flex gap-2">
             <div className="relative flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-              <input type="number" inputMode="decimal" min="0" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="總金額" className={`${field} w-full pl-6 text-lg font-bold`} />
+              <input type="text" inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="總金額（可算式）" className={`${field} w-full pl-6 text-lg font-bold`} />
+              {hasOperator(total) && (
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600">＝ {money(totalNum)}</span>
+              )}
             </div>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${field} w-36`} />
           </div>
+          <CalcButtons value={total} onChange={setTotal} />
 
           {expenseCats?.length > 0 && (
             <select value={category} onChange={(e) => setCategory(e.target.value)} className={`${field} w-full`}>
@@ -272,7 +278,7 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
   async function save() {
-    const amt = Number(amount);
+    const amt = evalExpr(amount);
     if (!amt || amt <= 0 || saving) return;
     setSaving(true);
     try {
@@ -306,10 +312,14 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
           <div className="flex gap-2">
             <div className="relative flex-1">
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-              <input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${field} w-full pl-7 text-lg font-bold`} />
+              <input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${field} w-full pl-7 text-lg font-bold`} />
+              {hasOperator(amount) && (
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600">＝ {money(evalExpr(amount))}</span>
+              )}
             </div>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${field} w-36`} />
           </div>
+          <CalcButtons value={amount} onChange={setAmount} />
 
           <div>
             <p className="mb-1 text-xs font-bold text-slate-500">記帳方式</p>
@@ -338,7 +348,7 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
           <button onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">取消</button>
-          <button onClick={save} disabled={!Number(amount) || saving} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40">
+          <button onClick={save} disabled={!evalExpr(amount) || saving} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40">
             {saving ? "處理中…" : "確認結清"}
           </button>
         </div>
