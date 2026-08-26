@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 from app import push
 from app.config import settings
 from app.database import engine
-from app.models import Event, SentNotification
+from app.models import Budget, Event, SentNotification, Transaction
 
 _stop = threading.Event()
 _thread: threading.Thread | None = None
@@ -132,12 +132,53 @@ def _check_daily_summary(session: Session, now: datetime) -> None:
         )
 
 
+def _check_budget_overspend(session: Session, now: datetime) -> None:
+    """本月支出超過預算就推播（總預算 + 各分類；每月每項只提醒一次）。"""
+    budgets = session.exec(select(Budget)).all()
+    if not budgets:
+        return
+    ym = f"{now.year:04d}{now.month:02d}"
+    # 本月支出：總額 + 各分類
+    txs = session.exec(
+        select(Transaction).where(Transaction.kind == "expense")
+    ).all()
+    total = 0.0
+    by_cat: dict[str, float] = {}
+    for t in txs:
+        if t.date and t.date.year == now.year and t.date.month == now.month:
+            total += t.amount
+            by_cat[t.category] = by_cat.get(t.category, 0) + t.amount
+
+    for b in budgets:
+        if b.amount <= 0:
+            continue
+        spent = total if b.category == "" else by_cat.get(b.category, 0)
+        if spent <= b.amount:
+            continue
+        tag = f"budget:{b.category or 'overall'}:{ym}"
+        if _already_sent(session, tag):
+            continue
+        label = "本月總支出" if b.category == "" else f"「{b.category}」"
+        over = int(spent - b.amount)
+        push.send_to_all(
+            session,
+            {
+                "title": "💸 預算超支提醒",
+                "body": f"{label}已超出預算 ${over:,}（{int(spent):,}/{int(b.amount):,}）",
+                "url": "/ledger",
+                "tag": tag,
+            },
+        )
+        _mark_sent(session, tag)
+
+
 def _tick() -> None:
     now = _now_local()
     with Session(engine) as session:
         try:
             _check_event_reminders(session, now)
             _check_daily_summary(session, now)
+            _check_budget_overspend(session, now)
             if now.minute == 0:  # 每小時整點清一次舊標記
                 _prune(session)
         except Exception as exc:  # noqa: BLE001

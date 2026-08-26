@@ -80,6 +80,11 @@ class AccountCreate(SQLModel):
     sort: int = 0
 
 
+class BudgetCreate(SQLModel):
+    category: str = ""
+    amount: float = 0
+
+
 class LedgerCategoryCreate(SQLModel):
     kind: str = "expense"
     name: str

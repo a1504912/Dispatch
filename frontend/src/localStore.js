@@ -61,4 +61,5 @@ export const KEYS = {
   members: "dispatch.local.members",
   splitbills: "dispatch.local.splitbills",
   accounts: "dispatch.local.accounts",
+  budgets: "dispatch.local.budgets",
 };

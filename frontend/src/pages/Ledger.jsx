@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
+import { listBudgets } from "../api/budgets";
+import Budget from "../components/Budget.jsx";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 import SplitBills from "../components/SplitBills.jsx";
 import Assets from "../components/Assets.jsx";
@@ -22,6 +24,7 @@ export default function Ledger() {
   const [tab, setTab] = useState("records"); // records（記錄）/ split（分帳）
   const [txModalOpen, setTxModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
+  const [budgets, setBudgets] = useState([]);
 
   function load() {
     setLoading(true);
@@ -35,9 +38,15 @@ export default function Ledger() {
       .then(setAllCats)
       .catch(() => setAllCats([]));
   }
+  function loadBudgets() {
+    listBudgets()
+      .then(setBudgets)
+      .catch(() => setBudgets([]));
+  }
   useEffect(() => {
     load();
     loadCats();
+    loadBudgets();
   }, []);
 
   // 目前選到的年月
@@ -112,6 +121,14 @@ export default function Ledger() {
           🧾 分帳
         </button>
         <button
+          onClick={() => setTab("budget")}
+          className={`rounded-lg px-4 py-1.5 transition ${
+            tab === "budget" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          🎯 預算
+        </button>
+        <button
           onClick={() => setTab("assets")}
           className={`rounded-lg px-4 py-1.5 transition ${
             tab === "assets" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -125,6 +142,8 @@ export default function Ledger() {
         <SplitBills expenseCats={allCats.filter((c) => c.kind === "expense")} />
       ) : tab === "assets" ? (
         <Assets />
+      ) : tab === "budget" ? (
+        <Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} />
       ) : (
        <>
       {/* 月份切換 */}
@@ -178,6 +197,33 @@ export default function Ledger() {
           </p>
         </div>
       </div>
+
+      {/* 本月預算條 */}
+      {(() => {
+        const ob = budgets.find((b) => b.category === "");
+        if (!ob || ob.amount <= 0) return null;
+        const pct = Math.min((expense / ob.amount) * 100, 100);
+        const over = expense > ob.amount;
+        const near = !over && expense >= ob.amount * 0.8;
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-500">本月預算</span>
+              <span className="text-slate-400">{money(expense)} / {money(ob.amount)}</span>
+            </div>
+            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+              <div className={`h-full rounded-full transition-all ${over ? "bg-red-500" : near ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+            </div>
+            <p className="mt-1.5 text-xs">
+              {over ? (
+                <span className="font-bold text-red-500">超出 {money(expense - ob.amount)}</span>
+              ) : (
+                <span className="text-slate-500">還可花 {money(ob.amount - expense)}</span>
+              )}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* 新增記錄按鈕 */}
       <button

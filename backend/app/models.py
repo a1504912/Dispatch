@@ -96,6 +96,15 @@ class LedgerCategory(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Budget(SQLModel, table=True):
+    """每月預算。category 為空＝總預算；否則為某主分類的預算。每月重複套用。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    category: str = ""  # "" = 總預算
+    amount: float = 0  # 每月上限
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Account(SQLModel, table=True):
     """記帳帳戶（現金／銀行／信用卡…），有初始餘額；目前餘額由交易算出。"""
 

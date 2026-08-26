@@ -12,6 +12,7 @@ from app.routers import (
     accounts,
     agents,
     auth,
+    budgets,
     categories,
     chat,
     events,
@@ -110,6 +111,7 @@ app.include_router(ledger_categories.router)
 app.include_router(members.router)
 app.include_router(splitbills.router)
 app.include_router(accounts.router)
+app.include_router(budgets.router)
 
 
 @app.get("/api/health")
