@@ -85,6 +85,16 @@ class BudgetCreate(SQLModel):
     amount: float = 0
 
 
+class SettlementCreate(SQLModel):
+    member_id: int
+    amount: float
+    direction: str = "in"
+    date: date
+    method: str = "none"  # income / offset / expense / none
+    account_id: Optional[int] = None
+    note: str = ""
+
+
 class LedgerCategoryCreate(SQLModel):
     kind: str = "expense"
     name: str

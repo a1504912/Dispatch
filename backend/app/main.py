@@ -25,6 +25,7 @@ from app.routers import (
     splitbills,
     push,
     schedule,
+    settlements,
     subtasks,
     transactions,
 )
@@ -112,6 +113,7 @@ app.include_router(members.router)
 app.include_router(splitbills.router)
 app.include_router(accounts.router)
 app.include_router(budgets.router)
+app.include_router(settlements.router)
 
 
 @app.get("/api/health")

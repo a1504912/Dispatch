@@ -62,4 +62,5 @@ export const KEYS = {
   splitbills: "dispatch.local.splitbills",
   accounts: "dispatch.local.accounts",
   budgets: "dispatch.local.budgets",
+  settlements: "dispatch.local.settlements",
 };

@@ -305,18 +305,20 @@ export default function Ledger() {
                           </p>
                         </div>
                       </button>
-                      <span
-                        className={`shrink-0 text-sm font-bold ${
-                          t.kind === "expense"
-                            ? "text-slate-800"
-                            : t.kind === "income"
-                              ? "text-emerald-500"
-                              : "text-sky-500"
-                        }`}
-                      >
-                        {t.kind === "expense" ? "-" : t.kind === "income" ? "+" : ""}
-                        {money(t.amount)}
-                      </span>
+                      {(() => {
+                        const refund = t.kind === "expense" && t.amount < 0;
+                        const positive = t.kind === "income" || refund;
+                        return (
+                          <span
+                            className={`shrink-0 text-sm font-bold ${
+                              positive ? "text-emerald-500" : t.kind === "expense" ? "text-slate-800" : "text-sky-500"
+                            }`}
+                          >
+                            {positive ? "+" : t.kind === "expense" ? "-" : ""}
+                            {money(Math.abs(t.amount))}
+                          </span>
+                        );
+                      })()}
                       <button
                         onClick={() => handleDelete(t)}
                         className="shrink-0 rounded-md px-1 text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"

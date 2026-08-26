@@ -73,6 +73,21 @@ class Subtask(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Settlement(SQLModel, table=True):
+    """分帳結算/還款。direction: in（對方還你）/ out（你還對方）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    member_id: int = Field(foreign_key="ledgermember.id", index=True)
+    amount: float = 0
+    direction: str = "in"  # in / out
+    date: date
+    method: str = "none"  # income / offset / expense / none（怎麼記進帳）
+    account_id: Optional[int] = Field(default=None, foreign_key="account.id")
+    note: str = ""
+    transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class GoogleCredential(SQLModel, table=True):
     """單一列（id=1）存放 Google OAuth token。"""
 

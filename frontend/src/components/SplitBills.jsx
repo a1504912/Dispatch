@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { listMembers, createMember, updateMember, deleteMember } from "../api/members";
 import { listSplitBills, createSplitBill, deleteSplitBill } from "../api/splitbills";
+import { listSettlements, createSettlement, deleteSettlement } from "../api/settlements";
+import { listAccounts } from "../api/accounts";
 
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -244,20 +246,126 @@ function SplitBillModal({ open, members, expenseCats, onClose, onSaved }) {
   );
 }
 
+/* ---------------- 結算/沖帳 ---------------- */
+function SettleModal({ target, accounts, onClose, onSaved }) {
+  const net = target.net;
+  const dir = net > 0 ? "in" : "out"; // in：對方還你；out：你還對方
+  const [amount, setAmount] = useState(String(Math.round(Math.abs(net))));
+  const [date, setDate] = useState(todayStr());
+  const [method, setMethod] = useState(dir === "in" ? "income" : "expense");
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? null);
+  const [saving, setSaving] = useState(false);
+
+  const inMethods = [
+    ["income", "記為收入", "還款當成一筆收入"],
+    ["offset", "沖銷支出", "扣回原本的支出（負支出）"],
+    ["none", "不記帳", "只把帳清掉，不進記帳"],
+  ];
+  const outMethods = [
+    ["expense", "記為支出", "你付出的錢記一筆支出"],
+    ["none", "不記帳", "只把帳清掉，不進記帳"],
+  ];
+  const methods = dir === "in" ? inMethods : outMethods;
+  const needAccount = method !== "none";
+
+  const field =
+    "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+
+  async function save() {
+    const amt = Number(amount);
+    if (!amt || amt <= 0 || saving) return;
+    setSaving(true);
+    try {
+      await createSettlement({
+        member_id: target.id,
+        amount: amt,
+        direction: dir,
+        date,
+        method,
+        account_id: needAccount ? accountId : null,
+        note: "",
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="text-lg font-black text-slate-900">{dir === "in" ? "收款結清" : "還款結清"}</h2>
+          <button onClick={onClose} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          <p className="text-sm text-slate-600">
+            {target.emoji} <b>{target.name}</b>
+            {dir === "in" ? ` 欠你 ${money(Math.abs(net))}` : `：你欠 ${money(Math.abs(net))}`}
+          </p>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+              <input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${field} w-full pl-7 text-lg font-bold`} />
+            </div>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${field} w-36`} />
+          </div>
+
+          <div>
+            <p className="mb-1 text-xs font-bold text-slate-500">記帳方式</p>
+            <div className="space-y-1.5">
+              {methods.map(([k, label, desc]) => (
+                <button key={k} type="button" onClick={() => setMethod(k)}
+                  className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left transition ${method === k ? "border-indigo-400 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}>
+                  <span className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${method === k ? "border-indigo-500 bg-indigo-500" : "border-slate-300"}`} />
+                  <span className="min-w-0">
+                    <span className="text-sm font-semibold text-slate-800">{label}</span>
+                    <span className="block text-[11px] text-slate-400">{desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {needAccount && accounts.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-bold text-slate-500">{dir === "in" ? "款項進哪個帳戶" : "從哪個帳戶付"}</p>
+              <select value={accountId ?? ""} onChange={(e) => setAccountId(Number(e.target.value))} className={`${field} w-full`}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
+          <button onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">取消</button>
+          <button onClick={save} disabled={!Number(amount) || saving} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40">
+            {saving ? "處理中…" : "確認結清"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- 主畫面 ---------------- */
 export default function SplitBills({ expenseCats = [] }) {
   const [members, setMembers] = useState([]);
   const [bills, setBills] = useState([]);
+  const [settlements, setSettlements] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [settleFor, setSettleFor] = useState(null); // {id,name,emoji,net}
 
   function reload() {
     setLoading(true);
-    Promise.all([listMembers(), listSplitBills()])
-      .then(([m, b]) => {
+    Promise.all([listMembers(), listSplitBills(), listSettlements(), listAccounts()])
+      .then(([m, b, s, a]) => {
         setMembers(m);
         setBills(b);
+        setSettlements(s);
+        setAccounts(a);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -290,8 +398,14 @@ export default function SplitBills({ expenseCats = [] }) {
         if (selfShare) net[bill.payer] = r2((net[bill.payer] || 0) - selfShare);
       }
     }
+    // 扣掉已結算：in（對方還你）減少對方欠你；out（你還對方）增加
+    for (const s of settlements) {
+      const key = String(s.member_id);
+      const delta = s.direction === "in" ? -s.amount : s.amount;
+      net[key] = r2((net[key] || 0) + delta);
+    }
     return net;
-  }, [bills]);
+  }, [bills, settlements]);
 
   const owedToYou = Object.values(balances).filter((v) => v > 0).reduce((a, b) => a + b, 0);
   const youOwe = Object.values(balances).filter((v) => v < 0).reduce((a, b) => a - b, 0);
@@ -332,18 +446,59 @@ export default function SplitBills({ expenseCats = [] }) {
               .filter(([, v]) => Math.abs(v) >= 0.5)
               .sort((a, b) => b[1] - a[1])
               .map(([who, v]) => (
-                <div key={who} className="flex items-center justify-between">
+                <div key={who} className="flex items-center justify-between gap-2">
                   <span className="text-sm text-slate-700">{emojiOf(who)} {nameOf(who)}</span>
-                  <span className={`text-sm font-bold ${v > 0 ? "text-emerald-600" : "text-red-500"}`}>
-                    {v > 0 ? `欠你 ${money(v)}` : `你欠 ${money(-v)}`}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold ${v > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      {v > 0 ? `欠你 ${money(v)}` : `你欠 ${money(-v)}`}
+                    </span>
+                    {who !== "self" && members.some((m) => String(m.id) === who) && (
+                      <button
+                        onClick={() => setSettleFor({ id: Number(who), name: nameOf(who), emoji: emojiOf(who), net: v })}
+                        className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold text-white transition hover:bg-slate-700 active:scale-95"
+                      >
+                        {v > 0 ? "收款" : "還款"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             {Object.values(balances).every((v) => Math.abs(v) < 0.5) && (
               <p className="text-center text-sm text-slate-400">目前都結清了 🎉</p>
             )}
           </div>
-          <p className="mt-3 text-[11px] text-slate-400">＊「結算/沖帳」功能製作中，下一版就能記錄還款。</p>
+        </div>
+      )}
+
+      {/* 還款紀錄 */}
+      {settlements.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="mb-2 text-sm font-black text-slate-700">還款紀錄</p>
+          <div className="space-y-1.5">
+            {settlements.map((s) => {
+              const m = members.find((x) => x.id === s.member_id);
+              const methodLabel = { income: "記收入", offset: "沖銷支出", expense: "記支出", none: "未記帳" }[s.method] || "";
+              return (
+                <div key={s.id} className="group flex items-center gap-2 text-sm">
+                  <span className="text-slate-500">{String(s.date).slice(5).replace("-", "/")}</span>
+                  <span className="min-w-0 flex-1 truncate text-slate-700">
+                    {s.direction === "in" ? "收" : "付"} {m ? `${m.emoji} ${m.name}` : "成員"} {money(s.amount)}
+                    <span className="ml-1 text-xs text-slate-400">· {methodLabel}</span>
+                  </span>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm("撤銷這筆還款？（連同它建立的記帳也會刪除）")) return;
+                      await deleteSettlement(s.id);
+                      reload();
+                    }}
+                    className="shrink-0 rounded-md px-1 text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -386,6 +541,18 @@ export default function SplitBills({ expenseCats = [] }) {
             );
           })}
         </div>
+      )}
+
+      {settleFor && (
+        <SettleModal
+          target={settleFor}
+          accounts={accounts}
+          onClose={() => setSettleFor(null)}
+          onSaved={() => {
+            setSettleFor(null);
+            reload();
+          }}
+        />
       )}
 
       <MembersModal open={membersOpen} members={members} onClose={() => setMembersOpen(false)} onChanged={reload} />
