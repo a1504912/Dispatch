@@ -58,7 +58,7 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
       <p className="text-sm text-slate-500">{monthLabel} 的預算與花費</p>
 
       {/* 總預算 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <p className="text-sm font-black text-slate-700">每月總預算</p>
           {overall && (
@@ -93,7 +93,7 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
       </div>
 
       {/* 分類預算 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-5 shadow-sm">
         <p className="mb-3 text-sm font-black text-slate-700">分類預算</p>
         <div className="space-y-3">
           {catBudgets.map((b) => {

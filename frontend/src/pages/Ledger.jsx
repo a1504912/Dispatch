@@ -16,6 +16,15 @@ const emojiFrom = (cats, kind, name) =>
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+const WD = ["日", "一", "二", "三", "四", "五", "六"];
+const weekdayOf = (ds) => WD[new Date(`${ds}T00:00`).getDay()];
+// 依收支別給圖示底色一點色調，畫面比較有層次（不是一片灰）
+const tintOf = (kind) =>
+  kind === "income"
+    ? "bg-emerald-50 text-emerald-600"
+    : kind === "transfer"
+      ? "bg-sky-50 text-sky-600"
+      : "bg-rose-50 text-rose-600";
 
 export default function Ledger() {
   const [txs, setTxs] = useState([]);
@@ -111,53 +120,29 @@ export default function Ledger() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <div>
-        <h1 className="text-2xl font-black text-slate-900">記帳</h1>
-        <p className="mt-1 text-sm text-slate-500">記錄每天的收支，看看錢都花到哪去了。</p>
-      </div>
+      <h1 className="text-2xl font-black tracking-tight text-slate-900">記帳</h1>
 
-      {/* 分頁：記錄 / 分帳 / 預算 / 資產 / 分析 */}
-      <div className="flex max-w-full gap-0.5 overflow-x-auto rounded-xl bg-slate-100 p-1 text-sm font-medium">
-        <button
-          onClick={() => setTab("records")}
-          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
-            tab === "records" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          📒 記錄
-        </button>
-        <button
-          onClick={() => setTab("split")}
-          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
-            tab === "split" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          🧾 分帳
-        </button>
-        <button
-          onClick={() => setTab("budget")}
-          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
-            tab === "budget" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          🎯 預算
-        </button>
-        <button
-          onClick={() => setTab("assets")}
-          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
-            tab === "assets" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          🏦 資產
-        </button>
-        <button
-          onClick={() => setTab("analysis")}
-          className={`shrink-0 rounded-lg px-4 py-1.5 transition ${
-            tab === "analysis" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          📊 分析
-        </button>
+      {/* 分頁 */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 text-sm font-semibold">
+        {[
+          ["records", "記錄"],
+          ["split", "分帳"],
+          ["budget", "預算"],
+          ["assets", "資產"],
+          ["analysis", "分析"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`shrink-0 rounded-full px-4 py-1.5 transition ${
+              tab === key
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-white text-slate-500 ring-1 ring-slate-200 hover:text-slate-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {tab === "split" ? (
@@ -184,71 +169,67 @@ export default function Ledger() {
         monthLabel={monthLabel}
       />
 
-      {/* 收支總覽 */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">支出</p>
-          <p className="mt-1 truncate text-lg font-black text-red-500">{money(expense)}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">收入</p>
-          <p className="mt-1 truncate text-lg font-black text-emerald-500">{money(income)}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">結餘</p>
-          <p
-            className={`mt-1 truncate text-lg font-black ${
-              balance >= 0 ? "text-slate-800" : "text-red-500"
-            }`}
-          >
-            {money(balance)}
-          </p>
+      {/* 月結 hero */}
+      <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-5 text-white shadow-lg shadow-slate-900/10">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-indigo-500/25 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-14 -left-8 h-40 w-40 rounded-full bg-emerald-500/15 blur-2xl" />
+        <div className="relative">
+          <p className="text-xs font-medium text-slate-400">{monthLabel}・支出</p>
+          <p className="mt-1 text-4xl font-black tracking-tight">{money(expense)}</p>
+          <div className="mt-3 flex gap-6 text-sm">
+            <span>
+              <span className="text-slate-400">收入 </span>
+              <b className="text-emerald-400">{money(income)}</b>
+            </span>
+            <span>
+              <span className="text-slate-400">結餘 </span>
+              <b className={balance >= 0 ? "text-white" : "text-rose-400"}>{money(balance)}</b>
+            </span>
+          </div>
+          {(() => {
+            const ob = budgets.find((b) => b.category === "");
+            if (!ob || ob.amount <= 0) return null;
+            const pct = Math.min((expense / ob.amount) * 100, 100);
+            const over = expense > ob.amount;
+            const near = !over && expense >= ob.amount * 0.8;
+            return (
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>本月預算</span>
+                  <span>{money(expense)} / {money(ob.amount)}</span>
+                </div>
+                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className={`h-full rounded-full transition-all ${over ? "bg-rose-500" : near ? "bg-amber-400" : "bg-emerald-400"}`} style={{ width: `${pct}%` }} />
+                </div>
+                <p className="mt-1 text-[11px]">
+                  {over ? (
+                    <span className="font-bold text-rose-400">超出 {money(expense - ob.amount)}</span>
+                  ) : (
+                    <span className="text-slate-400">還可花 {money(ob.amount - expense)}</span>
+                  )}
+                </p>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
-      {/* 本月預算條 */}
-      {(() => {
-        const ob = budgets.find((b) => b.category === "");
-        if (!ob || ob.amount <= 0) return null;
-        const pct = Math.min((expense / ob.amount) * 100, 100);
-        const over = expense > ob.amount;
-        const near = !over && expense >= ob.amount * 0.8;
-        return (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-500">本月預算</span>
-              <span className="text-slate-400">{money(expense)} / {money(ob.amount)}</span>
-            </div>
-            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-              <div className={`h-full rounded-full transition-all ${over ? "bg-red-500" : near ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
-            </div>
-            <p className="mt-1.5 text-xs">
-              {over ? (
-                <span className="font-bold text-red-500">超出 {money(expense - ob.amount)}</span>
-              ) : (
-                <span className="text-slate-500">還可花 {money(ob.amount - expense)}</span>
-              )}
-            </p>
-          </div>
-        );
-      })()}
-
-      {/* 新增記錄按鈕 */}
+      {/* 新增記錄 */}
       <button
         onClick={() => { setEditingTx(selectedDay ? { date: selectedDay } : null); setTxModalOpen(true); }}
-        className="w-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 py-3.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
+        className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-emerald-500 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-600 active:scale-[0.98]"
       >
-        ＋ 新增記錄
+        <span className="text-lg leading-none">＋</span> 新增記錄
       </button>
 
       {/* 選取某天時，顯示當天標題 */}
       {selectedDay && (
         <div className="flex items-center justify-between px-1">
           <span className="text-sm font-bold text-slate-700">
-            {Number(selectedDay.slice(5, 7))}/{Number(selectedDay.slice(8, 10))} 當日
-            {dayTotal > 0 && <span className="ml-2 font-normal text-red-500">支出 {money(dayTotal)}</span>}
+            {Number(selectedDay.slice(5, 7))}/{Number(selectedDay.slice(8, 10))}（週{weekdayOf(selectedDay)}）
+            {dayTotal > 0 && <span className="ml-2 font-normal text-rose-500">支出 {money(dayTotal)}</span>}
           </span>
-          <button onClick={() => setSelectedDay(null)} className="text-xs font-medium text-indigo-600 hover:underline">
+          <button onClick={() => setSelectedDay(null)} className="text-xs font-semibold text-emerald-600 hover:underline">
             看整月
           </button>
         </div>
@@ -258,9 +239,12 @@ export default function Ledger() {
       {loading ? (
         <p className="py-12 text-center text-sm text-slate-400">載入中…</p>
       ) : grouped.length === 0 ? (
-        <p className="rounded-2xl bg-slate-50 py-12 text-center text-sm text-slate-400">
-          {selectedDay ? "這天沒有紀錄。" : "這個月還沒有記錄，從上面記一筆開始吧。"}
-        </p>
+        <div className="rounded-2xl bg-white py-14 text-center shadow-sm ring-1 ring-slate-100">
+          <p className="text-3xl">🧾</p>
+          <p className="mt-2 text-sm text-slate-400">
+            {selectedDay ? "這天沒有紀錄。" : "這個月還沒有記錄，按上面「新增記錄」開始。"}
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
           {grouped.map(([date, rows]) => {
@@ -270,26 +254,26 @@ export default function Ledger() {
             );
             return (
               <div key={date}>
-                <div className="mb-1.5 flex items-center justify-between px-1">
-                  <span className="text-xs font-bold text-slate-400">
+                <div className="mb-2 flex items-baseline justify-between px-1">
+                  <span className="text-sm font-bold text-slate-700">
                     {Number(date.slice(5, 7))}/{Number(date.slice(8, 10))}
+                    <span className="ml-1.5 text-xs font-medium text-slate-400">週{weekdayOf(date)}</span>
                   </span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs font-medium text-slate-400">
                     {daySum >= 0 ? "+" : ""}
                     {money(daySum)}
                   </span>
                 </div>
-                <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  {rows.map((t) => (
-                    <div key={t.id} className="group flex items-center gap-3 px-4 py-2.5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50 text-lg ring-1 ring-slate-100">
-                        {t.kind === "transfer" ? "🔁" : emojiFrom(allCats, t.kind, t.category)}
-                      </span>
-                      <button
-                        onClick={() => startEdit(t)}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                      >
-                        <div className="min-w-0">
+                <div className="divide-y divide-slate-50 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+                  {rows.map((t) => {
+                    const refund = t.kind === "expense" && t.amount < 0;
+                    const positive = t.kind === "income" || refund;
+                    return (
+                      <div key={t.id} className="group flex items-center gap-3 px-3.5 py-2.5">
+                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-lg ${tintOf(t.kind)}`}>
+                          {t.kind === "transfer" ? "🔁" : emojiFrom(allCats, t.kind, t.category)}
+                        </span>
+                        <button onClick={() => startEdit(t)} className="min-w-0 flex-1 text-left">
                           <p className="truncate text-sm font-semibold text-slate-800">
                             {t.kind === "transfer" ? "轉帳" : t.category}
                             {t.subcategory && (
@@ -298,36 +282,32 @@ export default function Ledger() {
                             {t.split_bill_id && <span className="ml-1" title="有分帳">🧾</span>}
                             {t.event_id && <span className="ml-0.5" title="連結行程">✈️</span>}
                           </p>
-                          <p className="truncate text-xs text-slate-400">
-                            {t.account && <span>{t.account}</span>}
-                            {t.account && t.note && "　·　"}
-                            {t.note}
-                          </p>
-                        </div>
-                      </button>
-                      {(() => {
-                        const refund = t.kind === "expense" && t.amount < 0;
-                        const positive = t.kind === "income" || refund;
-                        return (
-                          <span
-                            className={`shrink-0 text-sm font-bold ${
-                              positive ? "text-emerald-500" : t.kind === "expense" ? "text-slate-800" : "text-sky-500"
-                            }`}
-                          >
-                            {positive ? "+" : t.kind === "expense" ? "-" : ""}
-                            {money(Math.abs(t.amount))}
-                          </span>
-                        );
-                      })()}
-                      <button
-                        onClick={() => handleDelete(t)}
-                        className="shrink-0 rounded-md px-1 text-slate-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
-                        title="刪除"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+                          {(t.account || t.note) && (
+                            <p className="truncate text-xs text-slate-400">
+                              {t.account}
+                              {t.account && t.note && "　·　"}
+                              {t.note}
+                            </p>
+                          )}
+                        </button>
+                        <span
+                          className={`shrink-0 text-[15px] font-black tabular-nums ${
+                            positive ? "text-emerald-500" : t.kind === "expense" ? "text-slate-800" : "text-sky-500"
+                          }`}
+                        >
+                          {positive ? "+" : t.kind === "expense" ? "−" : ""}
+                          {money(Math.abs(t.amount))}
+                        </span>
+                        <button
+                          onClick={() => handleDelete(t)}
+                          className="shrink-0 rounded-md px-0.5 text-slate-300 opacity-0 transition hover:text-rose-500 group-hover:opacity-100"
+                          title="刪除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

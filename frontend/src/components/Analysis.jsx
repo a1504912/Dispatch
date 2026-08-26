@@ -79,7 +79,7 @@ export default function Analysis({ monthTxs = [], txs = [], categories = [], mon
   return (
     <div className="space-y-5">
       {/* 分類圓環 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-5 shadow-sm">
         <p className="mb-3 text-sm font-black text-slate-700">{monthLabel} 支出分佈</p>
         {total === 0 ? (
           <p className="py-8 text-center text-sm text-slate-400">這個月還沒有支出。</p>
@@ -101,7 +101,7 @@ export default function Analysis({ monthTxs = [], txs = [], categories = [], mon
       </div>
 
       {/* 近半年趨勢 */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm font-black text-slate-700">近 6 個月</p>
           <div className="flex gap-3 text-xs text-slate-400">

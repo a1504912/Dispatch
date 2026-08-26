@@ -22,22 +22,22 @@ export default function MonthCalendar({
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   const navBtn =
-    "rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-sm text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95";
+    "flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95";
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100 sm:p-4">
       {/* 標頭：月份 + 前後月 */}
       <div className="mb-2 flex items-center justify-between">
         <button onClick={onPrev} className={navBtn}>‹</button>
         <div className="flex items-center gap-2">
           <span className="text-sm font-black text-slate-800">{monthLabel}</span>
-          <button onClick={onToday} className="rounded-md px-2 py-0.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50">今天</button>
+          <button onClick={onToday} className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-100">今天</button>
         </div>
         <button onClick={onNext} className={navBtn}>›</button>
       </div>
 
       {/* 星期列 */}
-      <div className="grid grid-cols-7 text-center text-[11px] font-medium text-slate-400">
+      <div className="grid grid-cols-7 text-center text-[11px] font-medium text-slate-300">
         {WEEKDAYS.map((w) => (
           <div key={w} className="py-1">{w}</div>
         ))}
@@ -55,23 +55,22 @@ export default function MonthCalendar({
             <button
               key={ds}
               onClick={() => onSelectDay(isSel ? null : ds)}
-              className={`flex min-h-[3.2rem] flex-col items-center rounded-lg px-0.5 py-1 transition ${
-                isSel ? "bg-indigo-50 ring-1 ring-indigo-300" : "hover:bg-slate-50"
+              className={`flex min-h-[3rem] flex-col items-center rounded-xl px-0.5 py-1 transition ${
+                isSel ? "bg-slate-100 ring-1 ring-slate-300" : "hover:bg-slate-50"
               }`}
             >
               <span
                 className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                  isToday ? "bg-emerald-500 text-white" : "text-slate-700"
+                  isToday ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30" : "text-slate-600"
                 }`}
               >
                 {d}
               </span>
-              {data?.expense > 0 && (
-                <span className="mt-0.5 text-[9px] leading-none text-slate-400">{compact(data.expense)}</span>
-              )}
-              {!data?.expense && data?.income > 0 && (
-                <span className="mt-0.5 text-[9px] leading-none text-emerald-500">+{compact(data.income)}</span>
-              )}
+              {data?.expense > 0 ? (
+                <span className="mt-0.5 text-[9px] font-medium leading-none text-slate-400">{compact(data.expense)}</span>
+              ) : data?.income > 0 ? (
+                <span className="mt-0.5 text-[9px] font-medium leading-none text-emerald-500">+{compact(data.income)}</span>
+              ) : null}
             </button>
           );
         })}

@@ -80,9 +80,10 @@ export default function Assets() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50 p-5 shadow-sm">
-        <p className="text-xs font-medium text-slate-500">總資產</p>
-        <p className={`mt-1 text-3xl font-black ${total >= 0 ? "text-slate-900" : "text-red-500"}`}>{money(total)}</p>
+      <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-5 text-white shadow-lg shadow-slate-900/10">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-emerald-500/20 blur-2xl" />
+        <p className="text-xs font-medium text-slate-400">總資產</p>
+        <p className={`mt-1 text-4xl font-black tracking-tight ${total >= 0 ? "text-white" : "text-rose-400"}`}>{money(total)}</p>
       </div>
 
       {loading ? (
@@ -95,7 +96,7 @@ export default function Assets() {
             const groupBal = isGroup ? kids.reduce((s, k) => s + bal(k), 0) : bal(top);
             const isOpen = expanded === top.id;
             return (
-              <div key={top.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div key={top.id} className="rounded-2xl bg-white ring-1 ring-slate-100 shadow-sm">
                 <div className="flex items-center gap-2 p-3">
                   <button onClick={() => { setExpanded(isOpen ? null : top.id); setSubName(""); }} className={`shrink-0 text-slate-400 transition ${isOpen ? "rotate-90" : ""}`}>▸</button>
                   <select value={top.emoji} onChange={(e) => saveField(top, { emoji: e.target.value })} className="rounded-lg bg-slate-50 px-1.5 py-1.5 text-xl ring-1 ring-slate-200">

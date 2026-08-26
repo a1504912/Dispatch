@@ -449,7 +449,7 @@ export default function SplitBills({ expenseCats = [] }) {
 
       {/* 誰欠誰 */}
       {Object.keys(balances).length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-4 shadow-sm">
           <p className="mb-3 text-sm font-black text-slate-700">結算</p>
           <div className="space-y-2">
             {Object.entries(balances)
@@ -482,7 +482,7 @@ export default function SplitBills({ expenseCats = [] }) {
 
       {/* 還款紀錄 */}
       {settlements.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-4 shadow-sm">
           <p className="mb-2 text-sm font-black text-slate-700">還款紀錄</p>
           <div className="space-y-1.5">
             {settlements.map((s) => {
@@ -529,7 +529,7 @@ export default function SplitBills({ expenseCats = [] }) {
               shares = [];
             }
             return (
-              <div key={bill.id} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div key={bill.id} className="group rounded-2xl bg-white ring-1 ring-slate-100 p-4 shadow-sm">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold text-slate-800">{bill.title}</p>
