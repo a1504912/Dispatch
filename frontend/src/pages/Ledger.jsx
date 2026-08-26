@@ -1,44 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  listTransactions,
-  createTransaction,
-  updateTransaction,
-  deleteTransaction,
-} from "../api/ledger";
+import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 import SplitBills from "../components/SplitBills.jsx";
+import TransactionModal from "../components/TransactionModal.jsx";
 
 const emojiFrom = (cats, kind, name) =>
   cats.find((c) => c.kind === kind && c.name === name)?.emoji ||
   (kind === "income" ? "💵" : "📦");
 
 const pad2 = (n) => String(n).padStart(2, "0");
-const todayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-};
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
-
-const emptyForm = () => ({
-  kind: "expense",
-  amount: "",
-  category: "",
-  subcategory: "",
-  note: "",
-  date: todayStr(),
-});
 
 export default function Ledger() {
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0); // 0 = 本月
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [allCats, setAllCats] = useState([]);
   const [managerOpen, setManagerOpen] = useState(false);
   const [tab, setTab] = useState("records"); // records（記錄）/ split（分帳）
+  const [txModalOpen, setTxModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState(null);
 
   function load() {
     setLoading(true);
@@ -56,19 +38,6 @@ export default function Ledger() {
     load();
     loadCats();
   }, []);
-
-  const cats = allCats.filter((c) => c.kind === form.kind && !c.parent_id);
-  // 目前選到的主分類底下的次分類
-  const selectedCat = cats.find((c) => c.name === form.category);
-  const subCats = selectedCat ? allCats.filter((c) => c.parent_id === selectedCat.id) : [];
-
-  // 分類載入後，若目前沒選到有效分類，預設選第一個
-  useEffect(() => {
-    if (cats.length && !cats.some((c) => c.name === form.category)) {
-      setForm((f) => ({ ...f, category: cats[0].name, subcategory: "" }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCats, form.kind]);
 
   // 目前選到的年月
   const base = new Date();
@@ -102,56 +71,14 @@ export default function Ledger() {
     return Object.entries(g).sort((a, b) => b[0].localeCompare(a[0]));
   }, [monthTxs]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const amount = Number(form.amount);
-    if (!amount || amount <= 0 || saving) return;
-    setSaving(true);
-    const payload = {
-      kind: form.kind,
-      amount,
-      category: form.category || "其他",
-      subcategory: form.subcategory || "",
-      note: form.note.trim(),
-      date: form.date || todayStr(),
-    };
-    try {
-      if (editingId) await updateTransaction(editingId, payload);
-      else await createTransaction(payload);
-      setForm((f) => ({
-        ...emptyForm(),
-        kind: f.kind,
-        category: f.category,
-        subcategory: f.subcategory,
-        date: f.date,
-      }));
-      setEditingId(null);
-      load();
-    } finally {
-      setSaving(false);
-    }
-  }
-
   function startEdit(t) {
-    setEditingId(t.id);
-    setForm({
-      kind: t.kind,
-      amount: String(t.amount),
-      category: t.category,
-      subcategory: t.subcategory || "",
-      note: t.note || "",
-      date: t.date,
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setEditingTx(t);
+    setTxModalOpen(true);
   }
 
   async function handleDelete(t) {
     if (!window.confirm("刪除這筆記錄？")) return;
     await deleteTransaction(t.id);
-    if (editingId === t.id) {
-      setEditingId(null);
-      setForm(emptyForm());
-    }
     load();
   }
 
@@ -241,146 +168,13 @@ export default function Ledger() {
         </div>
       </div>
 
-      {/* 新增 / 編輯 */}
-      <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
-            {["expense", "income"].map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() =>
-                  setForm((f) => ({
-                    ...f,
-                    kind: k,
-                    category: allCats.find((c) => c.kind === k && !c.parent_id)?.name || "",
-                    subcategory: "",
-                  }))
-                }
-                className={`rounded-lg px-4 py-1.5 transition ${
-                  form.kind === k
-                    ? k === "expense"
-                      ? "bg-white text-red-600 shadow-sm"
-                      : "bg-white text-emerald-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {k === "expense" ? "支出" : "收入"}
-              </button>
-            ))}
-          </div>
-          {editingId && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingId(null);
-                setForm(emptyForm());
-              }}
-              className="text-sm text-slate-400 hover:text-slate-600"
-            >
-              取消編輯
-            </button>
-          )}
-        </div>
-
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-              $
-            </span>
-            <input
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="1"
-              placeholder="金額"
-              value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              className={`${field} w-full pl-7 text-lg font-bold`}
-              autoFocus
-            />
-          </div>
-          <input
-            type="date"
-            value={form.date}
-            onChange={(e) => setForm({ ...form, date: e.target.value })}
-            className={`${field} w-36`}
-          />
-        </div>
-
-        {/* 分類選擇 */}
-        <div className="flex flex-wrap gap-1.5">
-          {cats.map((c) => (
-            <button
-              key={c.id ?? c.name}
-              type="button"
-              onClick={() => setForm({ ...form, category: c.name, subcategory: "" })}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                form.category === c.name
-                  ? "bg-indigo-600 text-white shadow"
-                  : "bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              {c.emoji} {c.name}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setManagerOpen(true)}
-            className="rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-400 transition hover:border-indigo-300 hover:text-indigo-500"
-            title="新增／改名／刪除分類"
-          >
-            ⚙️ 管理
-          </button>
-        </div>
-
-        {/* 次分類（選了有次分類的主分類才出現） */}
-        {subCats.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 border-l-2 border-slate-100 pl-3">
-            <button
-              type="button"
-              onClick={() => setForm({ ...form, subcategory: "" })}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                !form.subcategory
-                  ? "bg-slate-700 text-white"
-                  : "bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              不分
-            </button>
-            {subCats.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setForm({ ...form, subcategory: s.name })}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  form.subcategory === s.name
-                    ? "bg-indigo-500 text-white"
-                    : "bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"
-                }`}
-              >
-                {s.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <input
-            className={`${field} flex-1`}
-            placeholder="備註（可留空）"
-            value={form.note}
-            onChange={(e) => setForm({ ...form, note: e.target.value })}
-          />
-          <button
-            type="submit"
-            disabled={!Number(form.amount) || saving}
-            className="shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none"
-          >
-            {editingId ? "儲存" : "＋ 記一筆"}
-          </button>
-        </div>
-      </form>
+      {/* 新增記錄按鈕 */}
+      <button
+        onClick={() => { setEditingTx(null); setTxModalOpen(true); }}
+        className="w-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 py-3.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
+      >
+        ＋ 新增記錄
+      </button>
 
       {/* 支出分類統計 */}
       {byCat.length > 0 && (
@@ -453,8 +247,14 @@ export default function Ledger() {
                             {t.subcategory && (
                               <span className="font-normal text-slate-400"> · {t.subcategory}</span>
                             )}
+                            {t.split_bill_id && <span className="ml-1" title="有分帳">🧾</span>}
+                            {t.event_id && <span className="ml-0.5" title="連結行程">✈️</span>}
                           </p>
-                          {t.note && <p className="truncate text-xs text-slate-400">{t.note}</p>}
+                          <p className="truncate text-xs text-slate-400">
+                            {t.account && <span>{t.account}</span>}
+                            {t.account && t.note && "　·　"}
+                            {t.note}
+                          </p>
                         </div>
                       </button>
                       <span
@@ -487,6 +287,21 @@ export default function Ledger() {
         open={managerOpen}
         onClose={() => setManagerOpen(false)}
         onChanged={loadCats}
+      />
+
+      <TransactionModal
+        open={txModalOpen}
+        initial={editingTx}
+        categories={allCats}
+        onClose={() => {
+          setTxModalOpen(false);
+          setEditingTx(null);
+        }}
+        onSaved={() => {
+          setTxModalOpen(false);
+          setEditingTx(null);
+          load();
+        }}
       />
     </div>
   );

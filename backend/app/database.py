@@ -73,12 +73,21 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE ledgercategory ADD COLUMN parent_id INTEGER"))
                 conn.commit()
 
-            # 記帳：次分類欄位（transaction 是保留字，需加引號）
+            # 記帳新增欄位（transaction 是保留字，需加引號）
             tx_cols = [row[1] for row in conn.execute(text('PRAGMA table_info("transaction")'))]
-            if tx_cols and "subcategory" not in tx_cols:
-                conn.execute(
-                    text("ALTER TABLE \"transaction\" ADD COLUMN subcategory VARCHAR NOT NULL DEFAULT ''")
-                )
+            if tx_cols:
+                if "subcategory" not in tx_cols:
+                    conn.execute(
+                        text("ALTER TABLE \"transaction\" ADD COLUMN subcategory VARCHAR NOT NULL DEFAULT ''")
+                    )
+                if "account" not in tx_cols:
+                    conn.execute(
+                        text("ALTER TABLE \"transaction\" ADD COLUMN account VARCHAR NOT NULL DEFAULT ''")
+                    )
+                if "event_id" not in tx_cols:
+                    conn.execute(text('ALTER TABLE "transaction" ADD COLUMN event_id INTEGER'))
+                if "split_bill_id" not in tx_cols:
+                    conn.execute(text('ALTER TABLE "transaction" ADD COLUMN split_bill_id INTEGER'))
                 conn.commit()
 
     # 幫既有、還沒有縮圖的行程補上縮圖（一次性；之後啟動就略過）

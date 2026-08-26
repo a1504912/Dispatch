@@ -66,6 +66,9 @@ class TransactionCreate(SQLModel):
     subcategory: str = ""
     note: str = ""
     date: date
+    account: str = ""
+    event_id: Optional[int] = None
+    split_bill_id: Optional[int] = None
 
 
 class LedgerCategoryCreate(SQLModel):

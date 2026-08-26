@@ -132,6 +132,9 @@ class Transaction(SQLModel, table=True):
     subcategory: str = ""  # 次分類名稱，例：早餐、午餐（可空）
     note: str = ""
     date: date  # 這筆的日期
+    account: str = ""  # 帳戶：現金／銀行帳戶／信用卡…（可空）
+    event_id: Optional[int] = Field(default=None, foreign_key="event.id")  # 連結的行程
+    split_bill_id: Optional[int] = Field(default=None, foreign_key="splitbill.id")  # 記帳時建立的分帳
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
