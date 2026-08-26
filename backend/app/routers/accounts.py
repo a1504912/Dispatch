@@ -40,5 +40,8 @@ def delete_account(account_id: int, session: Session = Depends(get_session)):
     acc = session.get(Account, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
+    # 刪主分類（類型）時，一併刪掉底下的子帳戶
+    for child in session.exec(select(Account).where(Account.parent_id == account_id)).all():
+        session.delete(child)
     session.delete(acc)
     session.commit()

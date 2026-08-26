@@ -71,7 +71,9 @@ export default function TransactionModal({ open, initial, categories = [], onClo
         setForm((f) => {
           if (!f) return f;
           if (f.account_id) return f;
-          const first = accs[0];
+          // 預設選第一個「可用帳戶」（沒有子帳戶的類型，或某個子帳戶）
+          const usable = accs.filter((a) => a.parent_id || !accs.some((x) => x.parent_id === a.id));
+          const first = usable[0];
           return first ? { ...f, account_id: first.id, account: first.name } : f;
         });
       })
@@ -114,8 +116,21 @@ export default function TransactionModal({ open, initial, categories = [], onClo
   const transferBad = isTransfer && (!form.account_id || !form.to_account_id || form.account_id === form.to_account_id);
   const canSave = amountNum > 0 && !exactBad && !transferBad && !saving;
 
-  function pickAccount(a) {
-    setForm({ ...form, account_id: a.id, account: a.name });
+  // 帳戶：主分類（類型）→ 子帳戶
+  const topAccounts = accounts.filter((a) => !a.parent_id);
+  const accChildren = (id) => accounts.filter((a) => a.parent_id === id);
+  const usableAccounts = accounts.filter((a) => a.parent_id || !accounts.some((x) => x.parent_id === a.id));
+  const selAcc = accounts.find((a) => a.id === form.account_id);
+  const selTopId = selAcc ? selAcc.parent_id || selAcc.id : null;
+  const subAccts = selTopId ? accChildren(selTopId) : [];
+
+  function pickType(top) {
+    const kids = accChildren(top.id);
+    if (kids.length) setForm({ ...form, account_id: kids[0].id, account: kids[0].name });
+    else setForm({ ...form, account_id: top.id, account: top.name });
+  }
+  function pickSub(sub) {
+    setForm({ ...form, account_id: sub.id, account: sub.name });
   }
 
   async function handleSave() {
@@ -221,7 +236,7 @@ export default function TransactionModal({ open, initial, categories = [], onClo
               <div className="flex-1">
                 <p className="mb-1 text-xs font-bold text-slate-500">從</p>
                 <select value={form.account_id ?? ""} onChange={(e) => setForm({ ...form, account_id: Number(e.target.value) })} className={`${field} w-full`}>
-                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
                 </select>
               </div>
               <span className="mt-5 text-slate-400">→</span>
@@ -229,7 +244,7 @@ export default function TransactionModal({ open, initial, categories = [], onClo
                 <p className="mb-1 text-xs font-bold text-slate-500">到</p>
                 <select value={form.to_account_id ?? ""} onChange={(e) => setForm({ ...form, to_account_id: Number(e.target.value) })} className={`${field} w-full`}>
                   <option value="">選擇</option>
-                  {accounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
                 </select>
               </div>
             </div>
@@ -237,13 +252,23 @@ export default function TransactionModal({ open, initial, categories = [], onClo
             <div>
               <p className="mb-1 text-xs font-bold text-slate-500">帳戶</p>
               <div className="flex flex-wrap gap-1.5">
-                {accounts.map((a) => (
-                  <button key={a.id} type="button" onClick={() => pickAccount(a)}
-                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${form.account_id === a.id ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
+                {topAccounts.map((a) => (
+                  <button key={a.id} type="button" onClick={() => pickType(a)}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${selTopId === a.id ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
                     {a.emoji} {a.name}
                   </button>
                 ))}
               </div>
+              {subAccts.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5 border-l-2 border-slate-100 pl-3">
+                  {subAccts.map((s) => (
+                    <button key={s.id} type="button" onClick={() => pickSub(s)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${form.account_id === s.id ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

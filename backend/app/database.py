@@ -73,6 +73,12 @@ def init_db() -> None:
                 conn.execute(text("ALTER TABLE ledgercategory ADD COLUMN parent_id INTEGER"))
                 conn.commit()
 
+            # 帳戶：主分類（類型）→ 次分類（parent_id）
+            acc_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(account)"))]
+            if acc_cols and "parent_id" not in acc_cols:
+                conn.execute(text("ALTER TABLE account ADD COLUMN parent_id INTEGER"))
+                conn.commit()
+
             # 記帳新增欄位（transaction 是保留字，需加引號）
             tx_cols = [row[1] for row in conn.execute(text('PRAGMA table_info("transaction")'))]
             if tx_cols:

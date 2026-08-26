@@ -128,6 +128,8 @@ class Account(SQLModel, table=True):
     emoji: str = "💰"
     initial: float = 0  # 初始餘額
     sort: int = 0
+    # 次分類：指向主分類（帳戶類型）的 id；主分類本身 parent_id 為 None
+    parent_id: Optional[int] = Field(default=None, foreign_key="account.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

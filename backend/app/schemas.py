@@ -78,6 +78,7 @@ class AccountCreate(SQLModel):
     emoji: str = "💰"
     initial: float = 0
     sort: int = 0
+    parent_id: Optional[int] = None
 
 
 class BudgetCreate(SQLModel):
