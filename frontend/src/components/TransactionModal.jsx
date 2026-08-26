@@ -7,6 +7,22 @@ import { listAccounts } from "../api/accounts";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+
+// 金額欄可以打算式（120+80）；安全地只允許數字與運算子後計算。
+function evalExpr(s) {
+  const str = String(s ?? "").trim();
+  if (str === "") return 0;
+  if (!/^[0-9+\-*/×÷.()\s]+$/.test(str)) return 0;
+  const norm = str.replace(/×/g, "*").replace(/÷/g, "/");
+  try {
+    // eslint-disable-next-line no-new-func
+    const v = Function('"use strict";return (' + norm + ")")();
+    return typeof v === "number" && isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+const hasOperator = (s) => /[+*/×÷]/.test(String(s || "")) || /\d\s*-/.test(String(s || ""));
 const todayStr = () => {
   const d = new Date();
   const p = (x) => String(x).padStart(2, "0");
@@ -101,7 +117,10 @@ export default function TransactionModal({ open, initial, categories = [], onClo
   const selectedCat = cats.find((c) => c.name === form.category);
   const subCats = selectedCat ? categories.filter((c) => c.parent_id === selectedCat.id) : [];
 
-  const amountNum = Number(form.amount) || 0;
+  const amountNum = evalExpr(form.amount);
+  const showCalc = hasOperator(form.amount);
+  const appendAmt = (ch) => setForm((f) => ({ ...f, amount: (f.amount || "") + ch }));
+  const backAmt = () => setForm((f) => ({ ...f, amount: String(f.amount || "").slice(0, -1) }));
   const everyone = ["self", ...members.map((m) => String(m.id))];
   const parts = everyone.filter((w) => checked[w]);
   const shares = computeShares(method, parts, amountNum, inputs);
@@ -218,14 +237,29 @@ export default function TransactionModal({ open, initial, categories = [], onClo
             </>
           )}
 
-          {/* 金額 + 日期 */}
+          {/* 金額（可打算式，例：120+80）+ 日期 */}
           <div className="flex gap-2">
             <div className="relative flex-1">
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-              <input type="number" inputMode="decimal" min="0" placeholder="金額" value={form.amount}
+              <input type="text" inputMode="decimal" placeholder="金額（可算式）" value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })} className={`${field} w-full pl-7 text-lg font-bold`} autoFocus />
+              {showCalc && (
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600">＝ {money(amountNum)}</span>
+              )}
             </div>
             <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${field} w-36`} />
+          </div>
+          {/* 計算機按鈕 */}
+          <div className="flex gap-1.5">
+            {["+", "−", "×", "÷"].map((op) => (
+              <button key={op} type="button" onClick={() => appendAmt(op === "−" ? "-" : op)}
+                className="flex-1 rounded-lg bg-slate-100 py-1.5 text-sm font-bold text-slate-600 transition hover:bg-slate-200 active:scale-95">
+                {op}
+              </button>
+            ))}
+            <button type="button" onClick={backAmt} className="flex-1 rounded-lg bg-slate-100 py-1.5 text-sm font-bold text-slate-600 transition hover:bg-slate-200 active:scale-95" title="退格">⌫</button>
+            <button type="button" onClick={() => showCalc && setForm((f) => ({ ...f, amount: String(evalExpr(f.amount)) }))}
+              className="flex-1 rounded-lg bg-slate-700 py-1.5 text-sm font-bold text-white transition hover:bg-slate-600 active:scale-95" title="算出結果">＝</button>
           </div>
 
           <input className={`${field} w-full`} placeholder="備註（可留空）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
