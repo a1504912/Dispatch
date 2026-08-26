@@ -4,6 +4,7 @@ import { listLedgerCategories } from "../api/ledgerCategories";
 import { listBudgets } from "../api/budgets";
 import Budget from "../components/Budget.jsx";
 import Analysis from "../components/Analysis.jsx";
+import MonthCalendar from "../components/MonthCalendar.jsx";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 import SplitBills from "../components/SplitBills.jsx";
 import Assets from "../components/Assets.jsx";
@@ -26,6 +27,7 @@ export default function Ledger() {
   const [txModalOpen, setTxModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [budgets, setBudgets] = useState([]);
+  const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD" 或 null（整月）
 
   function load() {
     setLoading(true);
@@ -65,22 +67,33 @@ export default function Ledger() {
   const income = monthTxs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount, 0);
   const balance = income - expense;
 
-  // 支出分類統計（由多到少）
-  const byCat = useMemo(() => {
-    const map = {};
-    for (const t of monthTxs) {
-      if (t.kind !== "expense") continue;
-      map[t.category] = (map[t.category] || 0) + t.amount;
-    }
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [monthTxs]);
+  // 支出分類統計已移到「分析」分頁
 
-  // 依日期分組
-  const grouped = useMemo(() => {
-    const g = {};
-    for (const t of monthTxs) (g[t.date] ??= []).push(t);
-    return Object.entries(g).sort((a, b) => b[0].localeCompare(a[0]));
+  // 月曆每日資料 + 今天
+  const todayStr = `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`;
+  const dayData = useMemo(() => {
+    const m = {};
+    for (const t of monthTxs) {
+      const d = (m[t.date] ??= { expense: 0, income: 0 });
+      if (t.kind === "expense") d.expense += t.amount;
+      else if (t.kind === "income") d.income += t.amount;
+    }
+    return m;
   }, [monthTxs]);
+  const dayTotal = selectedDay ? dayData[selectedDay]?.expense || 0 : 0;
+
+  // 換月時清掉選取的日
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [curYM]);
+
+  // 依日期分組（選了某天就只顯示那天）
+  const grouped = useMemo(() => {
+    const src = selectedDay ? monthTxs.filter((t) => t.date === selectedDay) : monthTxs;
+    const g = {};
+    for (const t of src) (g[t.date] ??= []).push(t);
+    return Object.entries(g).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [monthTxs, selectedDay]);
 
   function startEdit(t) {
     setEditingTx(t);
@@ -157,35 +170,19 @@ export default function Ledger() {
         <Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} />
       ) : (
        <>
-      {/* 月份切換 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setOffset((o) => o - 1)}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-sm text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95"
-          >
-            ‹
-          </button>
-          <span className="min-w-[7.5rem] text-center text-sm font-bold text-slate-700">
-            {monthLabel}
-          </span>
-          <button
-            onClick={() => setOffset((o) => o + 1)}
-            disabled={offset >= 0}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-sm text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95 disabled:opacity-30"
-          >
-            ›
-          </button>
-        </div>
-        {offset !== 0 && (
-          <button
-            onClick={() => setOffset(0)}
-            className="rounded-lg px-3 py-1 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
-          >
-            回本月
-          </button>
-        )}
-      </div>
+      {/* 月曆 */}
+      <MonthCalendar
+        year={cur.getFullYear()}
+        month={cur.getMonth() + 1}
+        dayData={dayData}
+        todayStr={todayStr}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        onPrev={() => setOffset((o) => o - 1)}
+        onNext={() => setOffset((o) => Math.min(0, o + 1))}
+        onToday={() => setOffset(0)}
+        monthLabel={monthLabel}
+      />
 
       {/* 收支總覽 */}
       <div className="grid grid-cols-3 gap-3">
@@ -238,39 +235,22 @@ export default function Ledger() {
 
       {/* 新增記錄按鈕 */}
       <button
-        onClick={() => { setEditingTx(null); setTxModalOpen(true); }}
+        onClick={() => { setEditingTx(selectedDay ? { date: selectedDay } : null); setTxModalOpen(true); }}
         className="w-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 py-3.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95"
       >
         ＋ 新增記錄
       </button>
 
-      {/* 支出分類統計 */}
-      {byCat.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="mb-3 text-sm font-black text-slate-700">本月支出分佈</p>
-          <div className="space-y-2.5">
-            {byCat.map(([name, amt]) => (
-              <div key={name}>
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-600">
-                    {emojiFrom(allCats, "expense", name)} {name}
-                  </span>
-                  <span className="text-slate-500">
-                    {money(amt)}
-                    <span className="ml-1 text-slate-400">
-                      {Math.round((amt / expense) * 100)}%
-                    </span>
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
-                    style={{ width: `${(amt / expense) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* 選取某天時，顯示當天標題 */}
+      {selectedDay && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-sm font-bold text-slate-700">
+            {Number(selectedDay.slice(5, 7))}/{Number(selectedDay.slice(8, 10))} 當日
+            {dayTotal > 0 && <span className="ml-2 font-normal text-red-500">支出 {money(dayTotal)}</span>}
+          </span>
+          <button onClick={() => setSelectedDay(null)} className="text-xs font-medium text-indigo-600 hover:underline">
+            看整月
+          </button>
         </div>
       )}
 
@@ -279,7 +259,7 @@ export default function Ledger() {
         <p className="py-12 text-center text-sm text-slate-400">載入中…</p>
       ) : grouped.length === 0 ? (
         <p className="rounded-2xl bg-slate-50 py-12 text-center text-sm text-slate-400">
-          這個月還沒有記錄，從上面記一筆開始吧。
+          {selectedDay ? "這天沒有紀錄。" : "這個月還沒有記錄，從上面記一筆開始吧。"}
         </p>
       ) : (
         <div className="space-y-4">
