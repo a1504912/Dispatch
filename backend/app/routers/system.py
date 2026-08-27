@@ -1,5 +1,7 @@
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -86,12 +88,16 @@ def run_update():
     except Exception:  # noqa: BLE001
         pass
 
-    # 用 start 另開一個獨立視窗執行；這樣它 taskkill 掉舊後端後，更新程序仍存活並啟動新後端。
+    # 複製一份到暫存再執行，並把 repo 路徑當參數傳進去：
+    #   - git pull 不會動到「正在執行」的腳本
+    #   - 用新的 console 視窗跑，taskkill 掉舊後端後這個更新程序仍存活並啟動新後端
     try:
+        tmp = Path(tempfile.gettempdir()) / "dispatch-update.bat"
+        shutil.copyfile(BAT, tmp)
         subprocess.Popen(
-            f'start "" cmd /c "{BAT}"',
-            cwd=str(BAT.parent),
-            shell=True,
+            [str(tmp), str(REPO)],
+            cwd=str(REPO),
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
             close_fds=True,
         )
     except Exception as exc:  # noqa: BLE001
