@@ -609,45 +609,78 @@ function CategorySettings() {
 }
 
 export default function Settings() {
+  const TABS = [
+    { key: "general", label: "🏷️ 一般" },
+    ...(NO_BACKEND ? [] : [{ key: "notify", label: "🔔 通知" }, { key: "system", label: "⚙️ 系統" }]),
+  ];
+  const [tabRaw, setTab] = useState(() => localStorage.getItem("dispatch.settingsTab") || "general");
+  const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw : "general";
+  function switchTab(k) {
+    setTab(k);
+    localStorage.setItem("dispatch.settingsTab", k);
+  }
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-5">
       <div>
         <h1 className="text-2xl font-black text-slate-900">設定</h1>
         <p className="mt-1 text-sm text-slate-500">管理 Dispatch 的分類與偏好設定。</p>
       </div>
 
-      <SettingSection
-        title="🏷️ 行程分類"
-        description="建立自己的分類（工作、家裡、出遊…），行程可以掛上分類，總覽頁就能用分類篩選。"
-      >
-        <CategorySettings />
-      </SettingSection>
+      {/* 分頁 */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 text-sm font-semibold">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => switchTab(t.key)}
+            className={`shrink-0 rounded-full px-4 py-1.5 transition ${
+              tab === t.key
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-white text-slate-500 ring-1 ring-slate-200 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <SettingSection title="🌤️ 天氣" description="設定你所在的城市，總覽頁會顯示本週天氣預報。">
-        <WeatherSettings />
-      </SettingSection>
+      {tab === "general" && (
+        <>
+          <SettingSection
+            title="🏷️ 行程分類"
+            description="建立自己的分類（工作、家裡、出遊…），行程可以掛上分類，總覽頁就能用分類篩選。"
+          >
+            <CategorySettings />
+          </SettingSection>
 
-      {!NO_BACKEND && (
+          <SettingSection title="🌤️ 天氣" description="設定你所在的城市，總覽頁會顯示本週天氣預報。">
+            <WeatherSettings />
+          </SettingSection>
+        </>
+      )}
+
+      {tab === "notify" && !NO_BACKEND && (
         <SettingSection
           title="🔔 通知"
-          description="行程到點、每日摘要會推播到電腦或手機，就算沒開網頁也會跳。"
+          description="行程到點、每日摘要、免費遊戲新品會推播到電腦或手機，就算沒開網頁也會跳。"
         >
           <NotificationSettings />
         </SettingSection>
       )}
 
-      {!NO_BACKEND && (
-        <SettingSection title="⬆️ 更新" description="不用連到主機，直接從這裡把程式更新到最新版並重啟。">
-          <SystemSettings />
-        </SettingSection>
-      )}
+      {tab === "system" && !NO_BACKEND && (
+        <>
+          <SettingSection title="⬆️ 更新" description="不用連到主機，直接從這裡把程式更新到最新版並重啟。">
+            <SystemSettings />
+          </SettingSection>
 
-      {/* 之後的新設定往下加 SettingSection 即可 */}
-      <SettingSection title="🚧 更多設定" description="陸續加入中——想到要什麼就告訴開發者。">
-        <p className="text-sm text-slate-400">
-          預留位置：Ollama 模型管理、Google 同步偏好、資料備份…
-        </p>
-      </SettingSection>
+          <SettingSection title="🚧 更多設定" description="陸續加入中——想到要什麼就告訴開發者。">
+            <p className="text-sm text-slate-400">
+              預留位置：Ollama 模型管理、Google 同步偏好、資料備份…
+            </p>
+          </SettingSection>
+        </>
+      )}
     </div>
   );
 }
