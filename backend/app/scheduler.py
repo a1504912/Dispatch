@@ -34,13 +34,65 @@ def _mark_sent(session: Session, tag: str) -> None:
 
 
 def _prune(session: Session) -> None:
-    """清掉 7 天前的去重標記，避免資料表無限長大。"""
+    """清掉 7 天前的去重標記，避免資料表無限長大（免費遊戲的標記保留，以免重複提醒）。"""
     cutoff = datetime.utcnow() - timedelta(days=7)
     for row in session.exec(
         select(SentNotification).where(SentNotification.created_at < cutoff)
     ).all():
+        if row.tag.startswith("game:"):
+            continue
         session.delete(row)
     session.commit()
+
+
+def _check_new_free_games(session: Session, now: datetime) -> None:
+    """定時抓免費遊戲，發現沒看過的就推播（每半點檢查一次，配合 30 分快取）。"""
+    if now.minute not in (0, 30):
+        return
+    from app.routers import games as games_mod
+
+    try:
+        games = games_mod.fetch_games_sync()
+    except Exception:  # noqa: BLE001
+        return
+    if not games:
+        return
+
+    first_run = session.get(SentNotification, "game:init") is None
+    new_games = []
+    for g in games:
+        gid = g.get("id")
+        if gid is None:
+            continue
+        if _already_sent(session, f"game:{gid}"):
+            continue
+        new_games.append(g)
+
+    # 第一次跑：把現有全部標記為已知（建立基準），不推播，避免一次灌爆
+    if first_run:
+        for g in games:
+            gid = g.get("id")
+            if gid is not None:
+                _mark_sent(session, f"game:{gid}")
+        _mark_sent(session, "game:init")
+        return
+
+    if not new_games:
+        return
+    for g in new_games:
+        _mark_sent(session, f"game:{g['id']}")
+
+    titles = "、".join(g.get("title", "") for g in new_games[:3])
+    more = f" 等 {len(new_games)} 款" if len(new_games) > 3 else ""
+    push.send_to_all(
+        session,
+        {
+            "title": "🎮 新的免費遊戲！",
+            "body": f"{titles}{more} 現在可以免費領取",
+            "url": "/games",
+            "tag": f"games:{now.strftime('%Y%m%d%H%M')}",
+        },
+    )
 
 
 def _fmt_time(dt: datetime) -> str:
@@ -179,6 +231,7 @@ def _tick() -> None:
             _check_event_reminders(session, now)
             _check_daily_summary(session, now)
             _check_budget_overspend(session, now)
+            _check_new_free_games(session, now)
             if now.minute == 0:  # 每小時整點清一次舊標記
                 _prune(session)
         except Exception as exc:  # noqa: BLE001
