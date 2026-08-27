@@ -8,8 +8,48 @@ from app.config import settings
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
-# 專案根目錄下的 deploy/win-restart.bat
-BAT = Path(__file__).resolve().parents[3] / "deploy" / "win-restart.bat"
+# 專案根目錄
+REPO = Path(__file__).resolve().parents[3]
+BAT = REPO / "deploy" / "win-restart.bat"
+
+
+def _git(args, timeout=10):
+    try:
+        r = subprocess.run(
+            ["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=timeout
+        )
+        if r.returncode != 0:
+            return None
+        return r.stdout.strip()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@router.get("/version")
+def version():
+    """目前主機上的程式版本（讀本地 git）。"""
+    return {
+        "commit": _git(["rev-parse", "--short", "HEAD"]),
+        "subject": _git(["log", "-1", "--pretty=%s"]),
+        "date": _git(["log", "-1", "--pretty=%cd", "--date=format:%Y-%m-%d %H:%M"]),
+        "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"]),
+    }
+
+
+@router.post("/check-updates")
+def check_updates():
+    """向遠端抓一下，看落後幾個版本（有沒有新版可更新）。"""
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]) or "HEAD"
+    fetched = _git(["fetch", "origin", branch], timeout=30) is not None
+    if not fetched:
+        return {"ok": False, "detail": "無法連到 GitHub 檢查更新"}
+    behind = _git(["rev-list", "--count", f"HEAD..origin/{branch}"])
+    latest = _git(["log", "-1", "--pretty=%s", f"origin/{branch}"])
+    try:
+        n = int(behind or "0")
+    except ValueError:
+        n = 0
+    return {"ok": True, "behind": n, "latest_subject": latest}
 
 
 @router.get("/update-available")

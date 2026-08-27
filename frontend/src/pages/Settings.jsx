@@ -6,7 +6,7 @@ import {
   updateCategory,
 } from "../api/categories";
 import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
-import { getUpdateAvailable, runUpdate } from "../api/system";
+import { getUpdateAvailable, runUpdate, getVersion, checkUpdates } from "../api/system";
 import { NO_BACKEND } from "../localMode";
 import {
   pushSupported,
@@ -361,12 +361,31 @@ function SystemSettings() {
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [ver, setVer] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [check, setCheck] = useState(null); // { behind, latest_subject } | { error }
 
   useEffect(() => {
     getUpdateAvailable()
       .then(setInfo)
       .catch(() => setInfo({ supported: false }));
+    getVersion()
+      .then(setVer)
+      .catch(() => setVer(null));
   }, []);
+
+  async function handleCheck() {
+    setChecking(true);
+    setCheck(null);
+    try {
+      const r = await checkUpdates();
+      setCheck(r.ok ? r : { error: r.detail || "檢查失敗" });
+    } catch {
+      setCheck({ error: "檢查失敗" });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function handleUpdate() {
     if (
@@ -387,27 +406,55 @@ function SystemSettings() {
     }
   }
 
-  if (info && !info.supported) {
-    return (
-      <p className="text-sm text-slate-400">
-        此功能只在自架 Windows 主機可用（或已在 .env 停用）。其他情況請手動執行 win-restart.bat。
-      </p>
-    );
-  }
+  const supported = !info || info.supported;
 
   return (
     <div className="space-y-3">
-      <button
-        onClick={handleUpdate}
-        disabled={busy}
-        className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95 disabled:opacity-40"
-      >
-        {busy ? "啟動更新中…" : "⬆️ 立即更新並重啟"}
-      </button>
-      {msg && <p className="text-sm text-slate-500">{msg}</p>}
-      <p className="text-xs text-slate-400">
-        會在主機背景執行 win-restart.bat：拉最新程式 → 重建前端 → 重啟後端。完成後請手動重新整理網頁（Ctrl+F5）。
-      </p>
+      {ver?.commit && (
+        <p className="text-xs text-slate-500">
+          目前版本 <span className="font-mono font-semibold text-slate-700">{ver.commit}</span>
+          {ver.date && <span className="text-slate-400"> · {ver.date}</span>}
+          {ver.subject && <span className="mt-0.5 block truncate text-slate-400">{ver.subject}</span>}
+        </p>
+      )}
+
+      {/* 檢查更新 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={handleCheck}
+          disabled={checking}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-40"
+        >
+          {checking ? "檢查中…" : "🔍 檢查更新"}
+        </button>
+        {check?.error && <span className="text-sm text-amber-600">⚠️ {check.error}</span>}
+        {check && !check.error &&
+          (check.behind > 0 ? (
+            <span className="text-sm font-semibold text-emerald-600">有 {check.behind} 個更新可用 🎉</span>
+          ) : (
+            <span className="text-sm text-slate-500">已是最新版 ✅</span>
+          ))}
+      </div>
+
+      {supported ? (
+        <>
+          <button
+            onClick={handleUpdate}
+            disabled={busy}
+            className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+          >
+            {busy ? "啟動更新中…" : "⬆️ 立即更新並重啟"}
+          </button>
+          {msg && <p className="text-sm text-slate-500">{msg}</p>}
+          <p className="text-xs text-slate-400">
+            會在主機背景執行 win-restart.bat：拉最新程式 → 重建前端 → 重啟後端。完成後請手動重新整理網頁（Ctrl+F5）。
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-slate-400">
+          一鍵更新只在自架 Windows 主機可用（或已在 .env 停用）。其他情況請手動執行 win-restart.bat。
+        </p>
+      )}
     </div>
   );
 }
