@@ -6,6 +6,7 @@ import {
   updateCategory,
 } from "../api/categories";
 import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
+import { getUpdateAvailable, runUpdate } from "../api/system";
 import { NO_BACKEND } from "../localMode";
 import {
   pushSupported,
@@ -356,6 +357,61 @@ function ColorPicker({ value, onChange }) {
   );
 }
 
+function SystemSettings() {
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    getUpdateAvailable()
+      .then(setInfo)
+      .catch(() => setInfo({ supported: false }));
+  }, []);
+
+  async function handleUpdate() {
+    if (
+      !window.confirm(
+        "要現在更新嗎？主機會拉最新程式、重建並重啟，約 1–2 分鐘。期間網頁會短暫斷線，完成後重新整理即可。"
+      )
+    )
+      return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await runUpdate();
+      setMsg("🔄 " + (r.message || "更新中…"));
+    } catch (e) {
+      setMsg("⚠️ " + (e?.response?.data?.detail || e?.message || "更新失敗"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (info && !info.supported) {
+    return (
+      <p className="text-sm text-slate-400">
+        此功能只在自架 Windows 主機可用（或已在 .env 停用）。其他情況請手動執行 win-restart.bat。
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={handleUpdate}
+        disabled={busy}
+        className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+      >
+        {busy ? "啟動更新中…" : "⬆️ 立即更新並重啟"}
+      </button>
+      {msg && <p className="text-sm text-slate-500">{msg}</p>}
+      <p className="text-xs text-slate-400">
+        會在主機背景執行 win-restart.bat：拉最新程式 → 重建前端 → 重啟後端。完成後請手動重新整理網頁（Ctrl+F5）。
+      </p>
+    </div>
+  );
+}
+
 /** 設定頁的通用區塊卡片，之後新增設定就加一個 <SettingSection>。 */
 function SettingSection({ title, description, children }) {
   return (
@@ -530,6 +586,12 @@ export default function Settings() {
           description="行程到點、每日摘要會推播到電腦或手機，就算沒開網頁也會跳。"
         >
           <NotificationSettings />
+        </SettingSection>
+      )}
+
+      {!NO_BACKEND && (
+        <SettingSection title="⬆️ 更新" description="不用連到主機，直接從這裡把程式更新到最新版並重啟。">
+          <SystemSettings />
         </SettingSection>
       )}
 

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # 登入密碼（留空 = 不啟用登入，適合純本機使用；部署到公開網址時必設）
     auth_password: str = ""
 
+    # 允許從網頁按鈕觸發自我更新（執行 deploy/win-restart.bat）；設 0 可關閉
+    allow_self_update: bool = True
+
     # Google 日曆 OAuth
     google_client_id: str = ""
     google_client_secret: str = ""
