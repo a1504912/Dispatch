@@ -68,19 +68,28 @@ def _check_new_free_games(session: Session, now: datetime) -> None:
             continue
         new_games.append(g)
 
-    # 第一次跑：把現有全部標記為已知（建立基準），不推播，避免一次灌爆
-    if first_run:
-        for g in games:
-            gid = g.get("id")
-            if gid is not None:
-                _mark_sent(session, f"game:{gid}")
-        _mark_sent(session, "game:init")
-        return
-
-    if not new_games:
-        return
+    # 一律更新「已看過」基準（即使關閉/第一次），再決定要不要推，避免之後灌爆
     for g in new_games:
         _mark_sent(session, f"game:{g['id']}")
+    if first_run:
+        _mark_sent(session, "game:init")
+        return
+    if not new_games:
+        return
+
+    # 開關 + 平台過濾
+    if push.get_setting(session, "games_notify", "1") != "1":
+        return
+    import json
+
+    try:
+        wanted = json.loads(push.get_setting(session, "games_platforms", "[]") or "[]")
+    except (ValueError, TypeError):
+        wanted = []
+    if wanted:
+        new_games = [g for g in new_games if _match_platform(g, wanted)]
+    if not new_games:
+        return
 
     titles = "、".join(g.get("title", "") for g in new_games[:3])
     more = f" 等 {len(new_games)} 款" if len(new_games) > 3 else ""
@@ -93,6 +102,31 @@ def _check_new_free_games(session: Session, now: datetime) -> None:
             "tag": f"games:{now.strftime('%Y%m%d%H%M')}",
         },
     )
+
+
+# 平台關鍵字（對應 GamerPower 的 platforms 字串）
+PLATFORM_MATCH = {
+    "steam": ["steam"],
+    "epic": ["epic"],
+    "gog": ["gog"],
+    "ubisoft": ["ubisoft", "uplay"],
+    "ea": ["origin", "ea app"],
+    "itchio": ["itch"],
+    "xbox": ["xbox"],
+    "playstation": ["playstation", "ps4", "ps5"],
+    "android": ["android"],
+    "ios": ["ios", "iphone"],
+    "drmfree": ["drm-free"],
+}
+
+
+def _match_platform(game: dict, wanted: list) -> bool:
+    p = (game.get("platforms") or "").lower()
+    for key in wanted:
+        for kw in PLATFORM_MATCH.get(key, [key]):
+            if kw in p:
+                return True
+    return False
 
 
 def _fmt_time(dt: datetime) -> str:

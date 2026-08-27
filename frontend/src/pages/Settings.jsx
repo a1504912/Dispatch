@@ -49,6 +49,20 @@ function WeatherSettings() {
   );
 }
 
+const GAME_PLATFORMS = [
+  ["steam", "Steam"],
+  ["epic", "Epic"],
+  ["gog", "GOG"],
+  ["ubisoft", "Ubisoft"],
+  ["ea", "EA"],
+  ["itchio", "itch.io"],
+  ["xbox", "Xbox"],
+  ["playstation", "PS"],
+  ["android", "Android"],
+  ["ios", "iOS"],
+  ["drmfree", "DRM-Free"],
+];
+
 const REMIND_OPTIONS = [
   { value: 0, label: "準時" },
   { value: 5, label: "提前 5 分鐘" },
@@ -60,7 +74,12 @@ const REMIND_OPTIONS = [
 
 function NotificationSettings() {
   const [status, setStatus] = useState({ supported: true });
-  const [prefs, setPrefs] = useState({ remind_before_minutes: 10, daily_summary_time: "08:00" });
+  const [prefs, setPrefs] = useState({
+    remind_before_minutes: 10,
+    daily_summary_time: "08:00",
+    games_enabled: true,
+    games_platforms: [],
+  });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -259,6 +278,47 @@ function NotificationSettings() {
           </div>
           <p className="mt-1.5 text-xs text-slate-400">每天這個時間推一則：今天幾件、逾期、待辦。</p>
         </div>
+      </div>
+
+      <hr className="border-slate-100" />
+
+      {/* 免費遊戲新品提醒 */}
+      <div>
+        <label className="flex cursor-pointer items-center justify-between">
+          <span className="text-xs font-bold text-slate-500">🎮 免費遊戲新品提醒</span>
+          <input
+            type="checkbox"
+            checked={Boolean(prefs.games_enabled)}
+            onChange={(e) => handleSavePrefs({ ...prefs, games_enabled: e.target.checked })}
+            className="h-4 w-4 accent-indigo-600"
+          />
+        </label>
+        {prefs.games_enabled && (
+          <>
+            <p className="mb-1.5 mt-2 text-xs text-slate-400">只提醒這些平台（都不選 = 全部平台都提醒）：</p>
+            <div className="flex flex-wrap gap-1.5">
+              {GAME_PLATFORMS.map(([key, label]) => {
+                const on = (prefs.games_platforms || []).includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      const cur = prefs.games_platforms || [];
+                      const next = on ? cur.filter((k) => k !== key) : [...cur, key];
+                      handleSavePrefs({ ...prefs, games_platforms: next });
+                    }}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      on ? "bg-indigo-600 text-white" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       <p className="text-xs text-slate-400">
