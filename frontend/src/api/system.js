@@ -19,3 +19,8 @@ export async function checkUpdates() {
   const { data } = await client.post("/api/system/check-updates");
   return data;
 }
+
+export async function getUpdateStatus() {
+  const { data } = await client.get("/api/system/update-status");
+  return data;
+}

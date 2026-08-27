@@ -11,6 +11,16 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 # 專案根目錄
 REPO = Path(__file__).resolve().parents[3]
 BAT = REPO / "deploy" / "win-restart.bat"
+STATUS = REPO / "deploy" / "update-status.txt"
+
+
+@router.get("/update-status")
+def update_status():
+    """更新到哪一步（win-restart.bat 會寫這個檔）。"""
+    try:
+        return {"step": STATUS.read_text(encoding="utf-8").strip()}
+    except Exception:  # noqa: BLE001
+        return {"step": ""}
 
 
 def _git(args, timeout=10):
@@ -70,6 +80,11 @@ def run_update():
         raise HTTPException(status_code=400, detail="此功能只在自架 Windows 主機可用")
     if not BAT.exists():
         raise HTTPException(status_code=400, detail="找不到 win-restart.bat")
+
+    try:
+        STATUS.write_text("start", encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
 
     # 用 start 另開一個獨立視窗執行；這樣它 taskkill 掉舊後端後，更新程序仍存活並啟動新後端。
     try:

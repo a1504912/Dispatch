@@ -6,7 +6,7 @@ import {
   updateCategory,
 } from "../api/categories";
 import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
-import { getUpdateAvailable, runUpdate, getVersion, checkUpdates } from "../api/system";
+import { getUpdateAvailable, runUpdate, getVersion, checkUpdates, getUpdateStatus } from "../api/system";
 import { NO_BACKEND } from "../localMode";
 import {
   pushSupported,
@@ -359,7 +359,6 @@ function ColorPicker({ value, onChange }) {
 
 function SystemSettings() {
   const [info, setInfo] = useState(null);
-  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [ver, setVer] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -387,23 +386,65 @@ function SystemSettings() {
     }
   }
 
+  const [updating, setUpdating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [stepLabel, setStepLabel] = useState("");
+
   async function handleUpdate() {
     if (
       !window.confirm(
-        "要現在更新嗎？主機會拉最新程式、重建並重啟，約 1–2 分鐘。期間網頁會短暫斷線，完成後重新整理即可。"
+        "要現在更新嗎？主機會拉最新程式、重建並重啟，約 1–2 分鐘。期間網頁會短暫斷線，完成後會自動重新整理。"
       )
     )
       return;
-    setBusy(true);
     setMsg("");
+    setUpdating(true);
+    setProgress(5);
+    setStepLabel("開始更新…");
     try {
-      const r = await runUpdate();
-      setMsg("🔄 " + (r.message || "更新中…"));
+      await runUpdate();
     } catch (e) {
+      setUpdating(false);
       setMsg("⚠️ " + (e?.response?.data?.detail || e?.message || "更新失敗"));
-    } finally {
-      setBusy(false);
+      return;
     }
+
+    const PCT = { start: 8, pull: 20, build: 45, deps: 72, restart: 88 };
+    const LBL = {
+      start: "開始更新…",
+      pull: "拉取最新程式…",
+      build: "重建前端（這步較久）…",
+      deps: "更新後端套件…",
+      restart: "重啟後端…",
+    };
+    let wentDown = false;
+    let ticks = 0;
+    const timer = setInterval(async () => {
+      ticks += 1;
+      if (ticks > 200) {
+        clearInterval(timer);
+        setStepLabel("更新逾時，請到主機視窗看看狀況。");
+        return;
+      }
+      try {
+        const s = await getUpdateStatus();
+        if (wentDown) {
+          // 後端曾斷線又回來 = 更新完成
+          clearInterval(timer);
+          setProgress(100);
+          setStepLabel("完成！即將重新整理…");
+          setTimeout(() => window.location.reload(), 1500);
+          return;
+        }
+        if (PCT[s.step]) setProgress((p) => Math.max(p, PCT[s.step]));
+        setStepLabel(LBL[s.step] || "更新中…");
+        setProgress((p) => Math.min(p + 1, 90)); // 平滑爬升，重啟前封頂 90%
+      } catch {
+        wentDown = true;
+        setStepLabel("重啟中…");
+        setProgress((p) => Math.max(p, 92));
+      }
+    }, 1500);
   }
 
   const supported = !info || info.supported;
@@ -438,16 +479,30 @@ function SystemSettings() {
 
       {supported ? (
         <>
-          <button
-            onClick={handleUpdate}
-            disabled={busy}
-            className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95 disabled:opacity-40"
-          >
-            {busy ? "啟動更新中…" : "⬆️ 立即更新並重啟"}
-          </button>
+          {updating ? (
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-600">{stepLabel}</span>
+                <span className="text-slate-400">{progress}%</span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleUpdate}
+              className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95"
+            >
+              ⬆️ 立即更新並重啟
+            </button>
+          )}
           {msg && <p className="text-sm text-slate-500">{msg}</p>}
           <p className="text-xs text-slate-400">
-            會在主機背景執行 win-restart.bat：拉最新程式 → 重建前端 → 重啟後端。完成後請手動重新整理網頁（Ctrl+F5）。
+            會在主機背景執行 win-restart.bat：拉最新程式 → 重建前端 → 重啟後端。完成後會自動重新整理網頁。
           </p>
         </>
       ) : (
