@@ -119,7 +119,7 @@ export default function Ledger() {
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-5xl space-y-5">
       <h1 className="text-2xl font-black tracking-tight text-slate-900">記帳</h1>
 
       {/* 分頁 */}
@@ -146,15 +146,17 @@ export default function Ledger() {
       </div>
 
       {tab === "split" ? (
-        <SplitBills expenseCats={allCats.filter((c) => c.kind === "expense")} />
+        <div className="mx-auto max-w-2xl"><SplitBills expenseCats={allCats.filter((c) => c.kind === "expense")} /></div>
       ) : tab === "assets" ? (
-        <Assets />
+        <div className="mx-auto max-w-2xl"><Assets /></div>
       ) : tab === "budget" ? (
-        <Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} />
+        <div className="mx-auto max-w-2xl"><Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} /></div>
       ) : tab === "analysis" ? (
-        <Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} />
+        <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} /></div>
       ) : (
-       <>
+       <div className="grid items-start gap-5 lg:grid-cols-2">
+        {/* 左欄：月曆 + 月結 + 新增 */}
+        <div className="space-y-5">
       {/* 月曆 */}
       <MonthCalendar
         year={cur.getFullYear()}
@@ -221,7 +223,10 @@ export default function Ledger() {
       >
         <span className="text-lg leading-none">＋</span> 新增記錄
       </button>
+        </div>
 
+        {/* 右欄：選取那天（或整月）的明細 */}
+        <div className="space-y-4">
       {/* 選取某天時，顯示當天標題 */}
       {selectedDay && (
         <div className="flex items-center justify-between px-1">
@@ -314,7 +319,8 @@ export default function Ledger() {
           })}
         </div>
       )}
-       </>
+        </div>
+       </div>
       )}
 
       <LedgerCategoryManager
