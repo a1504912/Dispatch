@@ -24,7 +24,9 @@ const tintOf = (kind) =>
     ? "bg-emerald-50 text-emerald-600"
     : kind === "transfer"
       ? "bg-sky-50 text-sky-600"
-      : "bg-rose-50 text-rose-600";
+      : kind === "adjust"
+        ? "bg-violet-50 text-violet-600"
+        : "bg-rose-50 text-rose-600";
 
 export default function Ledger() {
   const [txs, setTxs] = useState([]);
@@ -272,15 +274,18 @@ export default function Ledger() {
                 <div className="divide-y divide-slate-50 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
                   {rows.map((t) => {
                     const refund = t.kind === "expense" && t.amount < 0;
-                    const positive = t.kind === "income" || refund;
+                    const positive =
+                      t.kind === "income" || refund || (t.kind === "adjust" && t.amount >= 0);
+                    const negative =
+                      (t.kind === "expense" && t.amount >= 0) || (t.kind === "adjust" && t.amount < 0);
                     return (
                       <div key={t.id} className="group flex items-center gap-3 px-3.5 py-2.5">
                         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-lg ${tintOf(t.kind)}`}>
-                          {t.kind === "transfer" ? "🔁" : emojiFrom(allCats, t.kind, t.category)}
+                          {t.kind === "transfer" ? "🔁" : t.kind === "adjust" ? "🔧" : emojiFrom(allCats, t.kind, t.category)}
                         </span>
                         <button onClick={() => startEdit(t)} className="min-w-0 flex-1 text-left">
                           <p className="truncate text-sm font-semibold text-slate-800">
-                            {t.kind === "transfer" ? "轉帳" : t.category}
+                            {t.kind === "transfer" ? "轉帳" : t.kind === "adjust" ? "餘額校正" : t.category}
                             {t.subcategory && (
                               <span className="font-normal text-slate-400"> · {t.subcategory}</span>
                             )}
@@ -297,10 +302,16 @@ export default function Ledger() {
                         </button>
                         <span
                           className={`shrink-0 text-[15px] font-black tabular-nums ${
-                            positive ? "text-emerald-500" : t.kind === "expense" ? "text-slate-800" : "text-sky-500"
+                            positive
+                              ? "text-emerald-500"
+                              : t.kind === "expense"
+                                ? "text-slate-800"
+                                : t.kind === "adjust"
+                                  ? "text-rose-500"
+                                  : "text-sky-500"
                           }`}
                         >
-                          {positive ? "+" : t.kind === "expense" ? "−" : ""}
+                          {positive ? "+" : negative ? "−" : ""}
                           {money(Math.abs(t.amount))}
                         </span>
                         <button
