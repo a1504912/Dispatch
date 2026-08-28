@@ -204,14 +204,6 @@ export default function Ledger() {
         </div>
       </div>
 
-      {/* 新增記錄 */}
-      <button
-        onClick={() => { setEditingTx(selectedDay ? { date: selectedDay } : null); setTxModalOpen(true); }}
-        className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-emerald-500 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-600 active:scale-[0.98]"
-      >
-        <span className="text-lg leading-none">＋</span> 新增記錄
-      </button>
-
       {/* 月曆 */}
       <MonthCalendar
         year={cur.getFullYear()}
