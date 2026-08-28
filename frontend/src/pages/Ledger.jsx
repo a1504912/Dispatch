@@ -157,22 +157,8 @@ export default function Ledger() {
         <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} /></div>
       ) : (
        <div className="grid items-start gap-5 lg:grid-cols-2">
-        {/* 左欄：月曆 + 月結 + 新增 */}
+        {/* 左欄：月結 + 新增 + 月曆 */}
         <div className="space-y-5">
-      {/* 月曆 */}
-      <MonthCalendar
-        year={cur.getFullYear()}
-        month={cur.getMonth() + 1}
-        dayData={dayData}
-        todayStr={todayStr}
-        selectedDay={selectedDay}
-        onSelectDay={setSelectedDay}
-        onPrev={() => setOffset((o) => o - 1)}
-        onNext={() => setOffset((o) => Math.min(0, o + 1))}
-        onToday={() => setOffset(0)}
-        monthLabel={monthLabel}
-      />
-
       {/* 月結 hero */}
       <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-5 text-white shadow-lg shadow-slate-900/10">
         <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-indigo-500/25 blur-2xl" />
@@ -225,6 +211,20 @@ export default function Ledger() {
       >
         <span className="text-lg leading-none">＋</span> 新增記錄
       </button>
+
+      {/* 月曆 */}
+      <MonthCalendar
+        year={cur.getFullYear()}
+        month={cur.getMonth() + 1}
+        dayData={dayData}
+        todayStr={todayStr}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        onPrev={() => setOffset((o) => o - 1)}
+        onNext={() => setOffset((o) => Math.min(0, o + 1))}
+        onToday={() => setOffset(0)}
+        monthLabel={monthLabel}
+      />
         </div>
 
         {/* 右欄：選取那天（或整月）的明細 */}
