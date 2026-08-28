@@ -354,6 +354,18 @@ export default function Ledger() {
           load();
         }}
       />
+
+      {/* 浮動新增鈕（記錄頁；捲到哪都在，手機自動避開底部分頁列） */}
+      {tab === "records" && (
+        <button
+          onClick={() => { setEditingTx(selectedDay ? { date: selectedDay } : null); setTxModalOpen(true); }}
+          className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40 transition hover:bg-emerald-600 active:scale-95 md:bottom-8 md:right-8"
+          title="新增記錄"
+          aria-label="新增記錄"
+        >
+          <span className="text-3xl font-light leading-none">＋</span>
+        </button>
+      )}
     </div>
   );
 }
