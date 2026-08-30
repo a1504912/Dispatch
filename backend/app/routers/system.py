@@ -2,6 +2,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -14,15 +15,18 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 REPO = Path(__file__).resolve().parents[3]
 BAT = REPO / "deploy" / "win-restart.bat"
 STATUS = REPO / "deploy" / "update-status.txt"
+# 每次後端啟動就換一個；前端看到它變了＝後端已重啟完成
+BOOT_ID = uuid.uuid4().hex
 
 
 @router.get("/update-status")
 def update_status():
-    """更新到哪一步（win-restart.bat 會寫這個檔）。"""
+    """更新到哪一步（win-restart.bat 會寫這個檔）＋ 這次的開機 ID。"""
     try:
-        return {"step": STATUS.read_text(encoding="utf-8").strip()}
+        step = STATUS.read_text(encoding="utf-8").strip()
     except Exception:  # noqa: BLE001
-        return {"step": ""}
+        step = ""
+    return {"step": step, "boot": BOOT_ID}
 
 
 def _git(args, timeout=10):

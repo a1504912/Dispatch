@@ -38,6 +38,12 @@ export default function UpdateBanner() {
     setUpdating(true);
     setProgress(5);
     setStep("開始更新…");
+    let startBoot = null;
+    try {
+      startBoot = (await getUpdateStatus()).boot;
+    } catch {
+      /* 拿不到就用「後端曾斷線」當完成依據 */
+    }
     try {
       await runUpdate();
     } catch {
@@ -63,7 +69,9 @@ export default function UpdateBanner() {
       }
       try {
         const s = await getUpdateStatus();
-        if (wentDown) {
+        // 後端每次啟動會換一個 boot id；變了＝新後端已就緒
+        const done = startBoot ? Boolean(s.boot && s.boot !== startBoot) : wentDown;
+        if (done) {
           clearInterval(timer);
           setProgress(100);
           setStep("完成！即將重新整理…");

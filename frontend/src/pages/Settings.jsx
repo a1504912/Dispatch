@@ -401,6 +401,12 @@ function SystemSettings() {
     setUpdating(true);
     setProgress(5);
     setStepLabel("開始更新…");
+    let startBoot = null;
+    try {
+      startBoot = (await getUpdateStatus()).boot;
+    } catch {
+      /* 拿不到就用「後端曾斷線」當完成依據 */
+    }
     try {
       await runUpdate();
     } catch (e) {
@@ -428,8 +434,9 @@ function SystemSettings() {
       }
       try {
         const s = await getUpdateStatus();
-        if (wentDown) {
-          // 後端曾斷線又回來 = 更新完成
+        // 後端每次啟動會換一個 boot id；變了＝新後端已就緒（拿不到就退回舊的斷線判斷）
+        const done = startBoot ? Boolean(s.boot && s.boot !== startBoot) : wentDown;
+        if (done) {
           clearInterval(timer);
           setProgress(100);
           setStepLabel("完成！即將重新整理…");
