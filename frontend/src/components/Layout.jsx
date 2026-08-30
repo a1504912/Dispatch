@@ -5,6 +5,7 @@ import { logout } from "../api/auth";
 import { LOCAL_MODE, NO_BACKEND } from "../localMode";
 import { SUPABASE_MODE, supabase } from "../supabase";
 import Lightbox from "./Lightbox.jsx";
+import UpdateBanner from "./UpdateBanner.jsx";
 
 function CalendarIcon({ className }) {
   return (
@@ -329,6 +330,7 @@ export default function Layout() {
       </header>
 
       <main className="flex-1 overflow-y-auto">
+        <UpdateBanner />
         <div className="w-full px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
           <Outlet />
         </div>
