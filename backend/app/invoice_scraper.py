@@ -143,6 +143,7 @@ class LoginSession(threading.Thread):
                 browser = p.chromium.launch(headless=True)
                 context = browser.new_context(
                     locale="zh-TW",
+                    viewport={"width": 1366, "height": 900},
                     user_agent=(
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -268,9 +269,27 @@ class LoginSession(threading.Thread):
                     page.goto(INVOICE_URL, wait_until="networkidle", timeout=45000)
                 except Exception:  # noqa: BLE001
                     page.goto(INVOICE_URL, wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(3500)
+                page.wait_for_timeout(2500)
 
-                # 沒自動查詢的話，主動按「查詢」
+                # 6a) 像人一樣點左側選單「發票查詢及捐贈」（SPA 直接開深層網址常常不查詢）
+                if not captured:
+                    menu = _first(
+                        page,
+                        [
+                            "a:has-text('發票查詢及捐贈')",
+                            "text=發票查詢及捐贈",
+                            "li:has-text('發票查詢及捐贈') a",
+                            "a:has-text('發票查詢')",
+                        ],
+                    )
+                    if menu:
+                        try:
+                            menu.click()
+                            page.wait_for_timeout(3500)
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                # 6b) 還是沒資料 → 主動按「查詢」
                 if not captured:
                     qbtn = _first(
                         page,
