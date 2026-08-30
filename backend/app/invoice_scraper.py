@@ -237,10 +237,11 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
 
     import calendar
 
-    # 完全照 SPA 的格式：起訖用「同一個時間」（查詢當下的 UTC 時間），
-    # 否則後端算出的區間會多算近一天而被判「區間異常」。
-    _u = datetime.now(timezone.utc)
-    tstamp = _u.strftime("%H:%M:%S.") + f"{_u.microsecond // 1000:03d}Z"
+    # 完全照 SPA 的格式：起訖用「同一個時間」，且用「台灣當地時間」再標 Z
+    # （SPA 就是這樣：把本地時間直接當 Z 送。用真 UTC 會讓結束日 +8 小時跨到明天，
+    #  被判「查未來、區間異常」。）
+    _t = datetime.now(TW)
+    tstamp = _t.strftime("%H:%M:%S.") + f"{_t.microsecond // 1000:03d}Z"
 
     def fetch_range(first: str, last: str):
         """查一段日期（first/last 為 YYYY-MM-DD）。回 (bodies, err)。"""
@@ -320,7 +321,8 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
         bodies, err = fetch_range(first, last)
         if err:
             last_err = err
-            if off == 0:  # 當月就失敗＝授權/欄位問題，直接回報
+            # 授權類錯誤（401/例外）直接回報；區間類就跳過這個月繼續試
+            if ("401" in err or "例外" in err) and off == 0:
                 return None, err
             continue
         got_any = True
