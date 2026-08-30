@@ -458,123 +458,19 @@ class LoginSession(threading.Thread):
                     )
                     return
 
-                # API 沒成 → 退回原本的畫面操作（順便診斷）
-                nav_trace = [after_login_url, f"api_err={api_err}"]
-
-                def is_on_invoice() -> bool:
-                    if "btc502w" in page.url:
-                        return True
-                    for kw in ("查詢發票日期", "歸戶載具", "發票狀態"):
-                        try:
-                            el = page.query_selector(f"text={kw}")
-                            if el and el.is_visible():
-                                return True
-                        except Exception:  # noqa: BLE001
-                            continue
-                    return False
-
-                # 一直換方法，直到真的到發票頁（每種方法後都用網址確認）
-                strategies = [
-                    ("menu", lambda: _click_menu(page, "發票查詢及捐贈")),
-                    ("goto", lambda: _safe_goto(page, INVOICE_URL)),
-                    ("goto-detail", lambda: _safe_goto(page, INVOICE_URL + "/detail")),
-                    ("anchor", lambda: _click_visible(
-                        page, ["a:has-text('發票查詢及捐贈')", "li:has-text('發票查詢及捐贈')"]
-                    )),
-                ]
-                menu_clicked = False
-                on_invoice = is_on_invoice()
-                for name, fn in strategies:
-                    if on_invoice:
-                        break
-                    try:
-                        did = fn()
-                    except Exception:  # noqa: BLE001
-                        did = False
-                    if name == "menu" and did:
-                        menu_clicked = True
-                    page.wait_for_timeout(3200)
-                    on_invoice = is_on_invoice()
-                    nav_trace.append(f"{name}={did}:{page.url.rsplit('/', 2)[-1]}")
-
-                # 到了發票頁：表單可能收合 → 展開，再按查詢
-                if on_invoice:
-                    _click_visible(
-                        page,
-                        [
-                            "button:has-text('展開')",
-                            "a:has-text('展開')",
-                            "span:has-text('展開')",
-                            "[class*='expand']",
-                        ],
-                    )
-                    page.wait_for_timeout(1200)
-                    if not captured:
-                        _click_visible(
-                            page,
-                            ["button:has-text('查詢')", "a:has-text('查詢')", "button[type='submit']"],
-                        )
-                        page.wait_for_timeout(3800)
-                    nav_trace.append(f"final:{page.url.rsplit('/', 2)[-1]}")
-
-                inv_dbg = _save_debug(page, "invoice-page")  # 一律存發票頁截圖
-
-                # 收集畫面上「看得到的按鈕/連結文字」，方便隔空判斷該點哪顆
-                btn_texts: list[str] = []
-                try:
-                    for el in page.query_selector_all("button, a, [role='button']"):
-                        try:
-                            if not el.is_visible():
-                                continue
-                            t = (el.inner_text() or "").strip().replace("\n", " ")
-                            if t and len(t) <= 12 and t not in btn_texts:
-                                btn_texts.append(t)
-                        except Exception:  # noqa: BLE001
-                            continue
-                except Exception:  # noqa: BLE001
-                    pass
-                btn_texts = btn_texts[:25]
-
-                # 6b) 盡量翻頁把每頁都抓到
-                total_pages = 1
-                if captured:
-                    total_pages = max((c.get("totalPages") or 1) for c in captured)
-                for _ in range(max(0, total_pages - 1)):
-                    nxt = _first(
-                        page,
-                        [
-                            "button[aria-label*='下一頁']",
-                            "button:has-text('下一頁')",
-                            "li.next:not(.disabled) a",
-                            "button.next-page",
-                        ],
-                    )
-                    if not nxt:
-                        break
-                    try:
-                        nxt.click()
-                        page.wait_for_timeout(1500)
-                    except Exception:  # noqa: BLE001
-                        break
-
-                rows = _rows_from_capture(captured)
-                got_pages = len(captured)
+                # API 沒成 → 立刻回報原因（不再浪費時間去點註定失敗的畫面）
+                inv_dbg = _save_debug(page, "invoice-page")
                 cur_url = page.url
                 context.close()
                 browser.close()
                 self.res_q.put(
                     {
                         "ok": True,
-                        "invoices": rows,
-                        "total_pages": total_pages,
-                        "pages_captured": got_pages,
+                        "invoices": [],
+                        "total_pages": 1,
+                        "pages_captured": 0,
                         "current_url": cur_url,
-                        "menu_clicked": menu_clicked,
-                        "on_invoice": on_invoice,
                         "api_err": api_err,
-                        "nav_trace": nav_trace,
-                        "api_hits": api_hits[:8],
-                        "buttons": btn_texts,
                         "debug": inv_dbg,
                     }
                 )
