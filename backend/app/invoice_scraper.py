@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 LOGIN_URL = "https://www.einvoice.nat.gov.tw/portal/btc/mobile/btc505w"
-INVOICE_URL = "https://www.einvoice.nat.gov.tw/portal/btc/mobile/btc502w/detail"
+INVOICE_URL = "https://www.einvoice.nat.gov.tw/portal/btc/mobile/btc502w"
 DEBUG_DIR = Path(__file__).resolve().parents[2] / "deploy" / "invoice-debug"
 
 # 台灣時區（發票日期是 UTC，要 +8 才是本地日）
@@ -64,6 +64,23 @@ def _first(page, selectors: list[str]):
         except Exception:  # noqa: BLE001
             continue
     return None
+
+
+def _click_visible(page, selectors: list[str]) -> bool:
+    """只點「看得到」的元素（跳過隱藏的手機版選單）。點到就回 True。"""
+    for sel in selectors:
+        try:
+            els = page.query_selector_all(sel)
+        except Exception:  # noqa: BLE001
+            els = []
+        for el in els:
+            try:
+                if el.is_visible():
+                    el.click(timeout=5000)
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+    return False
 
 
 def _norm_date(raw) -> str | None:
@@ -264,48 +281,42 @@ class LoginSession(threading.Thread):
                     )
                     return
 
-                # 6) 到發票查詢頁，觸發查詢（會發出 searchCarrierInvoice）
-                try:
-                    page.goto(INVOICE_URL, wait_until="networkidle", timeout=45000)
-                except Exception:  # noqa: BLE001
-                    page.goto(INVOICE_URL, wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(2500)
+                # 6) 登入後停在「手機條碼專區」，左側選單就在眼前 → 點「發票查詢及捐贈」
+                #    只點看得到的那個（頁面同時有隱藏的手機版選單，點到會失敗）
+                nav_trace = [after_login_url]
+                menu_clicked = _click_visible(
+                    page,
+                    [
+                        "a:has-text('發票查詢及捐贈')",
+                        "li:has-text('發票查詢及捐贈') a",
+                        "*:has-text('發票查詢及捐贈')",
+                    ],
+                )
+                page.wait_for_timeout(3800)
+                nav_trace.append(page.url)
 
-                # 6a) 像人一樣點左側選單「發票查詢及捐贈」（SPA 直接開深層網址常常不查詢）
-                if not captured:
-                    menu = _first(
-                        page,
-                        [
-                            "a:has-text('發票查詢及捐贈')",
-                            "text=發票查詢及捐贈",
-                            "li:has-text('發票查詢及捐贈') a",
-                            "a:has-text('發票查詢')",
-                        ],
-                    )
-                    if menu:
-                        try:
-                            menu.click()
-                            page.wait_for_timeout(3500)
-                        except Exception:  # noqa: BLE001
-                            pass
+                # 6a) 沒點到 → 退回直接開網址
+                if not captured and not menu_clicked:
+                    try:
+                        page.goto(INVOICE_URL, wait_until="networkidle", timeout=45000)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    page.wait_for_timeout(3000)
+                    nav_trace.append(page.url)
 
                 # 6b) 還是沒資料 → 主動按「查詢」
                 if not captured:
-                    qbtn = _first(
+                    qclicked = _click_visible(
                         page,
                         [
                             "button:has-text('查詢')",
-                            "button:has-text('查 詢')",
                             "a:has-text('查詢')",
                             "button[type='submit']",
                         ],
                     )
-                    if qbtn:
-                        try:
-                            qbtn.click()
-                        except Exception:  # noqa: BLE001
-                            pass
-                    page.wait_for_timeout(3500)
+                    if qclicked:
+                        page.wait_for_timeout(3500)
+                    nav_trace.append(page.url)
 
                 inv_dbg = _save_debug(page, "invoice-page")  # 一律存發票頁截圖
 
@@ -343,6 +354,8 @@ class LoginSession(threading.Thread):
                         "total_pages": total_pages,
                         "pages_captured": got_pages,
                         "current_url": cur_url,
+                        "menu_clicked": menu_clicked,
+                        "nav_trace": nav_trace,
                         "debug": inv_dbg,
                     }
                 )
