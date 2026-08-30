@@ -218,14 +218,15 @@ class LoginSession(threading.Thread):
                     [
                         "img[src*='captcha']",
                         "img[alt*='驗證碼']",
-                        "img[src^='data:image']",
+                        "img[alt*='圖形']",
                     ],
                 )
                 try:
-                    if cap_img:
+                    # 只有明確是「captcha 圖」才單獨截；否則截整個登入畫面（避免抓錯圖）
+                    if cap_img and cap_img.is_visible():
                         raw = cap_img.screenshot()
                     else:
-                        raw = page.screenshot(full_page=True)
+                        raw = page.screenshot()
                     cap_b64 = "data:image/png;base64," + base64.b64encode(raw).decode()
                 except Exception:  # noqa: BLE001
                     cap_b64 = ""
@@ -277,10 +278,20 @@ class LoginSession(threading.Thread):
                 after_login_url = page.url
                 login_dbg = _save_debug(page, "after-login")  # 一律存，方便判斷登入成敗
                 if "btc505w" in after_login_url:
+                    # 找頁面上的錯誤提示，判斷是驗證碼還是密碼
+                    err = ""
+                    for kw in ["驗證碼", "密碼錯", "帳號", "不正確", "錯誤", "失敗", "重新"]:
+                        try:
+                            el = page.query_selector(f"text={kw}")
+                            if el and el.is_visible():
+                                err = (el.inner_text() or "").strip()[:60]
+                                break
+                        except Exception:  # noqa: BLE001
+                            continue
                     self.res_q.put(
                         {
                             "ok": False,
-                            "error": f"登入後仍停在登入頁，多半是驗證碼或密碼錯。目前網址：{after_login_url}。{login_dbg}",
+                            "error": f"登入沒過（停在登入頁）。頁面提示：{err or '（找不到明確提示）'}。多半是驗證碼打錯，再試一次。",
                         }
                     )
                     return
