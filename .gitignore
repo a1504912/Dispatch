@@ -20,3 +20,4 @@ dist/
 .idea/
 .vscode/
 deploy/update-status.txt
+deploy/invoice-debug/

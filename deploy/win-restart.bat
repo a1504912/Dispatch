@@ -24,6 +24,8 @@ echo == Updating backend packages ==
 cd /d "%REPO%\backend"
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt
+rem 發票功能需要的隱形瀏覽器（已裝過會很快略過）
+python -m playwright install chromium
 
 echo restart>"%ST%"
 echo == Stopping old server on port 8000 ==

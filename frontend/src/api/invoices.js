@@ -1,14 +1,9 @@
 import client from "./client";
 
-// 發票功能需要後端打財政部 API，離線／Supabase 模式不支援（呼叫端會先判斷 NO_BACKEND）。
+// 發票功能需要後端開瀏覽器登入財政部平台，離線／Supabase 模式不支援。
 
 export async function listInvoices({ month, day } = {}) {
   const { data } = await client.get("/api/invoices", { params: { month, day } });
-  return data;
-}
-
-export async function syncInvoices(days = 60) {
-  const { data } = await client.post("/api/invoices/sync", { days });
   return data;
 }
 
@@ -19,6 +14,18 @@ export async function getInvoiceSettings() {
 
 export async function saveInvoiceSettings(payload) {
   const { data } = await client.put("/api/invoices/settings", payload);
+  return data;
+}
+
+// 開始登入：回 { sid, captcha_image }
+export async function invoiceLoginStart() {
+  const { data } = await client.post("/api/invoices/login/start");
+  return data;
+}
+
+// 送出驗證碼並抓發票：回 { added, fetched, total_pages }
+export async function invoiceLoginSubmit(sid, captcha) {
+  const { data } = await client.post("/api/invoices/login/submit", { sid, captcha });
   return data;
 }
 

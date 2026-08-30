@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import { listBudgets } from "../api/budgets";
-import { listInvoices, syncInvoices, invoiceToTransaction } from "../api/invoices";
+import { listInvoices, invoiceLoginStart, invoiceLoginSubmit, invoiceToTransaction } from "../api/invoices";
 import { NO_BACKEND } from "../localMode";
 import Budget from "../components/Budget.jsx";
 import Analysis from "../components/Analysis.jsx";
@@ -60,8 +60,10 @@ export default function Ledger() {
   const [statModal, setStatModal] = useState(null); // {title, items} 點統計看清單
   const [invoices, setInvoices] = useState([]); // 本月載具發票
   const [invModal, setInvModal] = useState(null); // {title, day} 發票清單彈窗
-  const [invBusy, setInvBusy] = useState(false); // 同步中
-  const [invMsg, setInvMsg] = useState(""); // 同步結果訊息
+  const [invBusy, setInvBusy] = useState(false); // 抓取中
+  const [invMsg, setInvMsg] = useState(""); // 抓取結果訊息
+  const [captcha, setCaptcha] = useState(null); // { sid, image } 驗證碼輸入彈窗
+  const [captchaVal, setCaptchaVal] = useState("");
 
   function load() {
     setLoading(true);
@@ -157,15 +159,37 @@ export default function Ledger() {
     setInvModal({ title, day: day || null });
   }
 
+  // 開始抓發票：先叫後端開瀏覽器登入，拿到驗證碼圖 → 跳出讓使用者輸入
   async function handleSync() {
     setInvBusy(true);
-    setInvMsg("");
+    setInvMsg("正在開啟登入…（第一次較久）");
+    setCaptchaVal("");
     try {
-      const r = await syncInvoices(90);
-      loadInvoices(curYM);
-      setInvMsg(r.added > 0 ? `已新增 ${r.added} 張發票` : "沒有新的發票");
+      const r = await invoiceLoginStart();
+      setCaptcha({ sid: r.sid, image: r.captcha_image });
+      setInvMsg("");
     } catch (e) {
-      setInvMsg("⚠️ " + (e?.response?.data?.detail || "同步失敗，請到設定→系統填發票載具"));
+      setInvMsg("⚠️ " + (e?.response?.data?.detail || "無法開始登入，請到設定→系統確認發票載具設定"));
+    } finally {
+      setInvBusy(false);
+    }
+  }
+
+  // 送出驗證碼 → 後端登入並抓發票
+  async function submitCaptcha() {
+    if (!captcha) return;
+    setInvBusy(true);
+    setInvMsg("登入中並抓取發票…（約 10–30 秒）");
+    try {
+      const r = await invoiceLoginSubmit(captcha.sid, captchaVal.trim());
+      setCaptcha(null);
+      loadInvoices(curYM);
+      let m = r.added > 0 ? `已新增 ${r.added} 張發票` : "沒有新的發票";
+      if (r.total_pages && r.pages_captured && r.pages_captured < r.total_pages)
+        m += `（只抓到 ${r.pages_captured}/${r.total_pages} 頁，可再抓一次）`;
+      setInvMsg(m);
+    } catch (e) {
+      setInvMsg("⚠️ " + (e?.response?.data?.detail || "登入或抓取失敗"));
     } finally {
       setInvBusy(false);
     }
@@ -341,9 +365,9 @@ export default function Ledger() {
                 onClick={handleSync}
                 disabled={invBusy}
                 className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
-                title="向財政部載具同步發票"
+                title="登入財政部載具抓發票"
               >
-                {invBusy ? "同步中…" : "🔄 同步"}
+                {invBusy ? "處理中…" : "🔄 抓發票"}
               </button>
             </div>
             {invMsg && <p className="px-1 text-xs text-slate-500">{invMsg}</p>}
@@ -543,6 +567,36 @@ export default function Ledger() {
         </div>
       )}
 
+      {/* 驗證碼輸入（登入財政部平台） */}
+      {captcha && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => !invBusy && setCaptcha(null)}>
+          <div className="w-full max-w-xs rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-black text-slate-900">輸入驗證碼</h2>
+            <p className="mt-1 text-xs text-slate-400">財政部平台的圖形驗證碼，登入用（一次）。</p>
+            {captcha.image ? (
+              <img src={captcha.image} alt="驗證碼" className="mt-3 w-full rounded-lg border border-slate-200 bg-white" />
+            ) : (
+              <p className="mt-3 text-sm text-amber-600">（沒抓到驗證碼圖，請看主機除錯截圖）</p>
+            )}
+            <input
+              autoFocus
+              value={captchaVal}
+              onChange={(e) => setCaptchaVal(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submitCaptcha()}
+              placeholder="照著圖片打"
+              className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-center text-lg font-bold tracking-widest outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            />
+            {invMsg && <p className="mt-2 text-xs text-slate-500">{invMsg}</p>}
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setCaptcha(null)} disabled={invBusy} className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50">取消</button>
+              <button onClick={submitCaptcha} disabled={invBusy || !captchaVal.trim()} className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                {invBusy ? "抓取中…" : "登入抓發票"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 發票清單（載具） */}
       {invModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setInvModal(null)}>
@@ -555,7 +609,7 @@ export default function Ledger() {
                   disabled={invBusy}
                   className="rounded-lg px-2.5 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
                 >
-                  {invBusy ? "同步中…" : "🔄 同步"}
+                  {invBusy ? "處理中…" : "🔄 抓發票"}
                 </button>
                 <button onClick={() => setInvModal(null)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
               </div>
