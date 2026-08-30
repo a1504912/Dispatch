@@ -150,6 +150,7 @@ def login_submit(body: CaptchaBody, session: Session = Depends(get_session)):
         "current_url": res.get("current_url"),
         "menu_clicked": res.get("menu_clicked"),
         "on_invoice": res.get("on_invoice"),
+        "api_err": res.get("api_err"),
         "api_hits": res.get("api_hits"),
         "buttons": res.get("buttons"),
         "debug": res.get("debug"),

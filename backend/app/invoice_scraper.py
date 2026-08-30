@@ -22,6 +22,9 @@ from pathlib import Path
 
 LOGIN_URL = "https://www.einvoice.nat.gov.tw/portal/btc/mobile/btc505w"
 INVOICE_URL = "https://www.einvoice.nat.gov.tw/portal/btc/mobile/btc502w"
+# 登入後直接打這兩個 API（跳過被「領獎設定」擋住的畫面）
+JWT_URL = "https://service-mc.einvoice.nat.gov.tw/btc/cloud/api/btc502w/getSearchCarrierInvoiceListJWT"
+SEARCH_URL = "https://service-mc.einvoice.nat.gov.tw/btc/cloud/api/btc502w/searchCarrierInvoice"
 DEBUG_DIR = Path(__file__).resolve().parents[2] / "deploy" / "invoice-debug"
 
 # 台灣時區（發票日期是 UTC，要 +8 才是本地日）
@@ -163,6 +166,68 @@ def _rows_from_capture(captured: list[dict]) -> list[dict]:
                 "donatable": str(it.get("donateMark") or "") in ("0", ""),
             }
     return list(seen.values())
+
+
+def _api_fetch(context, days: int):
+    """登入後用同一個 session 直接打 API 拿發票（繞過畫面）。回 (rows, err)。"""
+    import json
+
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=max(1, min(days, 365)))
+    jwt_payload = {
+        "cardCode": "",
+        "carrierId2": "",
+        "invoiceStatus": "all",
+        "isSearchAll": "true",
+        "searchStartDate": start.strftime("%Y-%m-%dT00:00:00.000Z"),
+        "searchEndDate": now.strftime("%Y-%m-%dT23:59:59.000Z"),
+    }
+    hdr = {"content-type": "application/json"}
+    try:
+        r1 = context.request.post(JWT_URL, data=json.dumps(jwt_payload), headers=hdr, timeout=30000)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"getJWT 例外：{exc}"
+    if not r1.ok:
+        return None, f"getJWT HTTP {r1.status}"
+
+    # 回傳可能是純 JWT 字串，或包在 JSON 裡
+    jwt = ""
+    try:
+        j = r1.json()
+        if isinstance(j, str):
+            jwt = j
+        elif isinstance(j, dict):
+            jwt = j.get("token") or j.get("data") or j.get("jwt") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    if not jwt:
+        jwt = (r1.text() or "").strip().strip('"')
+    if not jwt or len(jwt) < 20:
+        return None, "拿不到 JWT 權杖（可能欄位名不對）"
+
+    bodies = []
+    # Spring 分頁：size 開大一次抓完；保險再照 totalPages 逐頁
+    for page_no in range(0, 60):
+        url = f"{SEARCH_URL}?page={page_no}&size=200"
+        try:
+            r2 = context.request.post(url, data=json.dumps({"token": jwt}), headers=hdr, timeout=30000)
+        except Exception as exc:  # noqa: BLE001
+            return None, f"search 例外：{exc}"
+        if not r2.ok:
+            if page_no == 0:
+                return None, f"search HTTP {r2.status}"
+            break
+        try:
+            body = r2.json()
+        except Exception:  # noqa: BLE001
+            break
+        bodies.append(body)
+        total_pages = int(body.get("totalPages") or 1)
+        if page_no >= total_pages - 1:
+            break
+
+    rows = _rows_from_capture(bodies)
+    return rows, None
 
 
 class LoginSession(threading.Thread):
@@ -333,8 +398,18 @@ class LoginSession(threading.Thread):
                     )
                     return
 
-                # 6) 登入後多半停在「領獎設定」；要導到發票查詢頁（判斷依據：網址含 btc502w）
-                nav_trace = [after_login_url]
+                # ★ 登入成功後：先直接打 API（繞過被「領獎設定」擋住的畫面）
+                api_rows, api_err = _api_fetch(context, 90)
+                if api_rows:
+                    context.close()
+                    browser.close()
+                    self.res_q.put(
+                        {"ok": True, "invoices": api_rows, "via": "api", "total_pages": 1, "pages_captured": 1}
+                    )
+                    return
+
+                # API 沒成 → 退回原本的畫面操作（順便診斷）
+                nav_trace = [after_login_url, f"api_err={api_err}"]
 
                 def is_on_invoice() -> bool:
                     if "btc502w" in page.url:
@@ -446,6 +521,7 @@ class LoginSession(threading.Thread):
                         "current_url": cur_url,
                         "menu_clicked": menu_clicked,
                         "on_invoice": on_invoice,
+                        "api_err": api_err,
                         "nav_trace": nav_trace,
                         "api_hits": api_hits[:8],
                         "buttons": btn_texts,

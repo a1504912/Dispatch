@@ -189,6 +189,7 @@ export default function Ledger() {
         // 把診斷資訊直接印在畫面上，貼給我就能校準
         m =
           `登入成功但沒抓到發票。診斷：` +
+          `API=${r.api_err || "?"}｜` +
           `到=${(r.current_url || "").replace(/^https?:\/\/[^/]+/, "")}｜` +
           `點到選單=${r.menu_clicked ? "是" : "否"}｜` +
           `到發票頁=${r.on_invoice ? "是" : "否"}｜` +
