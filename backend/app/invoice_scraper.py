@@ -237,6 +237,11 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
 
     import calendar
 
+    # 完全照 SPA 的格式：起訖用「同一個時間」（查詢當下的 UTC 時間），
+    # 否則後端算出的區間會多算近一天而被判「區間異常」。
+    _u = datetime.now(timezone.utc)
+    tstamp = _u.strftime("%H:%M:%S.") + f"{_u.microsecond // 1000:03d}Z"
+
     def fetch_range(first: str, last: str):
         """查一段日期（first/last 為 YYYY-MM-DD）。回 (bodies, err)。"""
         payload = {
@@ -244,8 +249,8 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
             "carrierId2": "",
             "invoiceStatus": "all",
             "isSearchAll": "true",
-            "searchStartDate": f"{first}T00:00:00.000Z",
-            "searchEndDate": f"{last}T23:59:59.000Z",
+            "searchStartDate": f"{first}T{tstamp}",
+            "searchEndDate": f"{last}T{tstamp}",
         }
         try:
             r1 = context.request.post(JWT_URL, data=json.dumps(payload), headers=hdr, timeout=30000)
