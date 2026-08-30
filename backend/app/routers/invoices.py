@@ -198,6 +198,22 @@ def to_transaction(invoice_id: int, body: ToTxBody, session: Session = Depends(g
     return {"ok": True, "transaction_id": tx.id}
 
 
+class LinkBody(BaseModel):
+    transaction_id: int
+
+
+@router.post("/{invoice_id}/link")
+def link_transaction(invoice_id: int, body: LinkBody, session: Session = Depends(get_session)):
+    """把一張發票綁定到「使用者自己在編輯視窗建立好」的那筆記錄。"""
+    inv = session.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="找不到這張發票")
+    inv.transaction_id = body.transaction_id
+    session.add(inv)
+    session.commit()
+    return {"ok": True}
+
+
 @router.delete("/{invoice_id}", status_code=204)
 def delete_invoice(invoice_id: int, session: Session = Depends(get_session)):
     inv = session.get(Invoice, invoice_id)

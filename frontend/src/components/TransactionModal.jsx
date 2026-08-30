@@ -168,9 +168,10 @@ export default function TransactionModal({ open, initial, categories = [], onClo
         event_id: form.event_id ?? null,
         split_bill_id: splitBillId,
       };
-      if (isEdit) await updateTransaction(initial.id, payload);
-      else await createTransaction(payload);
-      onSaved();
+      let saved;
+      if (isEdit) saved = await updateTransaction(initial.id, payload);
+      else saved = await createTransaction(payload);
+      onSaved(saved || { id: initial?.id });
     } finally {
       setSaving(false);
     }

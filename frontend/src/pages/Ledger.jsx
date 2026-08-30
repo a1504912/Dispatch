@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import { listBudgets } from "../api/budgets";
-import { listInvoices, invoiceLoginStart, invoiceLoginSubmit, invoiceToTransaction } from "../api/invoices";
+import { listInvoices, invoiceLoginStart, invoiceLoginSubmit, invoiceLink } from "../api/invoices";
 import { NO_BACKEND } from "../localMode";
 import Budget from "../components/Budget.jsx";
 import Analysis from "../components/Analysis.jsx";
@@ -64,6 +64,7 @@ export default function Ledger() {
   const [invMsg, setInvMsg] = useState(""); // 抓取結果訊息
   const [captcha, setCaptcha] = useState(null); // { sid, image } 驗證碼輸入彈窗
   const [captchaVal, setCaptchaVal] = useState("");
+  const [linkInvoiceId, setLinkInvoiceId] = useState(null); // 記成支出後要綁定的發票
 
   function load() {
     setLoading(true);
@@ -201,15 +202,18 @@ export default function Ledger() {
     }
   }
 
-  async function handleInvToTx(inv) {
-    try {
-      await invoiceToTransaction(inv.id, { category: "購物" });
-      loadInvoices(curYM);
-      load();
-      setInvMsg(`已把「${inv.seller_name || inv.inv_num}」記成支出`);
-    } catch (e) {
-      setInvMsg("⚠️ " + (e?.response?.data?.detail || "記帳失敗"));
-    }
+  // 記成支出：跳出編輯視窗、帶好金額/店家/日期，讓使用者選分類帳戶再存
+  function handleInvToTx(inv) {
+    setLinkInvoiceId(inv.id);
+    setEditingTx({
+      kind: "expense",
+      amount: inv.amount,
+      note: `發票 ${inv.inv_num}｜${inv.seller_name || ""}`.trim(),
+      date: inv.date,
+      category: "購物",
+    });
+    setInvModal(null);
+    setTxModalOpen(true);
   }
 
   // 依日期分組（選了某天就只顯示那天）
@@ -516,10 +520,21 @@ export default function Ledger() {
         onClose={() => {
           setTxModalOpen(false);
           setEditingTx(null);
+          setLinkInvoiceId(null);
         }}
-        onSaved={() => {
+        onSaved={async (tx) => {
           setTxModalOpen(false);
           setEditingTx(null);
+          // 從發票記帳的：把發票綁到剛建立的這筆記錄
+          if (linkInvoiceId && tx?.id) {
+            try {
+              await invoiceLink(linkInvoiceId, tx.id);
+            } catch {
+              /* 綁定失敗不擋記帳 */
+            }
+            loadInvoices(curYM);
+          }
+          setLinkInvoiceId(null);
           load();
         }}
       />

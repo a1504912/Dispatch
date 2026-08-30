@@ -33,3 +33,9 @@ export async function invoiceToTransaction(id, body = {}) {
   const { data } = await client.post(`/api/invoices/${id}/to-transaction`, body);
   return data;
 }
+
+// 綁定發票到使用者自己在編輯視窗建立的那筆記錄
+export async function invoiceLink(id, transaction_id) {
+  const { data } = await client.post(`/api/invoices/${id}/link`, { transaction_id });
+  return data;
+}
