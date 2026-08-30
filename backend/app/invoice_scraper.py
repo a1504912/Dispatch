@@ -216,17 +216,24 @@ def _auth_headers(page):
     return hdr, diag
 
 
-def _api_fetch(page, days: int, bearer: str = ""):
+def _api_fetch(page, days: int, sp_headers: dict | None = None):
     """登入後用同一個 session 直接打 API 拿發票（繞過畫面）。回 (rows, err)。
-    bearer：從 SPA 自己的請求偷來的 Authorization header（優先用它）。"""
+    sp_headers：從 SPA 自己請求偷來的整包標頭（含 Authorization / Origin 等）。"""
     import json
 
     context = page.context
-    if bearer:
-        hdr = {"content-type": "application/json", "authorization": bearer}
-        auth_diag = "authFrom=攔截"
-    else:
-        hdr, auth_diag = _auth_headers(page)
+    drop = {"host", "content-length", "accept-encoding", "cookie", ":authority", ":method", ":path", ":scheme"}
+    hdr = {}
+    if sp_headers:
+        for k, v in sp_headers.items():
+            if k.lower() in drop:
+                continue
+            hdr[k] = v
+    hdr["content-type"] = "application/json"
+    hdr.setdefault("origin", "https://www.einvoice.nat.gov.tw")
+    hdr.setdefault("referer", "https://www.einvoice.nat.gov.tw/portal/btc/mobile/btc502w/detail")
+    has_auth = bool(hdr.get("authorization") or hdr.get("Authorization"))
+    auth_diag = f"authFrom={'攔截' if sp_headers else '無'} auth={'有' if has_auth else '無'} n={len(sp_headers or {})}"
 
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=max(1, min(days, 365)))
@@ -326,7 +333,7 @@ class LoginSession(threading.Thread):
                 page = context.new_page()
 
                 api_hits: list[str] = []
-                auth_holder = {"bearer": ""}
+                sp_headers: dict = {}  # 偷 SPA 打服務端 API 時的整包標頭（含授權）
 
                 def on_response(resp):
                     if "searchCarrierInvoice" in resp.url:
@@ -338,12 +345,13 @@ class LoginSession(threading.Thread):
                         api_hits.append(f"{resp.status} {resp.url.rsplit('/', 1)[-1]}")
 
                 def on_request(req):
-                    # 偷 SPA 自己請求裡的 Authorization，拿去打發票 API
+                    # 偷 SPA 打 service-mc 上 /api/ 的請求標頭（含 Authorization）
                     try:
-                        if "einvoice.nat.gov.tw" in req.url:
-                            a = req.headers.get("authorization")
-                            if a and "bearer" in a.lower():
-                                auth_holder["bearer"] = a
+                        if "service-mc.einvoice.nat.gov.tw" in req.url and "/api/" in req.url:
+                            h = dict(req.headers)
+                            if h.get("authorization") or "cloud/api" in req.url:
+                                sp_headers.clear()
+                                sp_headers.update(h)
                     except Exception:  # noqa: BLE001
                         pass
 
@@ -466,14 +474,16 @@ class LoginSession(threading.Thread):
                     return
 
                 # ★ 登入成功後：先直接打 API（繞過被「領獎設定」擋住的畫面）
-                # 若還沒偷到 Authorization，重新整理一次讓 SPA 再發一輪 API
-                if not auth_holder["bearer"]:
+                # 重新整理一兩次讓 SPA 再發一輪服務端 API，好偷到授權標頭
+                for _ in range(2):
+                    if sp_headers.get("authorization"):
+                        break
                     try:
                         page.reload(wait_until="networkidle", timeout=30000)
                     except Exception:  # noqa: BLE001
                         pass
-                    page.wait_for_timeout(2500)
-                api_rows, api_err = _api_fetch(page, 90, auth_holder["bearer"])
+                    page.wait_for_timeout(3000)
+                api_rows, api_err = _api_fetch(page, 90, sp_headers)
                 if api_rows:
                     context.close()
                     browser.close()
