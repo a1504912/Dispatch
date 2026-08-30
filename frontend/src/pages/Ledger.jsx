@@ -191,6 +191,7 @@ export default function Ledger() {
           `登入成功但沒抓到發票。診斷：` +
           `到=${(r.current_url || "").replace(/^https?:\/\/[^/]+/, "")}｜` +
           `點到選單=${r.menu_clicked ? "是" : "否"}｜` +
+          `到發票頁=${r.on_invoice ? "是" : "否"}｜` +
           `查詢請求=${(r.api_hits || []).join(", ") || "無"}｜` +
           `畫面按鈕=[${(r.buttons || []).join(" / ")}]`;
       } else {

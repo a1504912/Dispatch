@@ -83,6 +83,33 @@ def _click_visible(page, selectors: list[str]) -> bool:
     return False
 
 
+def _click_menu(page, label: str) -> bool:
+    """精準點左側選單某一項（用「剛好等於這幾個字」的葉節點，避免點到外層大容器）。"""
+    # 1) 剛好等於 label 的最內層元素
+    try:
+        loc = page.get_by_text(label, exact=True)
+        for i in range(min(loc.count(), 5)):
+            el = loc.nth(i)
+            try:
+                if el.is_visible():
+                    el.click(timeout=5000)
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    # 2) 當作連結/按鈕點
+    for getter in ("link", "button", "menuitem"):
+        try:
+            loc = page.get_by_role(getter, name=label)
+            if loc.count() and loc.first.is_visible():
+                loc.first.click(timeout=5000)
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def _norm_date(raw) -> str | None:
     """invoiceDate 例：2026-08-28T16:00:00Z → 本地日 2026-08-29。"""
     if not raw:
@@ -296,17 +323,9 @@ class LoginSession(threading.Thread):
                     )
                     return
 
-                # 6) 登入後停在「手機條碼專區」，左側選單就在眼前 → 點「發票查詢及捐贈」
-                #    只點看得到的那個（頁面同時有隱藏的手機版選單，點到會失敗）
+                # 6) 登入後可能停在「領獎設定」等頁；左側選單就在眼前 → 精準點「發票查詢及捐贈」
                 nav_trace = [after_login_url]
-                menu_clicked = _click_visible(
-                    page,
-                    [
-                        "a:has-text('發票查詢及捐贈')",
-                        "li:has-text('發票查詢及捐贈') a",
-                        "*:has-text('發票查詢及捐贈')",
-                    ],
-                )
+                menu_clicked = _click_menu(page, "發票查詢及捐贈")
                 page.wait_for_timeout(3800)
                 nav_trace.append(page.url)
 
@@ -319,15 +338,27 @@ class LoginSession(threading.Thread):
                     page.wait_for_timeout(3000)
                     nav_trace.append(page.url)
 
-                # 6a2) 查詢表單可能是收合的 → 先點「展開」把日期/查詢露出來
-                _click_visible(
-                    page,
-                    ["button:has-text('展開')", "a:has-text('展開')", "span:has-text('展開')"],
-                )
-                page.wait_for_timeout(1200)
+                # 6a1) 確認真的到了發票查詢頁（看得到查詢表單的關鍵字）
+                on_invoice = False
+                for kw in ["查詢發票日期", "歸戶載具", "發票狀態"]:
+                    try:
+                        el = page.query_selector(f"text={kw}")
+                        if el and el.is_visible():
+                            on_invoice = True
+                            break
+                    except Exception:  # noqa: BLE001
+                        continue
 
-                # 6b) 還是沒資料 → 主動按「查詢」
-                if not captured:
+                # 6a2) 查詢表單可能是收合的 → 先點「展開」把日期/查詢露出來
+                if on_invoice:
+                    _click_visible(
+                        page,
+                        ["button:has-text('展開')", "a:has-text('展開')", "span:has-text('展開')"],
+                    )
+                    page.wait_for_timeout(1200)
+
+                # 6b) 只在確定是發票查詢頁時才按「查詢」（避免誤按領獎設定的查詢）
+                if on_invoice and not captured:
                     qclicked = _click_visible(
                         page,
                         [
@@ -393,6 +424,7 @@ class LoginSession(threading.Thread):
                         "pages_captured": got_pages,
                         "current_url": cur_url,
                         "menu_clicked": menu_clicked,
+                        "on_invoice": on_invoice,
                         "nav_trace": nav_trace,
                         "api_hits": api_hits[:8],
                         "buttons": btn_texts,
