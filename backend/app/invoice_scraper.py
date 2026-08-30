@@ -442,33 +442,46 @@ class LoginSession(threading.Thread):
                 else:
                     cap_box.press("Enter")
 
-                # 5) 等 OAuth 跳轉完成（登入成功會離開登入頁）
-                try:
-                    page.wait_for_url(lambda u: "btc505w" not in u, timeout=30000)
-                except Exception:  # noqa: BLE001
-                    pass
-                try:
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception:  # noqa: BLE001
-                    pass
-                page.wait_for_timeout(2500)
-                after_login_url = page.url
-                login_dbg = _save_debug(page, "after-login")  # 一律存，方便判斷登入成敗
-                if "btc505w" in after_login_url:
-                    # 找頁面上的錯誤提示，判斷是驗證碼還是密碼
-                    err = ""
-                    for kw in ["驗證碼", "密碼錯", "帳號", "不正確", "錯誤", "失敗", "重新"]:
+                # 5) 等 OAuth 跳轉完成。不看網址（跳轉中會變來變去），改看
+                #    「登入後才有的東西」（登出鈕 / 左側選單）出現才算成功。
+                logged_in = False
+                login_err = ""
+                for _ in range(30):  # 最多等 ~30 秒
+                    page.wait_for_timeout(1000)
+                    # 真的驗證碼/密碼錯 → 直接結束
+                    for kw in ("驗證碼錯", "驗證碼不正", "驗證碼有誤", "密碼錯", "帳號或密碼"):
                         try:
                             el = page.query_selector(f"text={kw}")
                             if el and el.is_visible():
-                                err = (el.inner_text() or "").strip()[:60]
+                                login_err = (el.inner_text() or kw).strip()[:40]
                                 break
                         except Exception:  # noqa: BLE001
                             continue
+                    if login_err:
+                        break
+                    # 登入成功訊號：登出鈕、或手機條碼專區的左側選單
+                    try:
+                        for sig in ("text=登出", "text=發票查詢及捐贈", "text=領獎設定"):
+                            el = page.query_selector(sig)
+                            if el and el.is_visible():
+                                logged_in = True
+                                break
+                    except Exception:  # noqa: BLE001
+                        pass
+                    if logged_in:
+                        break
+
+                after_login_url = page.url
+                login_dbg = _save_debug(page, "after-login")
+                if not logged_in:
                     self.res_q.put(
                         {
                             "ok": False,
-                            "error": f"登入沒過（停在登入頁）。頁面提示：{err or '（找不到明確提示）'}。多半是驗證碼打錯，再試一次。",
+                            "error": (
+                                f"登入失敗：{login_err}，請重試。"
+                                if login_err
+                                else f"登入等待逾時（可能驗證碼錯或平台慢）。網址：{after_login_url}"
+                            ),
                         }
                     )
                     return
