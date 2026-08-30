@@ -250,7 +250,11 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
     except Exception as exc:  # noqa: BLE001
         return None, f"getJWT 例外：{exc}｜{auth_diag}"
     if not r1.ok:
-        return None, f"getJWT HTTP {r1.status}｜{auth_diag}"
+        try:
+            body = (r1.text() or "")[:200]
+        except Exception:  # noqa: BLE001
+            body = ""
+        return None, f"getJWT HTTP {r1.status}｜{auth_diag}｜回應：{body}"
 
     # 回傳可能是純 JWT 字串，或包在 JSON 裡
     jwt = ""
@@ -277,7 +281,11 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
             return None, f"search 例外：{exc}"
         if not r2.ok:
             if page_no == 0:
-                return None, f"search HTTP {r2.status}"
+                try:
+                    b = (r2.text() or "")[:200]
+                except Exception:  # noqa: BLE001
+                    b = ""
+                return None, f"search HTTP {r2.status}｜回應：{b}"
             break
         try:
             body = r2.json()
