@@ -216,12 +216,17 @@ def _auth_headers(page):
     return hdr, diag
 
 
-def _api_fetch(page, days: int):
-    """登入後用同一個 session 直接打 API 拿發票（繞過畫面）。回 (rows, err)。"""
+def _api_fetch(page, days: int, bearer: str = ""):
+    """登入後用同一個 session 直接打 API 拿發票（繞過畫面）。回 (rows, err)。
+    bearer：從 SPA 自己的請求偷來的 Authorization header（優先用它）。"""
     import json
 
     context = page.context
-    hdr, auth_diag = _auth_headers(page)
+    if bearer:
+        hdr = {"content-type": "application/json", "authorization": bearer}
+        auth_diag = "authFrom=攔截"
+    else:
+        hdr, auth_diag = _auth_headers(page)
 
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=max(1, min(days, 365)))
@@ -321,6 +326,7 @@ class LoginSession(threading.Thread):
                 page = context.new_page()
 
                 api_hits: list[str] = []
+                auth_holder = {"bearer": ""}
 
                 def on_response(resp):
                     if "searchCarrierInvoice" in resp.url:
@@ -331,7 +337,18 @@ class LoginSession(threading.Thread):
                     if "btc502w" in resp.url or "CarrierInvoice" in resp.url:
                         api_hits.append(f"{resp.status} {resp.url.rsplit('/', 1)[-1]}")
 
+                def on_request(req):
+                    # 偷 SPA 自己請求裡的 Authorization，拿去打發票 API
+                    try:
+                        if "einvoice.nat.gov.tw" in req.url:
+                            a = req.headers.get("authorization")
+                            if a and "bearer" in a.lower():
+                                auth_holder["bearer"] = a
+                    except Exception:  # noqa: BLE001
+                        pass
+
                 page.on("response", on_response)
+                page.on("request", on_request)
 
                 # 1) 開登入頁，填帳密
                 page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=45000)
@@ -449,7 +466,14 @@ class LoginSession(threading.Thread):
                     return
 
                 # ★ 登入成功後：先直接打 API（繞過被「領獎設定」擋住的畫面）
-                api_rows, api_err = _api_fetch(page, 90)
+                # 若還沒偷到 Authorization，重新整理一次讓 SPA 再發一輪 API
+                if not auth_holder["bearer"]:
+                    try:
+                        page.reload(wait_until="networkidle", timeout=30000)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    page.wait_for_timeout(2500)
+                api_rows, api_err = _api_fetch(page, 90, auth_holder["bearer"])
                 if api_rows:
                     context.close()
                     browser.close()
