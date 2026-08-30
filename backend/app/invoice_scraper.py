@@ -110,6 +110,16 @@ def _click_menu(page, label: str) -> bool:
     return False
 
 
+def _safe_goto(page, url: str) -> bool:
+    for state in ("networkidle", "domcontentloaded"):
+        try:
+            page.goto(url, wait_until=state, timeout=45000)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def _norm_date(raw) -> str | None:
     """invoiceDate 例：2026-08-28T16:00:00Z → 本地日 2026-08-29。"""
     if not raw:
@@ -323,53 +333,64 @@ class LoginSession(threading.Thread):
                     )
                     return
 
-                # 6) 登入後可能停在「領獎設定」等頁；左側選單就在眼前 → 精準點「發票查詢及捐贈」
+                # 6) 登入後多半停在「領獎設定」；要導到發票查詢頁（判斷依據：網址含 btc502w）
                 nav_trace = [after_login_url]
-                menu_clicked = _click_menu(page, "發票查詢及捐贈")
-                page.wait_for_timeout(3800)
-                nav_trace.append(page.url)
 
-                # 6a) 沒點到 → 退回直接開網址
-                if not captured and not menu_clicked:
+                def is_on_invoice() -> bool:
+                    if "btc502w" in page.url:
+                        return True
+                    for kw in ("查詢發票日期", "歸戶載具", "發票狀態"):
+                        try:
+                            el = page.query_selector(f"text={kw}")
+                            if el and el.is_visible():
+                                return True
+                        except Exception:  # noqa: BLE001
+                            continue
+                    return False
+
+                # 一直換方法，直到真的到發票頁（每種方法後都用網址確認）
+                strategies = [
+                    ("menu", lambda: _click_menu(page, "發票查詢及捐贈")),
+                    ("goto", lambda: _safe_goto(page, INVOICE_URL)),
+                    ("goto-detail", lambda: _safe_goto(page, INVOICE_URL + "/detail")),
+                    ("anchor", lambda: _click_visible(
+                        page, ["a:has-text('發票查詢及捐贈')", "li:has-text('發票查詢及捐贈')"]
+                    )),
+                ]
+                menu_clicked = False
+                on_invoice = is_on_invoice()
+                for name, fn in strategies:
+                    if on_invoice:
+                        break
                     try:
-                        page.goto(INVOICE_URL, wait_until="networkidle", timeout=45000)
+                        did = fn()
                     except Exception:  # noqa: BLE001
-                        pass
-                    page.wait_for_timeout(3000)
-                    nav_trace.append(page.url)
+                        did = False
+                    if name == "menu" and did:
+                        menu_clicked = True
+                    page.wait_for_timeout(3200)
+                    on_invoice = is_on_invoice()
+                    nav_trace.append(f"{name}={did}:{page.url.rsplit('/', 2)[-1]}")
 
-                # 6a1) 確認真的到了發票查詢頁（看得到查詢表單的關鍵字）
-                on_invoice = False
-                for kw in ["查詢發票日期", "歸戶載具", "發票狀態"]:
-                    try:
-                        el = page.query_selector(f"text={kw}")
-                        if el and el.is_visible():
-                            on_invoice = True
-                            break
-                    except Exception:  # noqa: BLE001
-                        continue
-
-                # 6a2) 查詢表單可能是收合的 → 先點「展開」把日期/查詢露出來
+                # 到了發票頁：表單可能收合 → 展開，再按查詢
                 if on_invoice:
                     _click_visible(
                         page,
-                        ["button:has-text('展開')", "a:has-text('展開')", "span:has-text('展開')"],
-                    )
-                    page.wait_for_timeout(1200)
-
-                # 6b) 只在確定是發票查詢頁時才按「查詢」（避免誤按領獎設定的查詢）
-                if on_invoice and not captured:
-                    qclicked = _click_visible(
-                        page,
                         [
-                            "button:has-text('查詢')",
-                            "a:has-text('查詢')",
-                            "button[type='submit']",
+                            "button:has-text('展開')",
+                            "a:has-text('展開')",
+                            "span:has-text('展開')",
+                            "[class*='expand']",
                         ],
                     )
-                    if qclicked:
-                        page.wait_for_timeout(3500)
-                    nav_trace.append(page.url)
+                    page.wait_for_timeout(1200)
+                    if not captured:
+                        _click_visible(
+                            page,
+                            ["button:has-text('查詢')", "a:has-text('查詢')", "button[type='submit']"],
+                        )
+                        page.wait_for_timeout(3800)
+                    nav_trace.append(f"final:{page.url.rsplit('/', 2)[-1]}")
 
                 inv_dbg = _save_debug(page, "invoice-page")  # 一律存發票頁截圖
 
