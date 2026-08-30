@@ -390,7 +390,7 @@ export default function Ledger() {
         selectedDay={selectedDay}
         onSelectDay={setSelectedDay}
         onPrev={() => setOffset((o) => o - 1)}
-        onNext={() => setOffset((o) => Math.min(0, o + 1))}
+        onNext={() => setOffset((o) => o + 1)}
         onToday={() => setOffset(0)}
         monthLabel={monthLabel}
       />
