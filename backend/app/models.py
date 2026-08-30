@@ -177,6 +177,24 @@ class Transaction(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Invoice(SQLModel, table=True):
+    """從財政部電子發票平台（手機條碼載具）拉回來的一張發票。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    inv_num: str = Field(index=True, unique=True)  # 發票號碼，例：AB12345678
+    inv_date: date  # 開立日期
+    seller_name: str = ""  # 賣方名稱
+    seller_ban: str = ""  # 賣方統編
+    amount: float = 0  # 總金額
+    card_type: str = ""  # 載具類別（3J0002=手機條碼）
+    status: str = ""  # 發票狀態（原始字串）
+    donatable: bool = False  # 是否可捐贈（尚在可歸戶期）
+    detail: str = ""  # 明細品項（JSON 陣列，之後才抓）
+    # 若已把這張發票記成一筆支出，指向那筆 transaction
+    transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")
+    synced_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Setting(SQLModel, table=True):
     """通用 key-value 設定（存 VAPID 金鑰、通知偏好等）。"""
 

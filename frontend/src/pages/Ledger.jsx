@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import { listBudgets } from "../api/budgets";
+import { listInvoices, syncInvoices, invoiceToTransaction } from "../api/invoices";
+import { NO_BACKEND } from "../localMode";
 import Budget from "../components/Budget.jsx";
 import Analysis from "../components/Analysis.jsx";
 import MonthCalendar from "../components/MonthCalendar.jsx";
@@ -56,6 +58,10 @@ export default function Ledger() {
   const [budgets, setBudgets] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD" 或 null（整月）
   const [statModal, setStatModal] = useState(null); // {title, items} 點統計看清單
+  const [invoices, setInvoices] = useState([]); // 本月載具發票
+  const [invModal, setInvModal] = useState(null); // {title, day} 發票清單彈窗
+  const [invBusy, setInvBusy] = useState(false); // 同步中
+  const [invMsg, setInvMsg] = useState(""); // 同步結果訊息
 
   function load() {
     setLoading(true);
@@ -73,6 +79,12 @@ export default function Ledger() {
     listBudgets()
       .then(setBudgets)
       .catch(() => setBudgets([]));
+  }
+  function loadInvoices(ym) {
+    if (NO_BACKEND) return;
+    listInvoices({ month: ym })
+      .then(setInvoices)
+      .catch(() => setInvoices([]));
   }
   useEffect(() => {
     load();
@@ -119,10 +131,56 @@ export default function Ledger() {
     setStatModal({ title, items });
   }
 
-  // 換月時清掉選取的日
+  // 換月時清掉選取的日、重抓當月發票
   useEffect(() => {
     setSelectedDay(null);
+    loadInvoices(curYM);
   }, [curYM]);
+
+  // 發票：本月 / 當日
+  const dayInvoices = useMemo(
+    () => (selectedDay ? invoices.filter((i) => i.date === selectedDay) : []),
+    [invoices, selectedDay]
+  );
+  const invModalItems = useMemo(() => {
+    const list = invModal?.day
+      ? invoices.filter((i) => i.date === invModal.day)
+      : invoices;
+    return [...list].sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
+  }, [invoices, invModal]);
+
+  function openInvoices(day) {
+    const title = day
+      ? `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))} 發票`
+      : `${monthLabel} 發票`;
+    setInvMsg("");
+    setInvModal({ title, day: day || null });
+  }
+
+  async function handleSync() {
+    setInvBusy(true);
+    setInvMsg("");
+    try {
+      const r = await syncInvoices(90);
+      loadInvoices(curYM);
+      setInvMsg(r.added > 0 ? `已新增 ${r.added} 張發票` : "沒有新的發票");
+    } catch (e) {
+      setInvMsg("⚠️ " + (e?.response?.data?.detail || "同步失敗，請到設定→系統填發票載具"));
+    } finally {
+      setInvBusy(false);
+    }
+  }
+
+  async function handleInvToTx(inv) {
+    try {
+      await invoiceToTransaction(inv.id, { category: "購物" });
+      loadInvoices(curYM);
+      load();
+      setInvMsg(`已把「${inv.seller_name || inv.inv_num}」記成支出`);
+    } catch (e) {
+      setInvMsg("⚠️ " + (e?.response?.data?.detail || "記帳失敗"));
+    }
+  }
 
   // 依日期分組（選了某天就只顯示那天）
   const grouped = useMemo(() => {
@@ -252,6 +310,45 @@ export default function Ledger() {
           <StatChip label="本月支出" value={expense} tone="expense" onClick={() => openStat("本月支出", "expense", null)} />
           <StatChip label="本月收入" value={income} tone="income" onClick={() => openStat("本月收入", "income", null)} />
         </div>
+
+        {/* 載具發票 */}
+        {!NO_BACKEND && (
+          <div className="space-y-2">
+            {selectedDay && (
+              <button
+                onClick={() => openInvoices(selectedDay)}
+                className="flex w-full items-center gap-2 rounded-2xl bg-white px-4 py-3 text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow active:scale-[0.98]"
+              >
+                <span className="text-lg">🧾</span>
+                <span className="flex-1 text-sm font-semibold text-slate-700">
+                  當日發票 <span className="text-slate-400">·</span> {dayInvoices.length} 張
+                </span>
+                <span className="text-slate-300">›</span>
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openInvoices(null)}
+                className="flex flex-1 items-center gap-2 rounded-2xl bg-white px-4 py-3 text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow active:scale-[0.98]"
+              >
+                <span className="text-lg">🧾</span>
+                <span className="flex-1 text-sm font-semibold text-slate-700">
+                  本月發票 <span className="text-slate-400">·</span> {invoices.length} 張
+                </span>
+                <span className="text-slate-300">›</span>
+              </button>
+              <button
+                onClick={handleSync}
+                disabled={invBusy}
+                className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-95 disabled:opacity-60"
+                title="向財政部載具同步發票"
+              >
+                {invBusy ? "同步中…" : "🔄 同步"}
+              </button>
+            </div>
+            {invMsg && <p className="px-1 text-xs text-slate-500">{invMsg}</p>}
+          </div>
+        )}
       </div>
 
       {/* 月曆 */}
@@ -441,6 +538,66 @@ export default function Ledger() {
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm">
               <span className="text-slate-400">共 {statModal.items.length} 筆</span>
               <span className="font-black text-slate-800">合計 {money(statModal.items.reduce((s, t) => s + t.amount, 0))}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 發票清單（載具） */}
+      {invModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setInvModal(null)}>
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="text-lg font-black text-slate-900">{invModal.title}</h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleSync}
+                  disabled={invBusy}
+                  className="rounded-lg px-2.5 py-1 text-xs font-bold text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                >
+                  {invBusy ? "同步中…" : "🔄 同步"}
+                </button>
+                <button onClick={() => setInvModal(null)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+              </div>
+            </div>
+            {invMsg && <p className="border-b border-slate-100 px-5 py-2 text-xs text-slate-500">{invMsg}</p>}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {invModalItems.length === 0 ? (
+                <p className="px-5 py-12 text-center text-sm text-slate-400">
+                  沒有發票。按右上「同步」向財政部載具抓取，<br />或到設定→系統填入發票載具資料。
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-50">
+                  {invModalItems.map((inv) => (
+                    <div key={inv.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-lg text-amber-600">🧾</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">
+                          {inv.seller_name || inv.inv_num}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {Number(inv.date.slice(5, 7))}/{Number(inv.date.slice(8, 10))}　·　{inv.inv_num}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-black tabular-nums text-slate-800">{money(inv.amount)}</span>
+                      {inv.transaction_id ? (
+                        <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-400">已記帳</span>
+                      ) : (
+                        <button
+                          onClick={() => handleInvToTx(inv)}
+                          className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-emerald-700 active:scale-95"
+                        >
+                          記成支出
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm">
+              <span className="text-slate-400">共 {invModalItems.length} 張</span>
+              <span className="font-black text-slate-800">合計 {money(invModalItems.reduce((s, i) => s + i.amount, 0))}</span>
             </div>
           </div>
         </div>

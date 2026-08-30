@@ -18,6 +18,7 @@ from app.routers import (
     events,
     games,
     google,
+    invoices,
     ledger_categories,
     members,
     models,
@@ -116,6 +117,7 @@ app.include_router(accounts.router)
 app.include_router(budgets.router)
 app.include_router(settlements.router)
 app.include_router(system.router)
+app.include_router(invoices.router)
 
 
 @app.get("/api/health")

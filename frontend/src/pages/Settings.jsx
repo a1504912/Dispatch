@@ -7,6 +7,7 @@ import {
 } from "../api/categories";
 import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
 import { getUpdateAvailable, runUpdate, getVersion, checkUpdates, getUpdateStatus } from "../api/system";
+import { getInvoiceSettings, saveInvoiceSettings, syncInvoices } from "../api/invoices";
 import { NO_BACKEND } from "../localMode";
 import {
   pushSupported,
@@ -670,6 +671,95 @@ function CategorySettings() {
   );
 }
 
+function InvoiceSettings() {
+  const [cfg, setCfg] = useState(null); // { configured, app_id, card_no, has_encrypt }
+  const [appId, setAppId] = useState("");
+  const [cardNo, setCardNo] = useState("");
+  const [enc, setEnc] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    getInvoiceSettings()
+      .then((c) => {
+        setCfg(c);
+        setAppId(c.app_id || "");
+        setCardNo(c.card_no || "");
+      })
+      .catch(() => setCfg({ configured: false }));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setMsg("");
+    try {
+      await saveInvoiceSettings({ app_id: appId, card_no: cardNo, card_encrypt: enc });
+      setEnc("");
+      const c = await getInvoiceSettings();
+      setCfg(c);
+      setMsg("✅ 已儲存");
+    } catch (e) {
+      setMsg("⚠️ " + (e?.response?.data?.detail || "儲存失敗"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testSync() {
+    setSyncing(true);
+    setMsg("");
+    try {
+      const r = await syncInvoices(30);
+      setMsg(`✅ 連線成功，抓到 ${r.fetched} 張、新增 ${r.added} 張。`);
+    } catch (e) {
+      setMsg("⚠️ " + (e?.response?.data?.detail || "同步失敗"));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  const inputCls =
+    "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100";
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-slate-500">API 金鑰（appID）</label>
+        <input className={inputCls} value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="到財政部平台申請的 App ID" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-slate-500">手機條碼</label>
+        <input className={inputCls} value={cardNo} onChange={(e) => setCardNo(e.target.value)} placeholder="/ABC1234（斜線開頭共 8 碼）" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-slate-500">
+          載具驗證碼{cfg?.has_encrypt && <span className="ml-1 font-normal text-emerald-500">（已設定，留空不變更）</span>}
+        </label>
+        <input className={inputCls} type="password" value={enc} onChange={(e) => setEnc(e.target.value)} placeholder={cfg?.has_encrypt ? "••••••••" : "申請手機條碼時設定的密碼"} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={save} disabled={saving} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95 disabled:opacity-50">
+          {saving ? "儲存中…" : "💾 儲存"}
+        </button>
+        <button onClick={testSync} disabled={syncing || !cfg?.configured} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40">
+          {syncing ? "同步中…" : "🔄 測試同步"}
+        </button>
+        {msg && <span className="text-sm text-slate-500">{msg}</span>}
+      </div>
+
+      <div className="rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
+        <p className="mb-1 font-semibold text-slate-600">怎麼拿這三樣：</p>
+        <p>1. 到「財政部電子發票整合服務平台」<span className="font-mono">einvoice.nat.gov.tw</span>，用手機條碼登入 →「應用程式服務」申請 API 金鑰（免費），拿到 <b>appID</b>。</p>
+        <p>2. <b>手機條碼</b>就是你載具的條碼（<span className="font-mono">/</span> 開頭 8 碼）。</p>
+        <p>3. <b>載具驗證碼</b>是當初申請手機條碼時設定的密碼。</p>
+        <p className="mt-1 text-slate-400">填好後回記帳頁按「🔄 同步」，就會把載具裡的發票抓進來。</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const TABS = [
     { key: "general", label: "🏷️ 一般" },
@@ -734,6 +824,13 @@ export default function Settings() {
         <>
           <SettingSection title="⬆️ 更新" description="不用連到主機，直接從這裡把程式更新到最新版並重啟。">
             <SystemSettings />
+          </SettingSection>
+
+          <SettingSection
+            title="🧾 發票載具"
+            description="串接財政部電子發票平台，把手機條碼載具裡的發票自動抓進記帳頁。"
+          >
+            <InvoiceSettings />
           </SettingSection>
 
           <SettingSection title="🚧 更多設定" description="陸續加入中——想到要什麼就告訴開發者。">
