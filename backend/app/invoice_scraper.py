@@ -235,69 +235,95 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
     has_auth = bool(hdr.get("authorization") or hdr.get("Authorization"))
     auth_diag = f"authFrom={'攔截' if sp_headers else '無'} auth={'有' if has_auth else '無'} n={len(sp_headers or {})}"
 
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(days=max(1, min(days, 365)))
-    jwt_payload = {
-        "cardCode": "",
-        "carrierId2": "",
-        "invoiceStatus": "all",
-        "isSearchAll": "true",
-        "searchStartDate": start.strftime("%Y-%m-%dT00:00:00.000Z"),
-        "searchEndDate": now.strftime("%Y-%m-%dT23:59:59.000Z"),
-    }
-    try:
-        r1 = context.request.post(JWT_URL, data=json.dumps(jwt_payload), headers=hdr, timeout=30000)
-    except Exception as exc:  # noqa: BLE001
-        return None, f"getJWT 例外：{exc}｜{auth_diag}"
-    if not r1.ok:
-        try:
-            body = (r1.text() or "")[:200]
-        except Exception:  # noqa: BLE001
-            body = ""
-        return None, f"getJWT HTTP {r1.status}｜{auth_diag}｜回應：{body}"
+    import calendar
 
-    # 回傳可能是純 JWT 字串，或包在 JSON 裡
-    jwt = ""
-    try:
-        j = r1.json()
-        if isinstance(j, str):
-            jwt = j
-        elif isinstance(j, dict):
-            jwt = j.get("token") or j.get("data") or j.get("jwt") or ""
-    except Exception:  # noqa: BLE001
-        pass
-    if not jwt:
-        jwt = (r1.text() or "").strip().strip('"')
-    if not jwt or len(jwt) < 20:
-        return None, "拿不到 JWT 權杖（可能欄位名不對）"
-
-    bodies = []
-    # Spring 分頁：size 開大一次抓完；保險再照 totalPages 逐頁
-    for page_no in range(0, 60):
-        url = f"{SEARCH_URL}?page={page_no}&size=200"
+    def fetch_range(first: str, last: str):
+        """查一段日期（first/last 為 YYYY-MM-DD）。回 (bodies, err)。"""
+        payload = {
+            "cardCode": "",
+            "carrierId2": "",
+            "invoiceStatus": "all",
+            "isSearchAll": "true",
+            "searchStartDate": f"{first}T00:00:00.000Z",
+            "searchEndDate": f"{last}T23:59:59.000Z",
+        }
         try:
-            r2 = context.request.post(url, data=json.dumps({"token": jwt}), headers=hdr, timeout=30000)
+            r1 = context.request.post(JWT_URL, data=json.dumps(payload), headers=hdr, timeout=30000)
         except Exception as exc:  # noqa: BLE001
-            return None, f"search 例外：{exc}"
-        if not r2.ok:
-            if page_no == 0:
-                try:
-                    b = (r2.text() or "")[:200]
-                except Exception:  # noqa: BLE001
-                    b = ""
-                return None, f"search HTTP {r2.status}｜回應：{b}"
-            break
+            return None, f"getJWT 例外：{exc}｜{auth_diag}"
+        if not r1.ok:
+            try:
+                b = (r1.text() or "")[:200]
+            except Exception:  # noqa: BLE001
+                b = ""
+            return None, f"getJWT HTTP {r1.status}｜{auth_diag}｜回應：{b}"
+        jwt = ""
         try:
-            body = r2.json()
+            j = r1.json()
+            if isinstance(j, str):
+                jwt = j
+            elif isinstance(j, dict):
+                jwt = j.get("token") or j.get("data") or j.get("jwt") or ""
         except Exception:  # noqa: BLE001
-            break
-        bodies.append(body)
-        total_pages = int(body.get("totalPages") or 1)
-        if page_no >= total_pages - 1:
-            break
+            pass
+        if not jwt:
+            jwt = (r1.text() or "").strip().strip('"')
+        if not jwt or len(jwt) < 20:
+            return None, "拿不到 JWT 權杖（可能欄位名不對）"
 
-    rows = _rows_from_capture(bodies)
-    return rows, None
+        bodies = []
+        for page_no in range(0, 60):
+            url = f"{SEARCH_URL}?page={page_no}&size=200"
+            try:
+                r2 = context.request.post(url, data=json.dumps({"token": jwt}), headers=hdr, timeout=30000)
+            except Exception as exc:  # noqa: BLE001
+                return None, f"search 例外：{exc}"
+            if not r2.ok:
+                if page_no == 0:
+                    try:
+                        b = (r2.text() or "")[:200]
+                    except Exception:  # noqa: BLE001
+                        b = ""
+                    return None, f"search HTTP {r2.status}｜回應：{b}"
+                break
+            try:
+                body = r2.json()
+            except Exception:  # noqa: BLE001
+                break
+            bodies.append(body)
+            if page_no >= int(body.get("totalPages") or 1) - 1:
+                break
+        return bodies, None
+
+    # 一個月一個月查（區間太長平台會拒），涵蓋最近 N 個月
+    months = max(1, (days // 30) or 1)
+    months = min(months, 6)
+    base = datetime.now(TW)
+    all_bodies: list[dict] = []
+    got_any = False
+    last_err = None
+    for off in range(months):
+        y, m = base.year, base.month - off
+        while m <= 0:
+            m += 12
+            y -= 1
+        first = f"{y:04d}-{m:02d}-01"
+        if off == 0:
+            last = base.strftime("%Y-%m-%d")
+        else:
+            last = f"{y:04d}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}"
+        bodies, err = fetch_range(first, last)
+        if err:
+            last_err = err
+            if off == 0:  # 當月就失敗＝授權/欄位問題，直接回報
+                return None, err
+            continue
+        got_any = True
+        all_bodies.extend(bodies)
+
+    if not got_any:
+        return None, last_err or "查詢失敗"
+    return _rows_from_capture(all_bodies), None
 
 
 class LoginSession(threading.Thread):
@@ -505,11 +531,11 @@ class LoginSession(threading.Thread):
                         pass
                     page.wait_for_timeout(3000)
                 api_rows, api_err = _api_fetch(page, 90, sp_headers)
-                if api_rows:
+                if api_err is None:  # 成功（就算 0 筆也算成功）
                     context.close()
                     browser.close()
                     self.res_q.put(
-                        {"ok": True, "invoices": api_rows, "via": "api", "total_pages": 1, "pages_captured": 1}
+                        {"ok": True, "invoices": api_rows or [], "via": "api", "total_pages": 1, "pages_captured": 1}
                     )
                     return
 
