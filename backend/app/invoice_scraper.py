@@ -168,12 +168,16 @@ class LoginSession(threading.Thread):
                 )
                 page = context.new_page()
 
+                api_hits: list[str] = []
+
                 def on_response(resp):
                     if "searchCarrierInvoice" in resp.url:
                         try:
                             captured.append(resp.json())
                         except Exception:  # noqa: BLE001
                             pass
+                    if "btc502w" in resp.url or "CarrierInvoice" in resp.url:
+                        api_hits.append(f"{resp.status} {resp.url.rsplit('/', 1)[-1]}")
 
                 page.on("response", on_response)
 
@@ -320,6 +324,22 @@ class LoginSession(threading.Thread):
 
                 inv_dbg = _save_debug(page, "invoice-page")  # 一律存發票頁截圖
 
+                # 收集畫面上「看得到的按鈕/連結文字」，方便隔空判斷該點哪顆
+                btn_texts: list[str] = []
+                try:
+                    for el in page.query_selector_all("button, a, [role='button']"):
+                        try:
+                            if not el.is_visible():
+                                continue
+                            t = (el.inner_text() or "").strip().replace("\n", " ")
+                            if t and len(t) <= 12 and t not in btn_texts:
+                                btn_texts.append(t)
+                        except Exception:  # noqa: BLE001
+                            continue
+                except Exception:  # noqa: BLE001
+                    pass
+                btn_texts = btn_texts[:25]
+
                 # 6b) 盡量翻頁把每頁都抓到
                 total_pages = 1
                 if captured:
@@ -356,6 +376,8 @@ class LoginSession(threading.Thread):
                         "current_url": cur_url,
                         "menu_clicked": menu_clicked,
                         "nav_trace": nav_trace,
+                        "api_hits": api_hits[:8],
+                        "buttons": btn_texts,
                         "debug": inv_dbg,
                     }
                 )

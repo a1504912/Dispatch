@@ -186,7 +186,13 @@ export default function Ledger() {
       loadInvoices(curYM);
       let m;
       if (r.fetched === 0) {
-        m = `登入成功但沒抓到發票（頁面 ${r.pages_captured || 0} 次查詢）。主機 deploy/invoice-debug/ 有截圖，傳給我校準。`;
+        // 把診斷資訊直接印在畫面上，貼給我就能校準
+        m =
+          `登入成功但沒抓到發票。診斷：` +
+          `到=${(r.current_url || "").replace(/^https?:\/\/[^/]+/, "")}｜` +
+          `點到選單=${r.menu_clicked ? "是" : "否"}｜` +
+          `查詢請求=${(r.api_hits || []).join(", ") || "無"}｜` +
+          `畫面按鈕=[${(r.buttons || []).join(" / ")}]`;
       } else {
         m = r.added > 0 ? `已新增 ${r.added} 張發票` : "沒有新的發票（都抓過了）";
         if (r.total_pages && r.pages_captured && r.pages_captured < r.total_pages)
