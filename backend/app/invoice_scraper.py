@@ -246,16 +246,49 @@ class LoginSession(threading.Thread):
                 try:
                     page.wait_for_url(lambda u: "btc505w" not in u, timeout=30000)
                 except Exception:  # noqa: BLE001
-                    msg = _save_debug(page, "after-login")
+                    pass
+                try:
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                except Exception:  # noqa: BLE001
+                    pass
+                page.wait_for_timeout(2500)
+                after_login_url = page.url
+                login_dbg = _save_debug(page, "after-login")  # 一律存，方便判斷登入成敗
+                if "btc505w" in after_login_url:
                     self.res_q.put(
-                        {"ok": False, "error": "登入後沒有跳轉，可能是驗證碼錯或密碼錯。" + msg}
+                        {
+                            "ok": False,
+                            "error": f"登入後仍停在登入頁，多半是驗證碼或密碼錯。目前網址：{after_login_url}。{login_dbg}",
+                        }
                     )
                     return
-                page.wait_for_timeout(2000)
 
-                # 6) 到發票查詢頁，等它自動查詢（會觸發 searchCarrierInvoice）
-                page.goto(INVOICE_URL, wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(4000)
+                # 6) 到發票查詢頁，觸發查詢（會發出 searchCarrierInvoice）
+                try:
+                    page.goto(INVOICE_URL, wait_until="networkidle", timeout=45000)
+                except Exception:  # noqa: BLE001
+                    page.goto(INVOICE_URL, wait_until="domcontentloaded", timeout=45000)
+                page.wait_for_timeout(3500)
+
+                # 沒自動查詢的話，主動按「查詢」
+                if not captured:
+                    qbtn = _first(
+                        page,
+                        [
+                            "button:has-text('查詢')",
+                            "button:has-text('查 詢')",
+                            "a:has-text('查詢')",
+                            "button[type='submit']",
+                        ],
+                    )
+                    if qbtn:
+                        try:
+                            qbtn.click()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    page.wait_for_timeout(3500)
+
+                inv_dbg = _save_debug(page, "invoice-page")  # 一律存發票頁截圖
 
                 # 6b) 盡量翻頁把每頁都抓到
                 total_pages = 1
@@ -280,7 +313,8 @@ class LoginSession(threading.Thread):
                         break
 
                 rows = _rows_from_capture(captured)
-                got_pages = len({id(c) for c in captured})
+                got_pages = len(captured)
+                cur_url = page.url
                 context.close()
                 browser.close()
                 self.res_q.put(
@@ -289,6 +323,8 @@ class LoginSession(threading.Thread):
                         "invoices": rows,
                         "total_pages": total_pages,
                         "pages_captured": got_pages,
+                        "current_url": cur_url,
+                        "debug": inv_dbg,
                     }
                 )
         except Exception as exc:  # noqa: BLE001

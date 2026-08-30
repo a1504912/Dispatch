@@ -184,9 +184,14 @@ export default function Ledger() {
       const r = await invoiceLoginSubmit(captcha.sid, captchaVal.trim());
       setCaptcha(null);
       loadInvoices(curYM);
-      let m = r.added > 0 ? `已新增 ${r.added} 張發票` : "沒有新的發票";
-      if (r.total_pages && r.pages_captured && r.pages_captured < r.total_pages)
-        m += `（只抓到 ${r.pages_captured}/${r.total_pages} 頁，可再抓一次）`;
+      let m;
+      if (r.fetched === 0) {
+        m = `登入成功但沒抓到發票（頁面 ${r.pages_captured || 0} 次查詢）。主機 deploy/invoice-debug/ 有截圖，傳給我校準。`;
+      } else {
+        m = r.added > 0 ? `已新增 ${r.added} 張發票` : "沒有新的發票（都抓過了）";
+        if (r.total_pages && r.pages_captured && r.pages_captured < r.total_pages)
+          m += `（只抓到 ${r.pages_captured}/${r.total_pages} 頁，可再抓一次）`;
+      }
       setInvMsg(m);
     } catch (e) {
       setInvMsg("⚠️ " + (e?.response?.data?.detail || "登入或抓取失敗"));

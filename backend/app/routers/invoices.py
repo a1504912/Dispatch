@@ -147,6 +147,8 @@ def login_submit(body: CaptchaBody, session: Session = Depends(get_session)):
         "fetched": len(rows),
         "total_pages": res.get("total_pages"),
         "pages_captured": res.get("pages_captured"),
+        "current_url": res.get("current_url"),
+        "debug": res.get("debug"),
     }
 
 
