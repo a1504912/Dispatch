@@ -76,6 +76,15 @@ def list_invoices(
     rows = session.exec(
         select(Invoice).order_by(Invoice.inv_date.desc(), Invoice.id.desc())
     ).all()
+    # 對應的記錄若已被刪掉，就把發票放回「可記帳」狀態
+    dirty = False
+    for r in rows:
+        if r.transaction_id and not session.get(Transaction, r.transaction_id):
+            r.transaction_id = None
+            session.add(r)
+            dirty = True
+    if dirty:
+        session.commit()
     if day:
         rows = [r for r in rows if r.inv_date.isoformat() == day]
     elif month:
