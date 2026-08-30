@@ -28,6 +28,22 @@ const tintOf = (kind) =>
         ? "bg-violet-50 text-violet-600"
         : "bg-rose-50 text-rose-600";
 
+function StatChip({ label, value, tone, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-2xl bg-white px-4 py-3 text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow active:scale-[0.98]"
+    >
+      <p className="text-xs font-medium text-slate-400">
+        {label} <span className="text-slate-300">›</span>
+      </p>
+      <p className={`mt-0.5 text-lg font-black ${tone === "income" ? "text-emerald-500" : "text-slate-800"}`}>
+        {money(value)}
+      </p>
+    </button>
+  );
+}
+
 export default function Ledger() {
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +55,7 @@ export default function Ledger() {
   const [editingTx, setEditingTx] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD" 或 null（整月）
+  const [statModal, setStatModal] = useState(null); // {title, items} 點統計看清單
 
   function load() {
     setLoading(true);
@@ -92,6 +109,15 @@ export default function Ledger() {
     return m;
   }, [monthTxs]);
   const dayTotal = selectedDay ? dayData[selectedDay]?.expense || 0 : 0;
+  const dayIncome = selectedDay ? dayData[selectedDay]?.income || 0 : 0;
+
+  // 點統計 → 跳出該類別的清單
+  function openStat(title, kind, day) {
+    const items = txs
+      .filter((t) => t.kind === kind && (day ? t.date === day : (t.date || "").startsWith(curYM)))
+      .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
+    setStatModal({ title, items });
+  }
 
   // 換月時清掉選取的日
   useEffect(() => {
@@ -201,6 +227,30 @@ export default function Ledger() {
               </div>
             );
           })()}
+        </div>
+      </div>
+
+      {/* 可點統計：當日 / 本月，點了看清單 */}
+      <div className="space-y-2">
+        {selectedDay && (
+          <div className="grid grid-cols-2 gap-2">
+            <StatChip
+              label={`${Number(selectedDay.slice(5, 7))}/${Number(selectedDay.slice(8, 10))} 支出`}
+              value={dayTotal}
+              tone="expense"
+              onClick={() => openStat(`${Number(selectedDay.slice(5, 7))}/${Number(selectedDay.slice(8, 10))} 支出`, "expense", selectedDay)}
+            />
+            <StatChip
+              label="當日收入"
+              value={dayIncome}
+              tone="income"
+              onClick={() => openStat(`${Number(selectedDay.slice(5, 7))}/${Number(selectedDay.slice(8, 10))} 收入`, "income", selectedDay)}
+            />
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <StatChip label="本月支出" value={expense} tone="expense" onClick={() => openStat("本月支出", "expense", null)} />
+          <StatChip label="本月收入" value={income} tone="income" onClick={() => openStat("本月收入", "income", null)} />
         </div>
       </div>
 
@@ -346,6 +396,55 @@ export default function Ledger() {
           load();
         }}
       />
+
+      {/* 點統計 → 該類項目清單 */}
+      {statModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setStatModal(null)}>
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="text-lg font-black text-slate-900">{statModal.title}</h2>
+              <button onClick={() => setStatModal(null)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {statModal.items.length === 0 ? (
+                <p className="py-12 text-center text-sm text-slate-400">沒有項目。</p>
+              ) : (
+                <div className="divide-y divide-slate-50">
+                  {statModal.items.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => { setStatModal(null); startEdit(t); }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50"
+                    >
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg ${tintOf(t.kind)}`}>
+                        {emojiFrom(allCats, t.kind, t.category)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">
+                          {t.category}
+                          {t.subcategory && <span className="font-normal text-slate-400"> · {t.subcategory}</span>}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {Number(t.date.slice(5, 7))}/{Number(t.date.slice(8, 10))}
+                          {t.account && `　·　${t.account}`}
+                          {t.note && `　·　${t.note}`}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-sm font-black tabular-nums ${t.kind === "income" ? "text-emerald-500" : "text-slate-800"}`}>
+                        {money(Math.abs(t.amount))}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm">
+              <span className="text-slate-400">共 {statModal.items.length} 筆</span>
+              <span className="font-black text-slate-800">合計 {money(statModal.items.reduce((s, t) => s + t.amount, 0))}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 浮動新增鈕（記錄頁；捲到哪都在，手機自動避開底部分頁列） */}
       {tab === "records" && (
