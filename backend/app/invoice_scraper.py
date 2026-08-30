@@ -168,9 +168,60 @@ def _rows_from_capture(captured: list[dict]) -> list[dict]:
     return list(seen.values())
 
 
-def _api_fetch(context, days: int):
+def _auth_headers(page):
+    """從登入後的 localStorage/sessionStorage 撈 OAuth token 當 Bearer。
+    回 (headers, 診斷字串)。"""
+    import json
+
+    hdr = {"content-type": "application/json"}
+    dump = {}
+    for store in ("localStorage", "sessionStorage"):
+        try:
+            d = page.evaluate(
+                "(s) => { const o={}; const S=window[s]; for(let i=0;i<S.length;i++){const k=S.key(i); o[k]=S.getItem(k);} return o; }",
+                store,
+            )
+            if d:
+                dump.update(d)
+        except Exception:  # noqa: BLE001
+            continue
+
+    token = ""
+    # 1) 值本身就是 JWT（ey 開頭、兩個點）
+    for v in dump.values():
+        if isinstance(v, str) and v.startswith("ey") and v.count(".") == 2 and len(v) > 60:
+            token = v
+            break
+    # 2) 值是 JSON，裡面有 access_token 之類
+    if not token:
+        for v in dump.values():
+            if not isinstance(v, str) or "{" not in v:
+                continue
+            try:
+                obj = json.loads(v)
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(obj, dict):
+                for key in ("access_token", "accessToken", "token", "id_token", "idToken"):
+                    val = obj.get(key)
+                    if isinstance(val, str) and val.startswith("ey"):
+                        token = val
+                        break
+            if token:
+                break
+
+    if token:
+        hdr["Authorization"] = "Bearer " + token
+    diag = f"keys={list(dump.keys())[:12]} token={'有' if token else '無'}"
+    return hdr, diag
+
+
+def _api_fetch(page, days: int):
     """登入後用同一個 session 直接打 API 拿發票（繞過畫面）。回 (rows, err)。"""
     import json
+
+    context = page.context
+    hdr, auth_diag = _auth_headers(page)
 
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=max(1, min(days, 365)))
@@ -182,13 +233,12 @@ def _api_fetch(context, days: int):
         "searchStartDate": start.strftime("%Y-%m-%dT00:00:00.000Z"),
         "searchEndDate": now.strftime("%Y-%m-%dT23:59:59.000Z"),
     }
-    hdr = {"content-type": "application/json"}
     try:
         r1 = context.request.post(JWT_URL, data=json.dumps(jwt_payload), headers=hdr, timeout=30000)
     except Exception as exc:  # noqa: BLE001
-        return None, f"getJWT 例外：{exc}"
+        return None, f"getJWT 例外：{exc}｜{auth_diag}"
     if not r1.ok:
-        return None, f"getJWT HTTP {r1.status}"
+        return None, f"getJWT HTTP {r1.status}｜{auth_diag}"
 
     # 回傳可能是純 JWT 字串，或包在 JSON 裡
     jwt = ""
@@ -399,7 +449,7 @@ class LoginSession(threading.Thread):
                     return
 
                 # ★ 登入成功後：先直接打 API（繞過被「領獎設定」擋住的畫面）
-                api_rows, api_err = _api_fetch(context, 90)
+                api_rows, api_err = _api_fetch(page, 90)
                 if api_rows:
                     context.close()
                     browser.close()
