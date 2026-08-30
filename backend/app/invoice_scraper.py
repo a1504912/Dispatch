@@ -319,6 +319,13 @@ class LoginSession(threading.Thread):
                     page.wait_for_timeout(3000)
                     nav_trace.append(page.url)
 
+                # 6a2) 查詢表單可能是收合的 → 先點「展開」把日期/查詢露出來
+                _click_visible(
+                    page,
+                    ["button:has-text('展開')", "a:has-text('展開')", "span:has-text('展開')"],
+                )
+                page.wait_for_timeout(1200)
+
                 # 6b) 還是沒資料 → 主動按「查詢」
                 if not captured:
                     qclicked = _click_visible(
