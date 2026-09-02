@@ -158,6 +158,22 @@ def delete_sub(sub_id: int, session: Session = Depends(get_session)):
         session.commit()
 
 
+@router.post("/scan-gmail")
+def scan_gmail(session: Session = Depends(get_session)):
+    """掃 Gmail 收據，回傳偵測到的訂閱候選（不會自動建立，讓前端讓使用者確認）。"""
+    from app import gmail_scan
+    from app.google_calendar import NotConnected
+
+    try:
+        return {"ok": True, "candidates": gmail_scan.scan(session)}
+    except NotConnected:
+        raise HTTPException(status_code=400, detail="尚未連結 Google，請到設定連結 Google 帳號")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"掃描失敗：{exc}")
+
+
 @router.post("/{sub_id}/charge-now")
 def charge_now(sub_id: int, session: Session = Depends(get_session)):
     """立刻用這個訂閱的內容記一筆（日期為今天），不影響排程。"""

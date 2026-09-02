@@ -23,3 +23,9 @@ export async function chargeSubscriptionNow(id) {
   const { data } = await client.post(`/api/subscriptions/${id}/charge-now`);
   return data;
 }
+
+// 從 Gmail 收據偵測訂閱候選
+export async function scanGmailSubscriptions() {
+  const { data } = await client.post("/api/subscriptions/scan-gmail");
+  return data;
+}

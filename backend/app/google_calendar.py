@@ -24,7 +24,11 @@ AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 USERINFO_URI = "https://www.googleapis.com/oauth2/v2/userinfo"
 CAL_BASE = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-SCOPES = "openid email https://www.googleapis.com/auth/calendar"
+SCOPES = (
+    "openid email "
+    "https://www.googleapis.com/auth/calendar "
+    "https://www.googleapis.com/auth/gmail.readonly"
+)
 GOOGLE_COLOR = "#4285F4"
 
 PULL_PAST_DAYS = 30

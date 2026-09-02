@@ -5,6 +5,7 @@ import {
   updateSubscription,
   deleteSubscription,
   chargeSubscriptionNow,
+  scanGmailSubscriptions,
 } from "../api/subscriptions";
 import { listAccounts } from "../api/accounts";
 
@@ -20,6 +21,7 @@ export default function Subscriptions({ categories = [], onChanged }) {
   const [accounts, setAccounts] = useState([]);
   const [editing, setEditing] = useState(null); // 表單物件 或 null
   const [busy, setBusy] = useState(false);
+  const [scan, setScan] = useState(null); // { loading, error, items:[{...,pick}] }
 
   function load() {
     listSubscriptions().then(setSubs).catch(() => setSubs([]));
@@ -91,6 +93,44 @@ export default function Subscriptions({ categories = [], onChanged }) {
     window.alert(`已記一筆：${s.name} ${money(s.amount)}`);
   }
 
+  async function runScan() {
+    setScan({ loading: true });
+    try {
+      const r = await scanGmailSubscriptions();
+      const items = (r.candidates || []).map((c) => ({ ...c, pick: c.count >= 2 }));
+      setScan({ items });
+    } catch (e) {
+      setScan({ error: e?.response?.data?.detail || "掃描失敗" });
+    }
+  }
+
+  async function addPicked() {
+    const chosen = (scan.items || []).filter((c) => c.pick && Number(c.amount) > 0);
+    setBusy(true);
+    try {
+      for (const c of chosen) {
+        await createSubscription({
+          name: c.name,
+          emoji: "🔁",
+          amount: Number(c.amount),
+          category: "訂閱",
+          account: usableAccounts[0]?.name || "",
+          account_id: usableAccounts[0]?.id || null,
+          cycle: "monthly",
+          day: Number(c.day) || 1,
+          month: 1,
+          active: true,
+          note: "",
+        });
+      }
+      setScan(null);
+      load();
+      onChanged?.();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const field =
     "rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
@@ -102,9 +142,14 @@ export default function Subscriptions({ categories = [], onChanged }) {
           <p className="text-xs font-medium text-white/60">每月訂閱總支出（約）</p>
           <p className="text-2xl font-black">{money(monthlyTotal)}</p>
         </div>
-        <button onClick={openNew} className="rounded-xl bg-white/15 px-4 py-2 text-sm font-bold backdrop-blur transition hover:bg-white/25 active:scale-95">
-          ＋ 新增訂閱
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button onClick={runScan} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold backdrop-blur transition hover:bg-white/20 active:scale-95">
+            🔍 從 Gmail 掃描
+          </button>
+          <button onClick={openNew} className="rounded-xl bg-white/15 px-4 py-2 text-sm font-bold backdrop-blur transition hover:bg-white/25 active:scale-95">
+            ＋ 新增訂閱
+          </button>
+        </div>
       </div>
 
       {/* 清單 */}
@@ -138,6 +183,56 @@ export default function Subscriptions({ categories = [], onChanged }) {
               <button onClick={() => remove(s)} className="shrink-0 px-1 text-slate-300 hover:text-rose-500" title="刪除">✕</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Gmail 掃描結果 */}
+      {scan && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => !busy && setScan(null)}>
+          <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="text-lg font-black text-slate-900">從 Gmail 偵測到的訂閱</h2>
+              <button onClick={() => setScan(null)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {scan.loading ? (
+                <p className="py-10 text-center text-sm text-slate-400">掃描信箱中…（第一次較久）</p>
+              ) : scan.error ? (
+                <div className="py-8 text-center">
+                  <p className="text-sm text-amber-600">⚠️ {scan.error}</p>
+                  <p className="mt-2 text-xs text-slate-400">若是權限問題：到「設定」重新連結 Google，授權時記得允許讀取 Gmail。</p>
+                </div>
+              ) : !scan.items || scan.items.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">沒在最近的收據信裡找到訂閱。可以直接用「新增訂閱」手動加。</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-400">勾選要加入的（收據越多越可能是訂閱）。金額/扣款日之後都能改。</p>
+                  {scan.items.map((c, i) => (
+                    <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                      <input type="checkbox" checked={!!c.pick} onChange={(e) => setScan((s) => ({ ...s, items: s.items.map((x, j) => (j === i ? { ...x, pick: e.target.checked } : x)) }))} className="h-4 w-4 accent-indigo-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-slate-800">{c.name}</p>
+                        <p className="truncate text-xs text-slate-400">找到 {c.count} 封收據 · 每月 {c.day} 號{c.last_date ? ` · 最近 ${Number(c.last_date.slice(5, 7))}/${Number(c.last_date.slice(8, 10))}` : ""}</p>
+                      </div>
+                      <div className="relative w-24 shrink-0">
+                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">$</span>
+                        <input type="number" value={c.amount} onChange={(e) => setScan((s) => ({ ...s, items: s.items.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)) }))} className="w-full rounded-lg border border-slate-200 py-1 pl-5 pr-1 text-right text-sm font-bold" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {scan.items && scan.items.length > 0 && (
+              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4">
+                <span className="text-xs text-slate-400">已選 {scan.items.filter((c) => c.pick).length} 項</span>
+                <button onClick={addPicked} disabled={busy || scan.items.filter((c) => c.pick).length === 0}
+                  className="rounded-xl bg-indigo-600 px-6 py-2 text-sm font-bold text-white transition hover:brightness-110 active:scale-95 disabled:opacity-40">
+                  {busy ? "加入中…" : "加入選取的訂閱"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
