@@ -237,11 +237,10 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
 
     import calendar
 
-    # 完全照 SPA 的格式：起訖用「同一個時間」，且用「台灣當地時間」再標 Z
-    # （SPA 就是這樣：把本地時間直接當 Z 送。用真 UTC 會讓結束日 +8 小時跨到明天，
-    #  被判「查未來、區間異常」。）
-    _t = datetime.now(TW)
-    tstamp = _t.strftime("%H:%M:%S.") + f"{_t.microsecond // 1000:03d}Z"
+    # 起訖用「同一個固定時間 00:00」。平台會把這個時間 +8 小時換成台灣日期來判斷，
+    # 用 00:00 → +8 = 早上 8 點，永遠還在同一天，不會因為「現在是下午」而跨日被判區間異常。
+    # 起訖同一個時間，區間才會剛好等於天數（不會多算一天）。
+    tstamp = "00:00:00.000Z"
 
     def fetch_range(first: str, last: str):
         """查一段日期（first/last 為 YYYY-MM-DD）。回 (bodies, err)。"""
@@ -262,7 +261,7 @@ def _api_fetch(page, days: int, sp_headers: dict | None = None):
                 b = (r1.text() or "")[:200]
             except Exception:  # noqa: BLE001
                 b = ""
-            return None, f"getJWT HTTP {r1.status}｜{auth_diag}｜回應：{b}"
+            return None, f"getJWT HTTP {r1.status}（{first}~{last}）｜{auth_diag}｜回應：{b}"
         jwt = ""
         try:
             j = r1.json()
