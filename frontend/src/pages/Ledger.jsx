@@ -240,7 +240,7 @@ export default function Ledger() {
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="max-w-6xl space-y-5">
       <h1 className="text-2xl font-black tracking-tight text-slate-900">記帳</h1>
 
       {/* 分頁（釘在最上面，捲動時也切得到） */}
