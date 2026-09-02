@@ -37,7 +37,7 @@ function computeShares(method, parts, total, inputs) {
   return out;
 }
 
-export default function TransactionModal({ open, initial, categories = [], onClose, onSaved }) {
+export default function TransactionModal({ open, initial, categories = [], onClose, onSaved, onManageCategories }) {
   const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -208,6 +208,12 @@ export default function TransactionModal({ open, initial, categories = [], onClo
                     {c.emoji} {c.name}
                   </button>
                 ))}
+                {onManageCategories && (
+                  <button type="button" onClick={onManageCategories}
+                    className="shrink-0 rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-400 transition hover:border-indigo-300 hover:text-indigo-500">
+                    ✏️ 管理
+                  </button>
+                )}
               </div>
               {subCats.length > 0 && (
                 <div className="flex gap-1.5 overflow-x-auto border-l-2 border-slate-100 pl-3">
