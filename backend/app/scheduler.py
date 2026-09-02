@@ -258,6 +258,26 @@ def _check_budget_overspend(session: Session, now: datetime) -> None:
         _mark_sent(session, tag)
 
 
+def _check_subscriptions(session: Session, now: datetime) -> None:
+    """到扣款日的訂閱自動記一筆支出，並推播通知（charge_due 會推進日期，不會重複）。"""
+    from app.routers.subscriptions import charge_due
+
+    for s, d in charge_due(session, now.date()):
+        tag = f"sub:{s.id}:{d.isoformat()}"
+        if _already_sent(session, tag):
+            continue
+        push.send_to_all(
+            session,
+            {
+                "title": "🔁 已自動記帳",
+                "body": f"{s.emoji} {s.name} ${int(s.amount):,}（{d.month}/{d.day}）",
+                "url": "/ledger",
+                "tag": tag,
+            },
+        )
+        _mark_sent(session, tag)
+
+
 def _tick() -> None:
     now = _now_local()
     with Session(engine) as session:
@@ -265,6 +285,7 @@ def _tick() -> None:
             _check_event_reminders(session, now)
             _check_daily_summary(session, now)
             _check_budget_overspend(session, now)
+            _check_subscriptions(session, now)
             _check_new_free_games(session, now)
             if now.minute == 0:  # 每小時整點清一次舊標記
                 _prune(session)

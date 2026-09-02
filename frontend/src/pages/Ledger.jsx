@@ -10,6 +10,7 @@ import MonthCalendar from "../components/MonthCalendar.jsx";
 import LedgerCategoryManager from "../components/LedgerCategoryManager.jsx";
 import SplitBills from "../components/SplitBills.jsx";
 import Assets from "../components/Assets.jsx";
+import Subscriptions from "../components/Subscriptions.jsx";
 import TransactionModal from "../components/TransactionModal.jsx";
 
 const emojiFrom = (cats, kind, name) =>
@@ -248,6 +249,7 @@ export default function Ledger() {
           ["records", "記錄"],
           ["split", "分帳"],
           ["budget", "預算"],
+          ["subs", "訂閱"],
           ["assets", "資產"],
           ["analysis", "分析"],
         ].map(([key, label]) => (
@@ -269,6 +271,8 @@ export default function Ledger() {
         <div className="mx-auto max-w-2xl"><SplitBills expenseCats={allCats.filter((c) => c.kind === "expense")} /></div>
       ) : tab === "assets" ? (
         <div className="mx-auto max-w-2xl"><Assets /></div>
+      ) : tab === "subs" ? (
+        <div className="mx-auto max-w-2xl"><Subscriptions categories={allCats} onChanged={load} /></div>
       ) : tab === "budget" ? (
         <div className="mx-auto max-w-2xl"><Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} /></div>
       ) : tab === "analysis" ? (

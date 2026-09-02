@@ -177,6 +177,26 @@ class Transaction(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Subscription(SQLModel, table=True):
+    """週期性訂閱（Netflix、Spotify…），到扣款日自動記一筆支出。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    emoji: str = "🔁"
+    amount: float = 0
+    category: str = "訂閱"
+    subcategory: str = ""
+    account: str = ""  # 帳戶名稱（顯示用）
+    account_id: Optional[int] = Field(default=None, foreign_key="account.id")
+    cycle: str = "monthly"  # monthly（每月）/ yearly（每年）
+    day: int = 1  # 每月幾號 / 每年的「日」
+    month: int = 1  # 每年扣款的月份（cycle=yearly 才用）
+    next_date: date  # 下次要自動記帳的日期（記完就往後推一個週期）
+    active: bool = True
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Invoice(SQLModel, table=True):
     """從財政部電子發票平台（手機條碼載具）拉回來的一張發票。"""
 

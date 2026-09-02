@@ -27,6 +27,7 @@ from app.routers import (
     push,
     schedule,
     settlements,
+    subscriptions,
     subtasks,
     system,
     transactions,
@@ -118,6 +119,7 @@ app.include_router(budgets.router)
 app.include_router(settlements.router)
 app.include_router(system.router)
 app.include_router(invoices.router)
+app.include_router(subscriptions.router)
 
 
 @app.get("/api/health")
