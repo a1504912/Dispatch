@@ -29,6 +29,8 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
 
   const overall = budgets.find((b) => b.category === "");
   const catBudgets = budgets.filter((b) => b.category !== "");
+  const catSum = catBudgets.reduce((s, b) => s + b.amount, 0); // 分類預算加總
+  const unallocated = overall ? overall.amount - catSum : 0; // 總預算還沒分配掉的部分
   const emojiOf = (name) => categories.find((c) => c.name === name && c.kind === "expense" && !c.parent_id)?.emoji || "📦";
 
   const topCats = categories.filter((c) => c.kind === "expense" && !c.parent_id);
@@ -79,6 +81,22 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
                 <span className="text-slate-500">還可花 {money(overall.amount - expense)}</span>
               )}
             </p>
+            {/* 連動：分類預算佔用了多少總預算 */}
+            {catBudgets.length > 0 && (
+              <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">已分配到分類</span>
+                  <span className="font-semibold text-slate-700">{money(catSum)} / {money(overall.amount)}</span>
+                </div>
+                <p className="mt-1">
+                  {unallocated < 0 ? (
+                    <span className="font-bold text-red-500">⚠️ 分類預算超出總預算 {money(-unallocated)}，請調高總預算或降低分類上限</span>
+                  ) : (
+                    <span className="text-slate-500">尚可分配給其他分類 {money(unallocated)}</span>
+                  )}
+                </p>
+              </div>
+            )}
             <div className="mt-3 flex gap-2">
               <input type="number" value={overallInput} onChange={(e) => setOverallInput(e.target.value)} placeholder={`改預算（現為 ${money(overall.amount)}）`} className={`${field} flex-1`} />
               <button onClick={saveOverall} disabled={!Number(overallInput)} className="rounded-xl bg-slate-800 px-4 text-sm font-bold text-white disabled:opacity-40">更新</button>
@@ -94,7 +112,14 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
 
       {/* 分類預算 */}
       <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-5 shadow-sm">
-        <p className="mb-3 text-sm font-black text-slate-700">分類預算</p>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-black text-slate-700">分類預算</p>
+          {overall && catBudgets.length > 0 && (
+            <span className={`text-xs font-semibold ${unallocated < 0 ? "text-red-500" : "text-slate-400"}`}>
+              已分配 {money(catSum)} / {money(overall.amount)}
+            </span>
+          )}
+        </div>
         <div className="space-y-3">
           {catBudgets.map((b) => {
             const spent = byCat[b.category] || 0;
@@ -121,7 +146,7 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
               <option value="">選分類…</option>
               {budgetableCats.map((c) => <option key={c.id} value={c.name}>{c.emoji} {c.name}</option>)}
             </select>
-            <input type="number" value={newAmt} onChange={(e) => setNewAmt(e.target.value)} placeholder="上限" className={`${field} w-28`} />
+            <input type="number" value={newAmt} onChange={(e) => setNewAmt(e.target.value)} placeholder={overall ? `上限（可分配 ${money(Math.max(0, unallocated))}）` : "上限"} className={`${field} w-44`} />
             <button onClick={addCatBudget} disabled={!newCat || !Number(newAmt)} className="rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white disabled:opacity-40">＋</button>
           </div>
         )}
