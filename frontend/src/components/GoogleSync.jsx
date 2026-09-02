@@ -134,6 +134,13 @@ export default function GoogleSync({ onSynced }) {
             {syncing ? "同步中…" : "同步 Google"}
           </button>
           <button
+            onClick={startGoogleLogin}
+            className="rounded-lg px-2 text-xs font-semibold text-slate-400 transition hover:text-indigo-600"
+            title="重新授權，更新權限（例如新增 Gmail 讀取，給訂閱掃描用）"
+          >
+            重新授權
+          </button>
+          <button
             onClick={handleDisconnect}
             className="rounded-lg px-1.5 text-slate-300 transition hover:text-red-500"
             title={`中斷連接（${status.email}）`}
