@@ -243,8 +243,8 @@ export default function Ledger() {
     <div className="mx-auto max-w-5xl space-y-5">
       <h1 className="text-2xl font-black tracking-tight text-slate-900">記帳</h1>
 
-      {/* 分頁 */}
-      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 text-sm font-semibold">
+      {/* 分頁（釘在最上面，捲動時也切得到） */}
+      <div className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto bg-slate-50/85 px-1 py-2 text-sm font-semibold backdrop-blur">
         {[
           ["records", "記錄"],
           ["split", "分帳"],
@@ -279,8 +279,8 @@ export default function Ledger() {
         <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} /></div>
       ) : (
        <div className="grid items-start gap-5 lg:grid-cols-2">
-        {/* 左欄：月結 + 新增 + 月曆 */}
-        <div className="space-y-5">
+        {/* 左欄：月結 + 月曆（桌面版釘住，捲右邊清單時不會跑掉） */}
+        <div className="space-y-5 lg:sticky lg:top-14 lg:self-start">
       {/* 月結 hero */}
       <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-5 text-white shadow-lg shadow-slate-900/10">
         <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-indigo-500/25 blur-2xl" />
