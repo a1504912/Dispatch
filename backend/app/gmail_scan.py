@@ -88,8 +88,9 @@ def scan(session: Session, max_msgs: int = 40) -> list[dict]:
             params={"q": QUERY, "maxResults": max_msgs},
             headers=headers,
         )
-        if r.status_code == 403:
-            raise PermissionError("Gmail 權限不足，請重新連結 Google 並允許讀取 Gmail")
+        if r.status_code in (401, 403):
+            body = (r.text or "")[:300]
+            raise PermissionError(f"Gmail 讀取被拒（HTTP {r.status_code}）：{body}")
         r.raise_for_status()
         ids = [m["id"] for m in (r.json().get("messages") or [])]
 
