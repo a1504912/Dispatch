@@ -87,6 +87,7 @@ export default function Ledger() {
   const [captchaVal, setCaptchaVal] = useState("");
   const [linkInvoiceId, setLinkInvoiceId] = useState(null); // 記成支出後要綁定的發票
   const [accounts, setAccounts] = useState([]); // 算總資產用
+  const [assetView, setAssetView] = useState("all"); // 總資產卡片：all 或某個帳戶類型 id
 
   function load() {
     setLoading(true);
@@ -145,6 +146,20 @@ export default function Ledger() {
     );
     return leaves.reduce((s, a) => s + balanceOf(a, txs), 0);
   }, [accounts, txs]);
+
+  // 各帳戶類型（頂層）的餘額，供「總資產」下拉切換
+  const topAccounts = accounts.filter((a) => !a.parent_id);
+  const topBalance = (top) => {
+    const kids = accounts.filter((a) => a.parent_id === top.id);
+    return kids.length ? kids.reduce((s, k) => s + balanceOf(k, txs), 0) : balanceOf(top, txs);
+  };
+  const shownAsset =
+    assetView === "all"
+      ? totalAssets
+      : (() => {
+          const top = accounts.find((a) => String(a.id) === String(assetView));
+          return top ? topBalance(top) : 0;
+        })();
 
   // 支出分類統計已移到「分析」分頁
 
@@ -367,14 +382,21 @@ export default function Ledger() {
         </div>
       </div>
 
-      {/* 總資產：一眼看到目前有多少錢，點了去資產頁 */}
-      <button
-        onClick={() => setTab("assets")}
-        className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow active:scale-[0.98]"
-      >
-        <span className="flex items-center gap-2 text-sm font-semibold text-slate-500">💰 總資產</span>
-        <span className={`text-xl font-black ${totalAssets < 0 ? "text-rose-500" : "text-slate-900"}`}>{money(totalAssets)}</span>
-      </button>
+      {/* 總資產：下拉可切「總資產 / 現金 / 銀行…」看各自的錢 */}
+      <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-100">
+        <span className="text-lg">💰</span>
+        <select
+          value={assetView}
+          onChange={(e) => setAssetView(e.target.value)}
+          className="min-w-0 flex-1 cursor-pointer bg-transparent text-sm font-semibold text-slate-600 outline-none"
+        >
+          <option value="all">總資產</option>
+          {topAccounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
+          ))}
+        </select>
+        <span className={`shrink-0 text-xl font-black ${shownAsset < 0 ? "text-rose-500" : "text-slate-900"}`}>{money(shownAsset)}</span>
+      </div>
 
       {/* 月曆 */}
       <MonthCalendar
