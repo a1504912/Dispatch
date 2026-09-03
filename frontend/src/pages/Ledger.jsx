@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listTransactions, deleteTransaction } from "../api/ledger";
 import { listLedgerCategories } from "../api/ledgerCategories";
 import { listBudgets } from "../api/budgets";
+import { listAccounts } from "../api/accounts";
 import { listInvoices, invoiceLoginStart, invoiceLoginSubmit, invoiceLink } from "../api/invoices";
 import { NO_BACKEND } from "../localMode";
 import Budget from "../components/Budget.jsx";
@@ -30,6 +31,25 @@ const tintOf = (kind) =>
       : kind === "adjust"
         ? "bg-violet-50 text-violet-600"
         : "bg-rose-50 text-rose-600";
+
+// 單一帳戶餘額（跟資產頁同一套算法）
+function balanceOf(acc, txs) {
+  let bal = Number(acc.initial) || 0;
+  for (const t of txs) {
+    const isThis = t.account_id === acc.id || (t.account_id == null && t.account === acc.name);
+    if (t.kind === "transfer") {
+      if (t.account_id === acc.id) bal -= t.amount;
+      if (t.to_account_id === acc.id) bal += t.amount;
+    } else if (t.kind === "adjust") {
+      if (t.account_id === acc.id) bal += t.amount;
+    } else if (t.kind === "income" && isThis) {
+      bal += t.amount;
+    } else if (t.kind === "expense" && isThis) {
+      bal -= t.amount;
+    }
+  }
+  return bal;
+}
 
 function StatChip({ label, value, tone, onClick }) {
   return (
@@ -66,6 +86,7 @@ export default function Ledger() {
   const [captcha, setCaptcha] = useState(null); // { sid, image } 驗證碼輸入彈窗
   const [captchaVal, setCaptchaVal] = useState("");
   const [linkInvoiceId, setLinkInvoiceId] = useState(null); // 記成支出後要綁定的發票
+  const [accounts, setAccounts] = useState([]); // 算總資產用
 
   function load() {
     setLoading(true);
@@ -90,10 +111,16 @@ export default function Ledger() {
       .then(setInvoices)
       .catch(() => setInvoices([]));
   }
+  function loadAccounts() {
+    listAccounts()
+      .then(setAccounts)
+      .catch(() => setAccounts([]));
+  }
   useEffect(() => {
     load();
     loadCats();
     loadBudgets();
+    loadAccounts();
   }, []);
 
   // 目前選到的年月
@@ -110,6 +137,14 @@ export default function Ledger() {
   const expense = monthTxs.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount, 0);
   const income = monthTxs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount, 0);
   const balance = income - expense;
+
+  // 總資產：所有「末端帳戶」（沒有子帳戶的）餘額加總
+  const totalAssets = useMemo(() => {
+    const leaves = accounts.filter(
+      (a) => a.parent_id || !accounts.some((x) => x.parent_id === a.id)
+    );
+    return leaves.reduce((s, a) => s + balanceOf(a, txs), 0);
+  }, [accounts, txs]);
 
   // 支出分類統計已移到「分析」分頁
 
@@ -331,6 +366,15 @@ export default function Ledger() {
           })()}
         </div>
       </div>
+
+      {/* 總資產：一眼看到目前有多少錢，點了去資產頁 */}
+      <button
+        onClick={() => setTab("assets")}
+        className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow active:scale-[0.98]"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-500">💰 總資產</span>
+        <span className={`text-xl font-black ${totalAssets < 0 ? "text-rose-500" : "text-slate-900"}`}>{money(totalAssets)}</span>
+      </button>
 
       {/* 月曆 */}
       <MonthCalendar
