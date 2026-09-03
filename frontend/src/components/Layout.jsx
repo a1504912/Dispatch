@@ -331,7 +331,7 @@ export default function Layout() {
 
       <main className="flex-1 overflow-y-auto">
         <UpdateBanner />
-        <div className="w-full px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
+        <div className="w-full px-4 pt-3 pb-24 md:px-8 md:pt-4 md:pb-8">
           <Outlet />
         </div>
       </main>
