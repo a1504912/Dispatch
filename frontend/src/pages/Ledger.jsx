@@ -332,8 +332,25 @@ export default function Ledger() {
         </div>
       </div>
 
-      {/* 可點統計：當日 / 本月，點了看清單 */}
-      <div className="space-y-2">
+      {/* 月曆 */}
+      <MonthCalendar
+        year={cur.getFullYear()}
+        month={cur.getMonth() + 1}
+        dayData={dayData}
+        todayStr={todayStr}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        onPrev={() => setOffset((o) => o - 1)}
+        onNext={() => setOffset((o) => o + 1)}
+        onToday={() => setOffset(0)}
+        monthLabel={monthLabel}
+      />
+        </div>
+
+        {/* 右欄：統計/發票 + 明細（明細固定高度、框內捲動，整頁不再往下） */}
+        <div className="space-y-3 lg:sticky lg:top-14 lg:self-start lg:flex lg:max-h-[calc(100vh-5rem)] lg:flex-col">
+      {/* 統計 + 發票（移到明細上方） */}
+      <div className="space-y-2 lg:shrink-0">
         {selectedDay && (
           <div className="grid grid-cols-2 gap-2">
             <StatChip
@@ -395,26 +412,9 @@ export default function Ledger() {
         )}
       </div>
 
-      {/* 月曆 */}
-      <MonthCalendar
-        year={cur.getFullYear()}
-        month={cur.getMonth() + 1}
-        dayData={dayData}
-        todayStr={todayStr}
-        selectedDay={selectedDay}
-        onSelectDay={setSelectedDay}
-        onPrev={() => setOffset((o) => o - 1)}
-        onNext={() => setOffset((o) => o + 1)}
-        onToday={() => setOffset(0)}
-        monthLabel={monthLabel}
-      />
-        </div>
-
-        {/* 右欄：選取那天（或整月）的明細 */}
-        <div className="space-y-4">
       {/* 選取某天時，顯示當天標題 */}
       {selectedDay && (
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center justify-between px-1 lg:shrink-0">
           <span className="text-sm font-bold text-slate-700">
             {Number(selectedDay.slice(5, 7))}/{Number(selectedDay.slice(8, 10))}（週{weekdayOf(selectedDay)}）
             {dayTotal > 0 && <span className="ml-2 font-normal text-rose-500">支出 {money(dayTotal)}</span>}
@@ -425,7 +425,8 @@ export default function Ledger() {
         </div>
       )}
 
-      {/* 明細 */}
+      {/* 明細（超過高度就在這個框內捲，整頁不會變長） */}
+      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
       {loading ? (
         <p className="py-12 text-center text-sm text-slate-400">載入中…</p>
       ) : grouped.length === 0 ? (
@@ -513,6 +514,7 @@ export default function Ledger() {
           })}
         </div>
       )}
+      </div>
         </div>
        </div>
       )}
