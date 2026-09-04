@@ -19,6 +19,7 @@ export default function GoogleSync({ onSynced }) {
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState("");
   const [picker, setPicker] = useState(null); // { events, selected:Set } | null
+  const [showPast, setShowPast] = useState(false); // 匯入視窗是否顯示過往行程
 
   async function refresh() {
     try {
@@ -150,7 +151,16 @@ export default function GoogleSync({ onSynced }) {
         </>
       )}
 
-      {picker && (
+      {picker && (() => {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const isFuture = (ev) => new Date(ev.start_time) >= todayStart;
+        const visible = showPast ? picker.events : picker.events.filter(isFuture);
+        const visibleIds = new Set(visible.map((e) => e.google_event_id));
+        const visSel = [...picker.selected].filter((id) => visibleIds.has(id));
+        const pastCount = picker.events.length - picker.events.filter(isFuture).length;
+        const allVisSelected = visible.length > 0 && visible.every((e) => picker.selected.has(e.google_event_id));
+        return (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
           onClick={() => setPicker(null)}
@@ -162,49 +172,67 @@ export default function GoogleSync({ onSynced }) {
             <div className="border-b border-slate-100 px-6 py-4">
               <h2 className="text-lg font-black text-slate-900">從 Google 匯入行程</h2>
               <p className="mt-0.5 text-sm text-slate-400">
-                Google 上有 {picker.events.length} 筆新行程，勾選要匯入的（已全選）。
+                有 {visible.length} 筆可匯入，勾選要匯入的。
+                {!showPast && pastCount > 0 && `（已隱藏 ${pastCount} 筆過往行程）`}
               </p>
             </div>
 
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-2">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-2">
               <button
                 onClick={() =>
-                  setPicker((p) => ({
-                    ...p,
-                    selected:
-                      p.selected.size === p.events.length
-                        ? new Set()
-                        : new Set(p.events.map((e) => e.google_event_id)),
-                  }))
+                  setPicker((p) => {
+                    const selected = new Set(p.selected);
+                    if (allVisSelected) visible.forEach((e) => selected.delete(e.google_event_id));
+                    else visible.forEach((e) => selected.add(e.google_event_id));
+                    return { ...p, selected };
+                  })
                 }
                 className="text-xs font-bold text-indigo-600 hover:underline"
               >
-                {picker.selected.size === picker.events.length ? "全部取消" : "全選"}
+                {allVisSelected ? "全部取消" : "全選"}
               </button>
-              <span className="text-xs text-slate-400">已選 {picker.selected.size} 筆</span>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={showPast}
+                  onChange={(e) => setShowPast(e.target.checked)}
+                  className="h-3.5 w-3.5 cursor-pointer accent-indigo-600"
+                />
+                顯示過往日期
+              </label>
+              <span className="ml-auto text-xs text-slate-400">已選 {visSel.length} 筆</span>
             </div>
 
             <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 py-3">
-              {picker.events.map((ev) => {
-                const on = picker.selected.has(ev.google_event_id);
-                return (
-                  <label
-                    key={ev.google_event_id}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 hover:bg-slate-50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => togglePick(ev.google_event_id)}
-                      className="h-4 w-4 shrink-0 cursor-pointer accent-indigo-600"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-800">{ev.title}</p>
-                      <p className="text-xs text-slate-400">{fmtWhen(ev)}</p>
-                    </div>
-                  </label>
-                );
-              })}
+              {visible.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-400">
+                  沒有今天以後的新行程。勾「顯示過往日期」可看已過期的。
+                </p>
+              ) : (
+                visible.map((ev) => {
+                  const on = picker.selected.has(ev.google_event_id);
+                  const past = !isFuture(ev);
+                  return (
+                    <label
+                      key={ev.google_event_id}
+                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => togglePick(ev.google_event_id)}
+                        className="h-4 w-4 shrink-0 cursor-pointer accent-indigo-600"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{ev.title}</p>
+                        <p className={`text-xs ${past ? "text-rose-400" : "text-slate-400"}`}>
+                          {fmtWhen(ev)}{past && "　·　已過期"}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
             </div>
 
             <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
@@ -215,16 +243,17 @@ export default function GoogleSync({ onSynced }) {
                 取消
               </button>
               <button
-                onClick={() => applySync([...picker.selected])}
-                disabled={syncing}
+                onClick={() => applySync(visSel)}
+                disabled={syncing || visSel.length === 0}
                 className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-50"
               >
-                {syncing ? "匯入中…" : `匯入 ${picker.selected.size} 筆`}
+                {syncing ? "匯入中…" : `匯入 ${visSel.length} 筆`}
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
