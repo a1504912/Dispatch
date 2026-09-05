@@ -292,13 +292,13 @@ export default function Ledger() {
   return (
     <div className="max-w-6xl space-y-5">
       {/* 手機才顯示的頁首標題（桌面版標題移進左側選單頂端，跟右邊卡片對齊） */}
-      <h1 className="text-2xl font-black tracking-tight text-slate-900 md:hidden">記帳</h1>
+      <h1 className="text-2xl font-black tracking-tight text-slate-900 lg:hidden">記帳</h1>
 
       {/* 內容區：手機上下排；桌面左側直向分頁 + 右側內容 */}
-      <div className="md:flex md:items-start md:gap-4">
+      <div className="lg:flex lg:items-start lg:gap-4">
       {/* 分頁：手機在上方橫向；桌面轉成左側直向選單，捲動時釘住 */}
-      <div className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto bg-slate-50/85 px-1 py-2 text-sm font-semibold backdrop-blur md:mx-0 md:w-28 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:bg-transparent md:px-0 md:py-0 md:top-4 md:backdrop-blur-none">
-        <h1 className="mb-3 hidden text-2xl font-black tracking-tight text-slate-900 md:block">記帳</h1>
+      <div className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto bg-slate-50/85 px-1 py-2 text-sm font-semibold backdrop-blur lg:mx-0 lg:w-28 lg:shrink-0 lg:flex-col lg:self-start lg:overflow-visible lg:bg-transparent lg:px-0 lg:py-0 lg:top-4 lg:backdrop-blur-none">
+        <h1 className="mb-3 hidden text-2xl font-black tracking-tight text-slate-900 lg:block">記帳</h1>
         {[
           ["records", "記錄"],
           ["split", "分帳"],
@@ -310,7 +310,7 @@ export default function Ledger() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`shrink-0 rounded-full px-4 py-1.5 transition md:w-full md:rounded-xl md:px-3 md:py-2 md:text-left ${
+            className={`shrink-0 rounded-full px-4 py-1.5 transition lg:w-full lg:rounded-xl lg:px-3 lg:py-2 lg:text-left ${
               tab === key
                 ? "bg-slate-900 text-white shadow-sm"
                 : "bg-white text-slate-500 ring-1 ring-slate-200 hover:text-slate-700"
