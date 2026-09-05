@@ -8,6 +8,23 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./dispatch.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     default_model: str = "qwen3:8b"
+    vision_model: str = "qwen2.5vl:7b"
+
+    # 前端網址（OAuth 完成後導回）
+    frontend_url: str = "http://localhost:5173"
+    # 行事曆時區（推/拉 Google 事件時換算用）
+    timezone: str = "Asia/Taipei"
+
+    # 登入密碼（留空 = 不啟用登入，適合純本機使用；部署到公開網址時必設）
+    auth_password: str = ""
+
+    # 允許從網頁按鈕觸發自我更新（執行 deploy/win-restart.bat）；設 0 可關閉
+    allow_self_update: bool = True
+
+    # Google 日曆 OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/google/callback"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
