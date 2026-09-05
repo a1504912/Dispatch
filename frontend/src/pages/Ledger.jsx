@@ -334,9 +334,9 @@ export default function Ledger() {
       ) : tab === "analysis" ? (
         <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} /></div>
       ) : (
-       <div className="grid gap-5 lg:grid-cols-2 lg:h-[calc(100vh-3rem)] lg:items-stretch">
+       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2 lg:h-[calc(100vh-3rem)] lg:items-stretch">
         {/* 左欄：月結 + 月曆（兩欄等高，上下都對齊） */}
-        <div className="space-y-5 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
+        <div className="min-w-0 space-y-5 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
       {/* 月結 hero */}
       <div className="relative overflow-hidden rounded-3xl bg-slate-900 p-5 text-white shadow-lg shadow-slate-900/10">
         <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-indigo-500/25 blur-2xl" />
@@ -414,7 +414,7 @@ export default function Ledger() {
         </div>
 
         {/* 右欄：統計/發票 + 明細（明細固定高度、框內捲動，整頁不再往下） */}
-        <div className="space-y-3 lg:flex lg:min-h-0 lg:flex-col">
+        <div className="min-w-0 space-y-3 lg:flex lg:min-h-0 lg:flex-col">
       {/* 統計 + 發票（移到明細上方） */}
       <div className="space-y-2 lg:shrink-0">
         {selectedDay && (
