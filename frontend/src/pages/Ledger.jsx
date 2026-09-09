@@ -391,9 +391,15 @@ export default function Ledger() {
           className="min-w-0 flex-1 cursor-pointer bg-transparent text-sm font-semibold text-slate-600 outline-none"
         >
           <option value="all">總資產</option>
-          {topAccounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
-          ))}
+          {topAccounts.flatMap((a) => {
+            const kids = accounts.filter((x) => x.parent_id === a.id);
+            return [
+              <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>,
+              ...kids.map((k) => (
+                <option key={k.id} value={k.id}>　└ {k.name}</option>
+              )),
+            ];
+          })}
         </select>
         <span className={`shrink-0 text-xl font-black ${shownAsset < 0 ? "text-rose-500" : "text-slate-900"}`}>{money(shownAsset)}</span>
       </div>
