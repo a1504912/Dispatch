@@ -130,6 +130,8 @@ class Account(SQLModel, table=True):
     sort: int = 0
     # 次分類：指向主分類（帳戶類型）的 id；主分類本身 parent_id 為 None
     parent_id: Optional[int] = Field(default=None, foreign_key="account.id")
+    # 不計入總資產（例如「上繳款」這類代管/待付款項）
+    exclude_from_total: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

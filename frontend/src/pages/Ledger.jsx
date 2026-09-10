@@ -139,19 +139,31 @@ export default function Ledger() {
   const income = monthTxs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount, 0);
   const balance = income - expense;
 
-  // 總資產：所有「末端帳戶」（沒有子帳戶的）餘額加總
+  // 是否「不計入總資產」（自己或所屬主類型被標記）
+  const isExcl = (a) =>
+    a.exclude_from_total ||
+    (a.parent_id && accounts.find((p) => p.id === a.parent_id)?.exclude_from_total);
+
+  // 總資產：所有「末端帳戶」餘額加總，扣掉標記「不計入」的
   const totalAssets = useMemo(() => {
     const leaves = accounts.filter(
       (a) => a.parent_id || !accounts.some((x) => x.parent_id === a.id)
     );
-    return leaves.reduce((s, a) => s + balanceOf(a, txs), 0);
+    return leaves.filter((a) => !isExcl(a)).reduce((s, a) => s + balanceOf(a, txs), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accounts, txs]);
 
   // 各帳戶類型（頂層）的餘額，供「總資產」下拉切換
   const topAccounts = accounts.filter((a) => !a.parent_id);
   const topBalance = (top) => {
     const kids = accounts.filter((a) => a.parent_id === top.id);
-    return kids.length ? kids.reduce((s, k) => s + balanceOf(k, txs), 0) : balanceOf(top, txs);
+    // 選某個「類型」時排除不計入的子帳戶；直接選某個帳戶時照實顯示
+    if (kids.length) {
+      return kids
+        .filter((k) => !k.exclude_from_total && !top.exclude_from_total)
+        .reduce((s, k) => s + balanceOf(k, txs), 0);
+    }
+    return balanceOf(top, txs);
   };
   const shownAsset =
     assetView === "all"

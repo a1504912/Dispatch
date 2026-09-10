@@ -79,6 +79,7 @@ class AccountCreate(SQLModel):
     initial: float = 0
     sort: int = 0
     parent_id: Optional[int] = None
+    exclude_from_total: bool = False
 
 
 class BudgetCreate(SQLModel):

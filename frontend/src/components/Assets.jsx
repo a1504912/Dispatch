@@ -117,12 +117,18 @@ export default function Assets() {
   const childrenOf = (id) => accounts.filter((a) => a.parent_id === id);
   const bal = (a) => balanceOf(a, txs);
 
-  // 可用帳戶 = 沒有子帳戶的主帳戶 + 所有子帳戶
+  // 這個帳戶是否「不計入總資產」（自己被設，或所屬的主類型被設）
+  const isExcluded = (a) =>
+    a.exclude_from_total ||
+    (a.parent_id && accounts.find((p) => p.id === a.parent_id)?.exclude_from_total);
+
+  // 總資產 = 所有末端帳戶餘額，扣掉被標記「不計入」的
   const total = useMemo(() => {
     let s = 0;
     for (const a of accounts) {
       const isGroup = !a.parent_id && accounts.some((x) => x.parent_id === a.id);
-      if (!isGroup) s += bal(a);
+      if (isGroup || isExcluded(a)) continue;
+      s += bal(a);
     }
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,7 +148,14 @@ export default function Assets() {
     reload();
   }
   const saveField = (a, patch) =>
-    updateAccount(a.id, { name: a.name, emoji: a.emoji, initial: a.initial, parent_id: a.parent_id ?? null, ...patch }).then(reload);
+    updateAccount(a.id, {
+      name: a.name,
+      emoji: a.emoji,
+      initial: a.initial,
+      parent_id: a.parent_id ?? null,
+      exclude_from_total: a.exclude_from_total ?? false,
+      ...patch,
+    }).then(reload);
 
   const field =
     "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100";
@@ -173,8 +186,15 @@ export default function Assets() {
                   </select>
                   <input defaultValue={top.name} onBlur={(e) => e.target.value.trim() && e.target.value !== top.name && saveField(top, { name: e.target.value.trim() })} className={`${field} min-w-0 flex-1 font-semibold`} />
                   <div className="shrink-0 text-right">
-                    <p className={`text-lg font-black ${groupBal >= 0 ? "text-slate-800" : "text-red-500"}`}>{money(groupBal)}</p>
-                    <div className="flex justify-end gap-2">
+                    <p className={`text-lg font-black ${top.exclude_from_total ? "text-slate-300" : groupBal >= 0 ? "text-slate-800" : "text-red-500"}`}>{money(groupBal)}</p>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => saveField(top, { exclude_from_total: !top.exclude_from_total })}
+                        className={`text-xs ${top.exclude_from_total ? "font-semibold text-amber-600 hover:text-amber-700" : "text-slate-400 hover:text-indigo-600"}`}
+                        title="是否計入總資產"
+                      >
+                        {top.exclude_from_total ? "🚫不計入" : "計入"}
+                      </button>
                       {!isGroup && (
                         <button onClick={() => setAdjustFor({ account: top, current: bal(top) })} className="text-xs text-slate-400 hover:text-indigo-600">校正</button>
                       )}
@@ -199,7 +219,14 @@ export default function Assets() {
                         <span className="flex items-center gap-1 text-xs text-slate-400">
                           初始<input type="number" defaultValue={k.initial} onBlur={(e) => Number(e.target.value) !== k.initial && saveField(k, { initial: Number(e.target.value) || 0 })} className="w-20 rounded-md border border-slate-200 px-1.5 py-0.5 text-xs" />
                         </span>
-                        <span className={`w-16 shrink-0 text-right text-sm font-bold ${bal(k) >= 0 ? "text-slate-700" : "text-red-500"}`}>{money(bal(k))}</span>
+                        <span className={`w-16 shrink-0 text-right text-sm font-bold ${isExcluded(k) ? "text-slate-300" : bal(k) >= 0 ? "text-slate-700" : "text-red-500"}`}>{money(bal(k))}</span>
+                        <button
+                          onClick={() => saveField(k, { exclude_from_total: !k.exclude_from_total })}
+                          className={`shrink-0 text-xs ${k.exclude_from_total ? "font-semibold text-amber-600" : "text-slate-400 hover:text-indigo-600"}`}
+                          title="是否計入總資產"
+                        >
+                          {k.exclude_from_total ? "🚫" : "計入"}
+                        </button>
                         <button onClick={() => setAdjustFor({ account: k, current: bal(k) })} className="shrink-0 text-xs text-slate-400 hover:text-indigo-600">校正</button>
                         <button onClick={() => window.confirm(`刪除子帳戶「${k.name}」？`) && deleteAccount(k.id).then(reload)} className="shrink-0 text-slate-300 hover:text-red-500">🗑</button>
                       </div>
