@@ -332,7 +332,7 @@ export default function Ledger() {
       ) : tab === "budget" ? (
         <div className="mx-auto max-w-2xl"><Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} /></div>
       ) : tab === "analysis" ? (
-        <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} /></div>
+        <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} offset={offset} setOffset={setOffset} /></div>
       ) : (
        <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2 lg:h-[calc(100vh-3rem)] lg:items-stretch">
         {/* 左欄：月結 + 月曆（兩欄等高，上下都對齊） */}
