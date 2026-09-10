@@ -46,6 +46,7 @@ function Donut({ segments, total, centerLabel }) {
 
 export default function Analysis({ monthTxs = [], txs = [], categories = [], monthLabel, offset = 0, setOffset }) {
   const [kind, setKind] = useState("expense"); // 圓環看支出 or 收入
+  const [drill, setDrill] = useState(null); // 點某分類看明細
   const emojiOf = (name) =>
     categories.find((c) => c.name === name && c.kind === kind && !c.parent_id)?.emoji ||
     (kind === "income" ? "💵" : "📦");
@@ -141,17 +142,18 @@ export default function Analysis({ monthTxs = [], txs = [], categories = [], mon
               {segments.map((s, i) => {
                 const pct = Math.round((s.value / total) * 100);
                 return (
-                  <div key={s.name}>
+                  <button key={s.name} onClick={() => setDrill(s.name)} className="block w-full rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                       <span className="flex-1 truncate text-slate-600">{emojiOf(s.name)} {s.name}</span>
                       <span className={`font-semibold ${kindTint}`}>{money(s.value)}</span>
                       <span className="w-9 text-right text-xs text-slate-400">{pct}%</span>
+                      <span className="text-slate-300">›</span>
                     </div>
                     <div className="ml-5 mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS[i % COLORS.length] }} />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -190,6 +192,74 @@ export default function Analysis({ monthTxs = [], txs = [], categories = [], mon
         </div>
         <p className="mt-2 text-center text-[11px] text-slate-400">點長條可切換到該月份</p>
       </div>
+
+      {/* 點分類 → 看該分類的明細 + 次分類佔比 */}
+      {drill && (() => {
+        const items = monthTxs
+          .filter((t) => t.kind === kind && t.category === drill)
+          .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
+        const sum = items.reduce((s, t) => s + t.amount, 0);
+        const subMap = {};
+        for (const t of items) {
+          const key = t.subcategory || "（未分類）";
+          subMap[key] = (subMap[key] || 0) + t.amount;
+        }
+        const subs = Object.entries(subMap).map(([n, v]) => ({ n, v })).sort((a, b) => b.v - a.v);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setDrill(null)}>
+            <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <h2 className="text-lg font-black text-slate-900">{emojiOf(drill)} {drill}</h2>
+                <button onClick={() => setDrill(null)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {/* 次分類佔比 */}
+                {subs.length > 1 && (
+                  <div className="space-y-1.5 border-b border-slate-100 px-5 py-3">
+                    <p className="mb-1 text-xs font-bold text-slate-400">次分類</p>
+                    {subs.map((s) => {
+                      const pct = sum > 0 ? Math.round((s.v / sum) * 100) : 0;
+                      return (
+                        <div key={s.n}>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-600">{s.n}</span>
+                            <span className="font-semibold text-slate-700">{money(s.v)} <span className="text-xs text-slate-400">{pct}%</span></span>
+                          </div>
+                          <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div className={`h-full rounded-full ${kind === "income" ? "bg-emerald-400" : "bg-rose-400"}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* 每一筆 */}
+                <div className="divide-y divide-slate-50">
+                  {items.map((t) => (
+                    <div key={t.id} className="flex items-center gap-3 px-5 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">
+                          {t.subcategory || drill}
+                          {t.note && <span className="font-normal text-slate-400"> · {t.note}</span>}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {Number((t.date || "").slice(5, 7))}/{Number((t.date || "").slice(8, 10))}
+                          {t.account && `　·　${t.account}`}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 text-sm font-black tabular-nums ${kind === "income" ? "text-emerald-500" : "text-slate-800"}`}>{money(t.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm">
+                <span className="text-slate-400">共 {items.length} 筆</span>
+                <span className="font-black text-slate-800">合計 {money(sum)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
