@@ -33,6 +33,8 @@ class EventCreate(SQLModel):
     images: Optional[str] = None
     category_id: Optional[int] = None
     is_task: bool = False
+    links: Optional[str] = None
+    files: Optional[str] = None
 
 
 # ---------- Category ----------

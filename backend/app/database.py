@@ -57,6 +57,10 @@ def init_db() -> None:
                     )
                 if "thumb" not in columns:
                     conn.execute(text("ALTER TABLE event ADD COLUMN thumb TEXT"))
+                if "links" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN links TEXT"))
+                if "files" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN files TEXT"))
                 conn.commit()
 
             sub_columns = [row[1] for row in conn.execute(text("PRAGMA table_info(subtask)"))]

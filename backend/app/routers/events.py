@@ -54,6 +54,16 @@ def list_events(session: Session = Depends(get_session)):
         data["image_count"] = count
         data.pop("image", None)
         data.pop("images", None)
+        # 檔案（base64）也很大，列表只回數量，開單筆才載完整檔
+        fcount = 0
+        if e.files:
+            try:
+                farr = json.loads(e.files)
+                fcount = len(farr) if isinstance(farr, list) else 0
+            except (ValueError, TypeError):
+                fcount = 0
+        data["file_count"] = fcount
+        data.pop("files", None)
         result.append(data)
     return result
 

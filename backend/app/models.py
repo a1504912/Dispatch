@@ -57,6 +57,10 @@ class Event(SQLModel, table=True):
     google_event_id: Optional[str] = Field(default=None, index=True)
     # 待辦事項（無特定日期，不進行事曆、不同步 Google）
     is_task: bool = False
+    # 附加連結（JSON 陣列，例：["https://..."]）
+    links: Optional[str] = None
+    # 附加檔案（JSON 陣列 [{name,type,data(base64 data URL)}]；列表不回傳，開單筆才載）
+    files: Optional[str] = None
 
 
 class Subtask(SQLModel, table=True):

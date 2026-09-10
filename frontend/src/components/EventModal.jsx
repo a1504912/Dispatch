@@ -2,6 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { createEvent, updateEvent, deleteEvent, getEvent } from "../api/events";
 import { openImage } from "../lightbox";
 import { parseImages } from "../images";
+
+// links/files 可能是 JSON 字串或已是陣列；統一轉成陣列
+function safeArr(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string" && v) {
+    try {
+      const a = JSON.parse(v);
+      return Array.isArray(a) ? a : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 import { compressImageFile } from "../imageCompress";
 import {
   createSubtask,
@@ -156,7 +170,37 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   // 開視窗時原圖 / 明細還在向後端載入（用來顯示載入動畫）
   const [imagesLoading, setImagesLoading] = useState(false);
   const [subtasksLoading, setSubtasksLoading] = useState(false);
+  const [newLink, setNewLink] = useState("");
   const fileInputRef = useRef(null);
+  const attachInputRef = useRef(null);
+
+  // 加連結
+  function addLink() {
+    let u = newLink.trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    setForm((f) => ({ ...f, links: [...(f.links ?? []), u] }));
+    setNewLink("");
+  }
+  // 加檔案（讀成 base64 存起來；單檔上限 8MB）
+  function readAttachFile(file) {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      window.alert(`「${file.name}」超過 8MB，請換小一點的檔案。`);
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () =>
+      setForm((f) => ({
+        ...f,
+        files: [...(f.files ?? []), { name: file.name, type: file.type || "", data: r.result }],
+      }));
+    r.readAsDataURL(file);
+  }
+  const fmtSize = (dataUrl) => {
+    const b = Math.round(((dataUrl.length - (dataUrl.indexOf(",") + 1)) * 3) / 4);
+    return b >= 1048576 ? `${(b / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
+  };
   const isEdit = Boolean(initial?.id);
 
   async function refreshSubtasks() {
@@ -245,6 +289,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       images: parseImages(initial),
       category_id: initial?.category_id != null ? String(initial.category_id) : "",
       is_task: Boolean(initial?.is_task),
+      links: safeArr(initial?.links),
+      files: safeArr(initial?.files),
     });
     setNewSub("");
     setSubtasks([]);
@@ -259,7 +305,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       // 列表沒帶原圖，開視窗時才向後端要完整圖片
       getEvent(initial.id)
         .then((full) => {
-          if (alive && full) setForm((f) => (f ? { ...f, images: parseImages(full) } : f));
+          if (alive && full)
+            setForm((f) => (f ? { ...f, images: parseImages(full), links: safeArr(full.links), files: safeArr(full.files) } : f));
         })
         .catch(() => {})
         .finally(() => {
@@ -332,6 +379,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       images: form.images?.length ? JSON.stringify(form.images) : null,
       category_id: form.category_id ? Number(form.category_id) : null,
       is_task: form.is_task,
+      links: form.links?.length ? JSON.stringify(form.links) : null,
+      files: form.files?.length ? JSON.stringify(form.files) : null,
     };
     try {
       if (isEdit) await updateEvent(initial.id, payload);
@@ -846,6 +895,57 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                 e.target.value = "";
               }}
             />
+          </div>
+
+          {/* 連結 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">
+              連結{form.links?.length > 0 && <span className="ml-2 font-normal text-slate-400">{form.links.length}</span>}
+            </label>
+            {form.links?.length > 0 && (
+              <div className="mb-2 space-y-1.5">
+                {form.links.map((url, idx) => (
+                  <div key={idx} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-slate-400">🔗</span>
+                    <a href={url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-sm text-indigo-600 hover:underline">{url}</a>
+                    <button type="button" onClick={() => setForm((f) => ({ ...f, links: f.links.filter((_, i) => i !== idx) }))} className="shrink-0 text-slate-300 hover:text-red-500" title="移除">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                className={`${field} flex-1`}
+                placeholder="貼上網址，例：https://..."
+                value={newLink}
+                onChange={(e) => setNewLink(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLink(); } }}
+              />
+              <button type="button" onClick={addLink} disabled={!newLink.trim()} className="shrink-0 rounded-xl bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-600 disabled:opacity-40">＋</button>
+            </div>
+          </div>
+
+          {/* 檔案 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">
+              檔案{form.files?.length > 0 && <span className="ml-2 font-normal text-slate-400">{form.files.length}</span>}
+            </label>
+            {form.files?.length > 0 && (
+              <div className="mb-2 space-y-1.5">
+                {form.files.map((f, idx) => (
+                  <div key={idx} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <span className="text-slate-400">📎</span>
+                    <a href={f.data} download={f.name} className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 hover:text-indigo-600" title={`下載 ${f.name}`}>{f.name}</a>
+                    <span className="shrink-0 text-xs text-slate-400">{fmtSize(f.data)}</span>
+                    <button type="button" onClick={() => setForm((ff) => ({ ...ff, files: ff.files.filter((_, i) => i !== idx) }))} className="shrink-0 text-slate-300 hover:text-red-500" title="移除">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button type="button" onClick={() => attachInputRef.current?.click()} className="w-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 py-3 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+              📎 點此新增檔案（PDF、文件…，單檔上限 8MB）
+            </button>
+            <input ref={attachInputRef} type="file" multiple className="hidden" onChange={(e) => { [...(e.target.files ?? [])].forEach(readAttachFile); e.target.value = ""; }} />
           </div>
 
           <div>
