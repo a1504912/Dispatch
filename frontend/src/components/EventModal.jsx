@@ -169,6 +169,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [pasteSubId, setPasteSubId] = useState(null);
   // 開視窗時原圖 / 明細還在向後端載入（用來顯示載入動畫）
   const [imagesLoading, setImagesLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [subtasksLoading, setSubtasksLoading] = useState(false);
   const [newLink, setNewLink] = useState("");
   const fileInputRef = useRef(null);
@@ -296,11 +297,14 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     setSubtasks([]);
     setPasteSubId(null);
     setImagesLoading(false);
+    setFilesLoading(false);
     setSubtasksLoading(false);
     if (initial?.id) {
       let alive = true;
       const expectImages = (initial.image_count ?? (initial.thumb ? 1 : 0)) > 0;
+      const expectFiles = (initial.file_count ?? 0) > 0;
       setImagesLoading(expectImages);
+      setFilesLoading(expectFiles);
       setSubtasksLoading(true);
       // 列表沒帶原圖，開視窗時才向後端要完整圖片
       getEvent(initial.id)
@@ -310,7 +314,10 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
         })
         .catch(() => {})
         .finally(() => {
-          if (alive) setImagesLoading(false);
+          if (alive) {
+            setImagesLoading(false);
+            setFilesLoading(false);
+          }
         });
       listSubtasks(initial.id)
         .then((rows) => {
@@ -928,9 +935,26 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           {/* 檔案 */}
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">
-              檔案{form.files?.length > 0 && <span className="ml-2 font-normal text-slate-400">{form.files.length}</span>}
+              檔案
+              {filesLoading ? (
+                <span className="ml-2 inline-flex items-center gap-1 font-normal text-indigo-500">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  讀取附件中…
+                </span>
+              ) : (
+                form.files?.length > 0 && <span className="ml-2 font-normal text-slate-400">{form.files.length}</span>
+              )}
             </label>
-            {form.files?.length > 0 && (
+            {filesLoading && (
+              <div className="mb-2 space-y-1.5">
+                {Array.from({ length: Math.min(Math.max(initial?.file_count ?? 1, 1), 4) }).map((_, i) => (
+                  <div key={i} className="h-9 w-full animate-pulse rounded-lg bg-slate-200" />
+                ))}
+              </div>
+            )}
+            {!filesLoading && form.files?.length > 0 && (
               <div className="mb-2 space-y-1.5">
                 {form.files.map((f, idx) => (
                   <div key={idx} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -942,9 +966,11 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
                 ))}
               </div>
             )}
-            <button type="button" onClick={() => attachInputRef.current?.click()} className="w-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 py-3 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40">
-              📎 點此新增檔案（PDF、文件…，單檔上限 8MB）
-            </button>
+            {!filesLoading && (
+              <button type="button" onClick={() => attachInputRef.current?.click()} className="w-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 py-3 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                📎 點此新增檔案（PDF、文件…，單檔上限 8MB）
+              </button>
+            )}
             <input ref={attachInputRef} type="file" multiple className="hidden" onChange={(e) => { [...(e.target.files ?? [])].forEach(readAttachFile); e.target.value = ""; }} />
           </div>
 
