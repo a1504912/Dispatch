@@ -94,7 +94,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
           if (f.account_id) return f;
           // 預設選第一個「可用帳戶」（沒有子帳戶的類型，或某個子帳戶）
           const usable = accs.filter((a) => a.parent_id || !accs.some((x) => x.parent_id === a.id));
-          const first = usable[0];
+          const first = usable.find((a) => !a.exclude_from_total) || usable[0];
           return first ? { ...f, account_id: first.id, account: first.name } : f;
         });
       })
@@ -158,6 +158,13 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   const selBal = selAcc ? balOf(selAcc) : 0;
   const afterBal = selBal + (form.kind === "income" ? amountNum : -amountNum);
   const showAfter = !isTransfer && selAcc && Number.isFinite(amountNum) && amountNum !== 0;
+
+  // 「不計入總資產」的帳戶不在選單顯示（除非正好是這筆已選的帳戶，才留著能改）
+  const visibleTop = topAccounts.filter((a) => !a.exclude_from_total || a.id === selTopId);
+  const visibleSub = subAccts.filter((s) => !s.exclude_from_total || s.id === form.account_id);
+  const transferAccts = usableAccounts.filter(
+    (a) => !a.exclude_from_total || a.id === form.account_id || a.id === form.to_account_id
+  );
 
   function pickType(top) {
     const kids = accChildren(top.id);
@@ -283,7 +290,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
               <div className="flex-1">
                 <p className="mb-1 text-xs font-bold text-slate-500">從</p>
                 <select value={form.account_id ?? ""} onChange={(e) => setForm({ ...form, account_id: Number(e.target.value) })} className={`${field} w-full`}>
-                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+                  {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
                 </select>
               </div>
               <span className="mt-5 text-slate-400">→</span>
@@ -291,7 +298,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
                 <p className="mb-1 text-xs font-bold text-slate-500">到</p>
                 <select value={form.to_account_id ?? ""} onChange={(e) => setForm({ ...form, to_account_id: Number(e.target.value) })} className={`${field} w-full`}>
                   <option value="">選擇</option>
-                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+                  {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
                 </select>
               </div>
             </div>
@@ -300,7 +307,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
               <p className="mb-1 text-xs font-bold text-slate-500">帳戶</p>
               {/* 帳戶類型：整齊格子，並顯示各自餘額 */}
               <div className="grid grid-cols-3 gap-1.5">
-                {topAccounts.map((a) => {
+                {visibleTop.map((a) => {
                   const on = selTopId === a.id;
                   return (
                     <button key={a.id} type="button" onClick={() => pickType(a)}
@@ -311,9 +318,9 @@ export default function TransactionModal({ open, initial, categories = [], txs =
                   );
                 })}
               </div>
-              {subAccts.length > 0 && (
+              {visibleSub.length > 0 && (
                 <div className="mt-1.5 grid grid-cols-3 gap-1.5 border-l-2 border-slate-100 pl-2">
-                  {subAccts.map((s) => {
+                  {visibleSub.map((s) => {
                     const on = form.account_id === s.id;
                     return (
                       <button key={s.id} type="button" onClick={() => pickSub(s)}
