@@ -78,7 +78,8 @@ export default function Ledger() {
   const [editingTx, setEditingTx] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD" 或 null（整月）
-  const [statModal, setStatModal] = useState(null); // {title, items} 點統計看清單
+  const [statModal, setStatModal] = useState(null); // {title, items, kind} 點統計看清單
+  const [statCat, setStatCat] = useState(null); // 在統計彈窗裡點進的大分類
   const [invoices, setInvoices] = useState([]); // 本月載具發票
   const [invModal, setInvModal] = useState(null); // {title, day} 發票清單彈窗
   const [invBusy, setInvBusy] = useState(false); // 抓取中
@@ -189,12 +190,13 @@ export default function Ledger() {
   const dayTotal = selectedDay ? dayData[selectedDay]?.expense || 0 : 0;
   const dayIncome = selectedDay ? dayData[selectedDay]?.income || 0 : 0;
 
-  // 點統計 → 跳出該類別的清單
+  // 點統計 → 跳出清單（先看大分類，再點進單一分類明細）
   function openStat(title, kind, day) {
     const items = txs
       .filter((t) => t.kind === kind && (day ? t.date === day : (t.date || "").startsWith(curYM)))
       .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
-    setStatModal({ title, items });
+    setStatCat(null);
+    setStatModal({ title, items, kind });
   }
 
   // 換月時清掉選取的日、重抓當月發票
@@ -639,19 +641,60 @@ export default function Ledger() {
       />
 
       {/* 點統計 → 該類項目清單 */}
-      {statModal && (
+      {statModal && (() => {
+        const grand = statModal.items.reduce((s, t) => s + t.amount, 0);
+        // 大分類彙總
+        const gmap = {};
+        for (const t of statModal.items) {
+          const g = (gmap[t.category || "其他"] ??= { name: t.category || "其他", total: 0, count: 0 });
+          g.total += t.amount;
+          g.count += 1;
+        }
+        const groups = Object.values(gmap).sort((a, b) => b.total - a.total);
+        const drillItems = statCat ? statModal.items.filter((t) => (t.category || "其他") === statCat) : [];
+        const drillTotal = drillItems.reduce((s, t) => s + t.amount, 0);
+        return (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setStatModal(null)}>
           <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h2 className="text-lg font-black text-slate-900">{statModal.title}</h2>
+              <div className="flex items-center gap-2">
+                {statCat && (
+                  <button onClick={() => setStatCat(null)} className="rounded-md px-1 text-slate-400 hover:text-slate-700" title="返回分類">‹</button>
+                )}
+                <h2 className="text-lg font-black text-slate-900">{statCat ? `${emojiFrom(allCats, statModal.kind, statCat)} ${statCat}` : statModal.title}</h2>
+              </div>
               <button onClick={() => setStatModal(null)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {statModal.items.length === 0 ? (
                 <p className="py-12 text-center text-sm text-slate-400">沒有項目。</p>
-              ) : (
+              ) : !statCat ? (
+                /* 第一層：大分類金額，點了進明細 */
                 <div className="divide-y divide-slate-50">
-                  {statModal.items.map((t) => (
+                  {groups.map((g) => (
+                    <button
+                      key={g.name}
+                      onClick={() => setStatCat(g.name)}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
+                    >
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-lg ${tintOf(statModal.kind)}`}>
+                        {emojiFrom(allCats, statModal.kind, g.name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-slate-800">{g.name}</p>
+                        <p className="text-xs text-slate-400">{g.count} 筆 · {grand > 0 ? Math.round((g.total / grand) * 100) : 0}%</p>
+                      </div>
+                      <span className={`shrink-0 text-base font-black tabular-nums ${statModal.kind === "income" ? "text-emerald-500" : "text-slate-800"}`}>
+                        {money(g.total)}
+                      </span>
+                      <span className="shrink-0 text-slate-300">›</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                /* 第二層：該分類的每一筆，點了去編輯 */
+                <div className="divide-y divide-slate-50">
+                  {drillItems.map((t) => (
                     <button
                       key={t.id}
                       onClick={() => { setStatModal(null); startEdit(t); }}
@@ -662,13 +705,12 @@ export default function Ledger() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-800">
-                          {t.category}
-                          {t.subcategory && <span className="font-normal text-slate-400"> · {t.subcategory}</span>}
+                          {t.subcategory || t.category}
+                          {t.note && <span className="font-normal text-slate-400"> · {t.note}</span>}
                         </p>
                         <p className="truncate text-xs text-slate-400">
                           {Number(t.date.slice(5, 7))}/{Number(t.date.slice(8, 10))}
                           {t.account && `　·　${t.account}`}
-                          {t.note && `　·　${t.note}`}
                         </p>
                       </div>
                       <span className={`shrink-0 text-sm font-black tabular-nums ${t.kind === "income" ? "text-emerald-500" : "text-slate-800"}`}>
@@ -680,12 +722,13 @@ export default function Ledger() {
               )}
             </div>
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm">
-              <span className="text-slate-400">共 {statModal.items.length} 筆</span>
-              <span className="font-black text-slate-800">合計 {money(statModal.items.reduce((s, t) => s + t.amount, 0))}</span>
+              <span className="text-slate-400">{statCat ? `共 ${drillItems.length} 筆` : `${groups.length} 個分類`}</span>
+              <span className="font-black text-slate-800">合計 {money(statCat ? drillTotal : grand)}</span>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 驗證碼輸入（登入財政部平台） */}
       {captcha && (
