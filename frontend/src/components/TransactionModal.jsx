@@ -9,6 +9,25 @@ import CalcButtons from "./CalcButtons.jsx";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+
+// 單一帳戶餘額（跟資產頁同一套算法）
+function balanceOf(acc, txs) {
+  let bal = Number(acc.initial) || 0;
+  for (const t of txs) {
+    const isThis = t.account_id === acc.id || (t.account_id == null && t.account === acc.name);
+    if (t.kind === "transfer") {
+      if (t.account_id === acc.id) bal -= t.amount;
+      if (t.to_account_id === acc.id) bal += t.amount;
+    } else if (t.kind === "adjust") {
+      if (t.account_id === acc.id) bal += t.amount;
+    } else if (t.kind === "income" && isThis) {
+      bal += t.amount;
+    } else if (t.kind === "expense" && isThis) {
+      bal -= t.amount;
+    }
+  }
+  return bal;
+}
 const todayStr = () => {
   const d = new Date();
   const p = (x) => String(x).padStart(2, "0");
@@ -37,7 +56,7 @@ function computeShares(method, parts, total, inputs) {
   return out;
 }
 
-export default function TransactionModal({ open, initial, categories = [], onClose, onSaved, onManageCategories }) {
+export default function TransactionModal({ open, initial, categories = [], txs = [], onClose, onSaved, onManageCategories }) {
   const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -128,6 +147,17 @@ export default function TransactionModal({ open, initial, categories = [], onClo
   const selAcc = accounts.find((a) => a.id === form.account_id);
   const selTopId = selAcc ? selAcc.parent_id || selAcc.id : null;
   const subAccts = selTopId ? accChildren(selTopId) : [];
+
+  // 餘額：算的時候排除「正在編輯的這一筆」，這樣「記後」預估才不會重複計算
+  const txsBase = isEdit ? txs.filter((t) => t.id !== initial.id) : txs;
+  const balOf = (acc) => balanceOf(acc, txsBase);
+  const topBal = (top) => {
+    const kids = accChildren(top.id);
+    return kids.length ? kids.reduce((s, k) => s + balOf(k), 0) : balOf(top);
+  };
+  const selBal = selAcc ? balOf(selAcc) : 0;
+  const afterBal = selBal + (form.kind === "income" ? amountNum : -amountNum);
+  const showAfter = !isTransfer && selAcc && Number.isFinite(amountNum) && amountNum !== 0;
 
   function pickType(top) {
     const kids = accChildren(top.id);
@@ -253,7 +283,7 @@ export default function TransactionModal({ open, initial, categories = [], onClo
               <div className="flex-1">
                 <p className="mb-1 text-xs font-bold text-slate-500">從</p>
                 <select value={form.account_id ?? ""} onChange={(e) => setForm({ ...form, account_id: Number(e.target.value) })} className={`${field} w-full`}>
-                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
                 </select>
               </div>
               <span className="mt-5 text-slate-400">→</span>
@@ -261,30 +291,48 @@ export default function TransactionModal({ open, initial, categories = [], onClo
                 <p className="mb-1 text-xs font-bold text-slate-500">到</p>
                 <select value={form.to_account_id ?? ""} onChange={(e) => setForm({ ...form, to_account_id: Number(e.target.value) })} className={`${field} w-full`}>
                   <option value="">選擇</option>
-                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                  {usableAccounts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
                 </select>
               </div>
             </div>
           ) : (
             <div>
               <p className="mb-1 text-xs font-bold text-slate-500">帳戶</p>
-              <div className="flex flex-wrap gap-1.5">
-                {topAccounts.map((a) => (
-                  <button key={a.id} type="button" onClick={() => pickType(a)}
-                    className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${selTopId === a.id ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
-                    {a.emoji} {a.name}
-                  </button>
-                ))}
+              {/* 帳戶類型：整齊格子，並顯示各自餘額 */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {topAccounts.map((a) => {
+                  const on = selTopId === a.id;
+                  return (
+                    <button key={a.id} type="button" onClick={() => pickType(a)}
+                      className={`rounded-xl px-2 py-2 text-center transition ${on ? "bg-slate-800 text-white shadow-sm" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"}`}>
+                      <span className="block truncate text-sm font-medium">{a.emoji} {a.name}</span>
+                      <span className={`block text-[11px] tabular-nums ${on ? "text-slate-300" : topBal(a) < 0 ? "text-rose-500" : "text-slate-400"}`}>{money(topBal(a))}</span>
+                    </button>
+                  );
+                })}
               </div>
               {subAccts.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5 border-l-2 border-slate-100 pl-3">
-                  {subAccts.map((s) => (
-                    <button key={s.id} type="button" onClick={() => pickSub(s)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${form.account_id === s.id ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>
-                      {s.name}
-                    </button>
-                  ))}
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5 border-l-2 border-slate-100 pl-2">
+                  {subAccts.map((s) => {
+                    const on = form.account_id === s.id;
+                    return (
+                      <button key={s.id} type="button" onClick={() => pickSub(s)}
+                        className={`rounded-xl px-2 py-1.5 text-center transition ${on ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"}`}>
+                        <span className="block truncate text-xs font-medium">{s.name}</span>
+                        <span className={`block text-[10px] tabular-nums ${on ? "text-slate-300" : balOf(s) < 0 ? "text-rose-500" : "text-slate-400"}`}>{money(balOf(s))}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+              )}
+              {/* 目前餘額 + 記這筆後剩多少 */}
+              {selAcc && (
+                <p className="mt-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+                  {selAcc.emoji} {selAcc.name}　目前 <b className="text-slate-700">{money(selBal)}</b>
+                  {showAfter && (
+                    <> → 記後 <b className={afterBal < 0 ? "text-rose-500" : "text-slate-800"}>{money(afterBal)}</b></>
+                  )}
+                </p>
               )}
             </div>
           )}

@@ -617,6 +617,7 @@ export default function Ledger() {
         open={txModalOpen}
         initial={editingTx}
         categories={allCats}
+        txs={txs}
         onManageCategories={() => setManagerOpen(true)}
         onClose={() => {
           setTxModalOpen(false);
