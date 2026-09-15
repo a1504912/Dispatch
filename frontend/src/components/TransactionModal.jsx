@@ -117,7 +117,9 @@ export default function TransactionModal({ open, initial, categories = [], onClo
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
   const transferBad = isTransfer && (!form.account_id || !form.to_account_id || form.account_id === form.to_account_id);
-  const canSave = amountNum > 0 && !exactBad && !transferBad && !saving;
+  // 支出/收入允許負數（沖銷、退款）；轉帳與分帳仍需正數
+  const amountOk = isTransfer ? amountNum > 0 : amountNum !== 0 && Number.isFinite(amountNum);
+  const canSave = amountOk && !exactBad && !transferBad && !saving && (!splitOn || amountNum > 0);
 
   // 帳戶：主分類（類型）→ 子帳戶
   const topAccounts = accounts.filter((a) => !a.parent_id);
