@@ -4,6 +4,8 @@ import { listMembers } from "../api/members";
 import { createSplitBill } from "../api/splitbills";
 import { listEvents } from "../api/events";
 import { listAccounts } from "../api/accounts";
+import { listInvoices, invoiceLink } from "../api/invoices";
+import { NO_BACKEND } from "../localMode";
 import { evalExpr, hasOperator } from "../calc";
 import CalcButtons from "./CalcButtons.jsx";
 
@@ -67,6 +69,8 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   const [method, setMethod] = useState("equal");
   const [checked, setChecked] = useState({});
   const [inputs, setInputs] = useState({});
+  const [invoices, setInvoices] = useState([]); // 可對應的發票
+  const [linkInv, setLinkInv] = useState(""); // 這筆對應的發票 id（字串）
 
   useEffect(() => {
     if (!open) return;
@@ -102,6 +106,17 @@ export default function TransactionModal({ open, initial, categories = [], txs =
     listEvents()
       .then((evs) => setEvents(evs.filter((e) => !e.is_task).sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))))
       .catch(() => setEvents([]));
+    // 載入發票（給「這筆對應哪張發票」用），並預選已綁定的
+    setLinkInv("");
+    if (!NO_BACKEND) {
+      listInvoices()
+        .then((invs) => {
+          setInvoices(invs);
+          const linked = invs.find((i) => i.transaction_id === initial?.id);
+          if (linked) setLinkInv(String(linked.id));
+        })
+        .catch(() => setInvoices([]));
+    }
   }, [open, initial]);
 
   useEffect(() => {
@@ -210,6 +225,18 @@ export default function TransactionModal({ open, initial, categories = [], txs =
       let saved;
       if (isEdit) saved = await updateTransaction(initial.id, payload);
       else saved = await createTransaction(payload);
+      // 綁定/解除綁定對應的發票
+      if (!NO_BACKEND) {
+        const txId = saved?.id ?? initial?.id;
+        const prev = invoices.find((i) => i.transaction_id === initial?.id);
+        const newId = linkInv ? Number(linkInv) : null;
+        try {
+          if (prev && prev.id !== newId) await invoiceLink(prev.id, null); // 解除舊的
+          if (newId && (!prev || prev.id !== newId)) await invoiceLink(newId, txId); // 綁新的
+        } catch {
+          /* 綁定失敗不擋記帳 */
+        }
+      }
       onSaved(saved || { id: initial?.id });
     } finally {
       setSaving(false);
@@ -384,6 +411,27 @@ export default function TransactionModal({ open, initial, categories = [], txs =
               )}
             </div>
           )}
+
+          {/* 對應發票（支出、有發票時才顯示） */}
+          {!isTransfer && form.kind === "expense" && !NO_BACKEND && (() => {
+            const pickable = invoices.filter(
+              (i) => !i.transaction_id || String(i.id) === linkInv || i.transaction_id === initial?.id
+            );
+            if (pickable.length === 0) return null;
+            return (
+              <div>
+                <p className="mb-1 text-xs font-bold text-slate-500">對應發票（選填）</p>
+                <select value={linkInv} onChange={(e) => setLinkInv(e.target.value)} className={`${field} w-full`}>
+                  <option value="">🧾 不對應</option>
+                  {pickable.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {Number((i.date || "").slice(5, 7))}/{Number((i.date || "").slice(8, 10))} {i.seller_name || i.inv_num}（{money(i.amount)}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
 
           {/* 連結行程 */}
           <div>

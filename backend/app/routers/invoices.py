@@ -199,7 +199,7 @@ def to_transaction(invoice_id: int, body: ToTxBody, session: Session = Depends(g
 
 
 class LinkBody(BaseModel):
-    transaction_id: int
+    transaction_id: int | None = None
 
 
 @router.post("/{invoice_id}/link")
