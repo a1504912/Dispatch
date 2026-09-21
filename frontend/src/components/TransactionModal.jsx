@@ -46,7 +46,10 @@ function computeShares(method, parts, total, inputs) {
   } else if (method === "exact") {
     parts.forEach((p) => (out[p] = Number(inputs[p]) || 0));
   } else {
-    const weights = parts.map((p) => Number(inputs[p]) || 0);
+    const weights = parts.map((p) => {
+      const v = inputs[p];
+      return v === "" || v == null ? 1 : Number(v) || 0; // 份數：留空＝1 份
+    });
     const sumW = weights.reduce((a, b) => a + b, 0) || 1;
     let acc = 0;
     parts.forEach((p, i) => {
@@ -129,8 +132,8 @@ export default function TransactionModal({ open, initial, categories = [], txs =
       return c;
     });
     setInputs((prev) => {
-      const w = { self: prev.self ?? "1" };
-      members.forEach((m) => { w[String(m.id)] = prev[String(m.id)] ?? "1"; });
+      const w = { self: prev.self ?? "" };
+      members.forEach((m) => { w[String(m.id)] = prev[String(m.id)] ?? ""; });
       return w;
     });
   }, [members, splitOn]);
@@ -151,6 +154,24 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   const nameOf = (w) => (w === "self" ? "你" : members.find((m) => String(m.id) === w)?.name || "?");
   const emojiOf = (w) => (w === "self" ? "🧑‍💻" : members.find((m) => String(m.id) === w)?.emoji || "🙂");
   const exactBad = splitOn && method === "exact" && Math.abs(shareSum - amountNum) > 0.5;
+
+  // 「各自」模式：已填金額的合計、還沒填的人、剩餘可分配的金額
+  const exactFilled = parts.reduce((s, w) => {
+    const v = inputs[w];
+    return s + (v === "" || v == null ? 0 : Number(v) || 0);
+  }, 0);
+  const exactEmpty = parts.filter((w) => inputs[w] === "" || inputs[w] == null);
+  const exactRemain = Math.round((amountNum - exactFilled) * 100) / 100;
+
+  function autoDistribute() {
+    if (method !== "exact" || !(amountNum > 0) || exactEmpty.length === 0 || exactRemain <= 0) return;
+    const per = Math.floor(exactRemain / exactEmpty.length);
+    const next = { ...inputs };
+    exactEmpty.forEach((w, i) => {
+      next[w] = String(i < exactEmpty.length - 1 ? per : exactRemain - per * (exactEmpty.length - 1));
+    });
+    setInputs(next);
+  }
 
   const field =
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
@@ -204,7 +225,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
       setNewMemberName("");
       setMembers((prev) => [...prev, created]);
       setChecked((c) => ({ ...c, [String(created.id)]: true })); // 新增的人預設勾起來
-      setInputs((w) => ({ ...w, [String(created.id)]: "1" }));
+      setInputs((w) => ({ ...w, [String(created.id)]: "" }));
     } finally {
       setAddingMember(false);
     }
@@ -445,6 +466,16 @@ export default function TransactionModal({ open, initial, categories = [], txs =
                     <button type="button" onClick={addMember} disabled={!newMemberName.trim() || addingMember}
                       className="shrink-0 rounded-lg bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-600 disabled:opacity-40">＋</button>
                   </div>
+
+                  {method === "exact" && exactEmpty.length > 0 && exactRemain > 0 && (
+                    <button
+                      type="button"
+                      onClick={autoDistribute}
+                      className="w-full rounded-lg border border-indigo-200 bg-indigo-50 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-100 active:scale-[0.99]"
+                    >
+                      ⚡ 把剩餘 {money(exactRemain)} 平均分給沒填的 {exactEmpty.length} 人
+                    </button>
+                  )}
 
                   <p className={`text-right text-xs ${exactBad ? "text-red-500" : "text-slate-400"}`}>
                     分攤合計 {money(shareSum)} / {money(amountNum)}{exactBad && "（需相符）"}
