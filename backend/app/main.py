@@ -23,6 +23,7 @@ from app.routers import (
     members,
     models,
     news,
+    pricing,
     splitbills,
     push,
     schedule,
@@ -120,6 +121,7 @@ app.include_router(settlements.router)
 app.include_router(system.router)
 app.include_router(invoices.router)
 app.include_router(subscriptions.router)
+app.include_router(pricing.router)
 
 
 @app.get("/api/health")

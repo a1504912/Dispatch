@@ -221,6 +221,38 @@ class Invoice(SQLModel, table=True):
     synced_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PriceProject(SQLModel, table=True):
+    """比價專案：想買的一樣東西（電腦、螢幕…），底下放多個候選品牌/報價。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    emoji: str = "🛒"
+    note: str = ""
+    status: str = "shopping"  # shopping（未購買）/ bought（已購買）
+    sort: int = 0
+    # 已購買時記錄：買了哪個候選（可空，非強制外鍵）、最終品牌、最終價格、購買日
+    bought_option_id: Optional[int] = None
+    bought_brand: str = ""
+    bought_price: Optional[float] = None
+    bought_date: Optional[date] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PriceOption(SQLModel, table=True):
+    """比價專案底下的一個候選（某品牌/型號的報價）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="priceproject.id", index=True)
+    brand: str = ""  # 品牌
+    name: str = ""  # 型號/品名
+    price: Optional[float] = None  # 價格
+    url: str = ""  # 商品連結
+    store: str = ""  # 通路（PChome、蝦皮…）
+    note: str = ""
+    sort: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Setting(SQLModel, table=True):
     """通用 key-value 設定（存 VAPID 金鑰、通知偏好等）。"""
 
