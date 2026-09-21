@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createTransaction, updateTransaction } from "../api/ledger";
-import { listMembers } from "../api/members";
+import { listMembers, createMember } from "../api/members";
 import { createSplitBill } from "../api/splitbills";
 import { listEvents } from "../api/events";
 import { listAccounts } from "../api/accounts";
@@ -71,6 +71,8 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   const [inputs, setInputs] = useState({});
   const [invoices, setInvoices] = useState([]); // 可對應的發票
   const [linkInv, setLinkInv] = useState(""); // 這筆對應的發票 id（字串）
+  const [newMemberName, setNewMemberName] = useState(""); // 新增代墊人
+  const [addingMember, setAddingMember] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -120,14 +122,17 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   }, [open, initial]);
 
   useEffect(() => {
-    const c = { self: true };
-    const w = { self: "1" };
-    members.forEach((m) => {
-      c[String(m.id)] = true;
-      w[String(m.id)] = "1";
+    // 預設只勾「你」，其他人不勾（保留已勾的，新加的人預設不勾）
+    setChecked((prev) => {
+      const c = { self: prev.self ?? true };
+      members.forEach((m) => { c[String(m.id)] = prev[String(m.id)] ?? false; });
+      return c;
     });
-    setChecked(c);
-    setInputs(w);
+    setInputs((prev) => {
+      const w = { self: prev.self ?? "1" };
+      members.forEach((m) => { w[String(m.id)] = prev[String(m.id)] ?? "1"; });
+      return w;
+    });
   }, [members, splitOn]);
 
   if (!open || !form) return null;
@@ -188,6 +193,21 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   }
   function pickSub(sub) {
     setForm({ ...form, account_id: sub.id, account: sub.name });
+  }
+
+  async function addMember() {
+    const name = newMemberName.trim();
+    if (!name || addingMember) return;
+    setAddingMember(true);
+    try {
+      const created = await createMember({ name, emoji: "🙂" });
+      setNewMemberName("");
+      setMembers((prev) => [...prev, created]);
+      setChecked((c) => ({ ...c, [String(created.id)]: true })); // 新增的人預設勾起來
+      setInputs((w) => ({ ...w, [String(created.id)]: "1" }));
+    } finally {
+      setAddingMember(false);
+    }
   }
 
   async function handleSave() {
@@ -380,33 +400,56 @@ export default function TransactionModal({ open, initial, categories = [], txs =
               </label>
               {splitOn && (
                 <div className="mt-3 space-y-2">
-                  {members.length === 0 ? (
-                    <p className="text-xs text-slate-400">還沒有成員。請先到「分帳」分頁 → 👥 成員 新增。</p>
-                  ) : (
-                    <>
-                      <div className="flex rounded-lg bg-slate-100 p-1 text-xs font-medium">
-                        {[["equal", "平均"], ["exact", "各自"], ["shares", "份數"]].map(([k, l]) => (
-                          <button key={k} type="button" onClick={() => setMethod(k)}
-                            className={`flex-1 rounded-md px-2 py-1 ${method === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{l}</button>
-                        ))}
-                      </div>
-                      {everyone.map((w) => (
-                        <div key={w} className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={!!checked[w]} onChange={(e) => setChecked({ ...checked, [w]: e.target.checked })} className="h-4 w-4 accent-indigo-600" />
-                          <span className="flex-1 text-slate-700">{emojiOf(w)} {nameOf(w)}{w === "self" && "（你）"}</span>
-                          {checked[w] && method !== "equal" && (
+                  <div className="flex rounded-lg bg-slate-100 p-1 text-xs font-medium">
+                    {[["equal", "平均"], ["exact", "各自"], ["shares", "份數"]].map(([k, l]) => (
+                      <button key={k} type="button" onClick={() => setMethod(k)}
+                        className={`flex-1 rounded-md px-2 py-1 transition ${method === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{l}</button>
+                    ))}
+                  </div>
+                  <div className="space-y-1.5">
+                    {everyone.map((w) => {
+                      const on = !!checked[w];
+                      return (
+                        <div
+                          key={w}
+                          className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition ${on ? "border-indigo-200 bg-indigo-50/50" : "border-slate-200 bg-white"}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setChecked({ ...checked, [w]: !on })}
+                            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                          >
+                            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-slate-300 text-transparent"}`}>✓</span>
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-base">{emojiOf(w)}</span>
+                            <span className={`truncate text-sm ${on ? "font-semibold text-slate-800" : "text-slate-500"}`}>{nameOf(w)}{w === "self" && "（你）"}</span>
+                          </button>
+                          {on && method !== "equal" && (
                             <input type="number" min="0" value={inputs[w] ?? ""} onChange={(e) => setInputs({ ...inputs, [w]: e.target.value })}
-                              placeholder={method === "exact" ? "金額" : "份"} className="w-20 rounded-md border border-slate-200 px-2 py-1 text-sm" />
+                              placeholder={method === "exact" ? "金額" : "份"} className="w-20 shrink-0 rounded-md border border-slate-200 px-2 py-1 text-sm" />
                           )}
-                          {checked[w] && <span className="w-16 text-right text-sm font-bold text-slate-700">{money(shares[w] || 0)}</span>}
+                          {on && <span className="w-16 shrink-0 text-right text-sm font-bold text-slate-700">{money(shares[w] || 0)}</span>}
                         </div>
-                      ))}
-                      <p className={`text-right text-xs ${exactBad ? "text-red-500" : "text-slate-400"}`}>
-                        分攤合計 {money(shareSum)} / {money(amountNum)}{exactBad && "（需相符）"}
-                      </p>
-                      <p className="text-[11px] text-slate-400">記一筆支出＝你付的全額；別人那份會進「分帳」等他還你。</p>
-                    </>
-                  )}
+                      );
+                    })}
+                  </div>
+
+                  {/* 直接新增代墊人 */}
+                  <div className="flex gap-2">
+                    <input
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMember(); } }}
+                      placeholder="新增代墊人，例：小明"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <button type="button" onClick={addMember} disabled={!newMemberName.trim() || addingMember}
+                      className="shrink-0 rounded-lg bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-600 disabled:opacity-40">＋</button>
+                  </div>
+
+                  <p className={`text-right text-xs ${exactBad ? "text-red-500" : "text-slate-400"}`}>
+                    分攤合計 {money(shareSum)} / {money(amountNum)}{exactBad && "（需相符）"}
+                  </p>
+                  <p className="text-[11px] text-slate-400">勾選要一起分攤的人（預設只勾你）。記一筆支出＝你付的全額；別人那份會進「分帳」等他還你。</p>
                 </div>
               )}
             </div>
