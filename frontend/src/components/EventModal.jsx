@@ -420,7 +420,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       onClick={onClose}
     >
       <div
-        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl lg:max-w-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 pb-4 pt-6">
@@ -448,7 +448,9 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           {/* 欄位區：超過高度自己捲動 */}
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto border-t border-slate-100 px-6 py-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto border-t border-slate-100 px-6 py-4 lg:grid lg:grid-cols-2 lg:gap-x-6 lg:gap-y-0 lg:space-y-0 lg:items-start">
+          {/* 左欄：基本資訊 */}
+          <div className="space-y-4">
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">標題 *</label>
             <input
@@ -644,6 +646,9 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               ))}
             </div>
           </div>
+          </div>
+          {/* 右欄：明細與附件 */}
+          <div className="space-y-4">
 
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">
@@ -985,6 +990,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
             />
           </div>
 
+          </div>
           </div>
 
           {/* 按鈕列：固定在視窗底部，永遠看得到 */}
