@@ -137,8 +137,7 @@ const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
   { to: "/todos", label: "待辦", icon: TodoIcon },
   { to: "/ledger", label: "記帳", icon: WalletIcon },
-  { to: "/pricing", label: "比價", icon: TagIcon },
-  // 新聞、免費遊戲收進「情報站」群組；AI 員工需要後端，離線/雲端同步模式隱藏
+  // 新聞、免費遊戲、比價收進「情報站」群組；AI 員工需要後端，離線/雲端同步模式隱藏
   ...(NO_BACKEND
     ? []
     : [
@@ -148,6 +147,7 @@ const navItems = [
           children: [
             { to: "/news", label: "新聞", icon: NewsIcon },
             { to: "/games", label: "免費遊戲", icon: GameIcon },
+            { to: "/pricing", label: "比價", icon: TagIcon },
           ],
         },
         { to: "/agents", label: "AI 員工", icon: UsersIcon },
