@@ -459,7 +459,7 @@ function SearchModal({ project, onClose, onAdded }) {
         <div className="px-6 pb-3 pt-5">
           <h2 className="text-lg font-black text-slate-900">🔍 貨比多間・查目前報價</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            來源：PChome（新品）、露天拍賣（含二手）。依價格由低到高排序，點「加入候選」就存進這個專案。
+            來源：PChome、momo、蝦皮（新品）＋露天、旋轉拍賣（二手）。依價格由低到高排序，點「加入候選」就存進這個專案。
           </p>
           <div className="mt-3 flex gap-2">
             <input
