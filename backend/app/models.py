@@ -247,7 +247,9 @@ class PriceOption(SQLModel, table=True):
     name: str = ""  # 型號/品名
     price: Optional[float] = None  # 價格
     url: str = ""  # 商品連結
-    store: str = ""  # 通路（PChome、蝦皮…）
+    store: str = ""  # 通路（PChome、露天…）
+    image: Optional[str] = None  # 商品預覽圖網址
+    condition: str = ""  # new（新品）/ used（二手）/ ""（不明）
     note: str = ""
     sort: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)

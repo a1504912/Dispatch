@@ -28,6 +28,8 @@ def _option_dict(o: PriceOption) -> dict:
         "price": o.price,
         "url": o.url,
         "store": o.store,
+        "image": o.image,
+        "condition": o.condition,
         "note": o.note,
         "sort": o.sort,
     }
@@ -67,14 +69,19 @@ def _options_for(session: Session, project_id: int) -> list[PriceOption]:
 
 @router.get("/search")
 def search_web(q: str):
-    """依關鍵字上網查目前報價（目前來源：PChome）。回傳商品清單讓前端一鍵加入候選。"""
+    """依關鍵字上網查目前報價（多家來源：PChome、露天…）。回傳商品清單讓前端一鍵加入候選。"""
     from app import price_search
 
     try:
-        results = price_search.search(q)
+        data = price_search.search(q)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"查詢失敗（可能是主機連不到 PChome 或對方改版）：{exc}")
-    return {"ok": True, "query": q.strip(), "results": results}
+        raise HTTPException(status_code=502, detail=f"查詢失敗（可能是主機連不到外網或對方改版）：{exc}")
+    return {
+        "ok": True,
+        "query": q.strip(),
+        "results": data["results"],
+        "sources": data["sources"],
+    }
 
 
 # ---------- 專案 ----------
@@ -215,6 +222,8 @@ class OptionIn(BaseModel):
     price: float | None = None
     url: str = ""
     store: str = ""
+    image: str | None = None
+    condition: str = ""
     note: str = ""
 
 
@@ -233,6 +242,8 @@ def create_option(
         price=payload.price,
         url=payload.url.strip(),
         store=payload.store.strip(),
+        image=(payload.image or None),
+        condition=payload.condition.strip(),
         note=payload.note.strip(),
         sort=len(existing),
     )

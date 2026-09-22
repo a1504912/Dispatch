@@ -71,6 +71,17 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE subtask ADD COLUMN images TEXT"))
                 conn.commit()
 
+            # 比價候選：補上預覽圖、二手/新品欄位
+            po_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(priceoption)"))]
+            if po_cols:
+                if "image" not in po_cols:
+                    conn.execute(text("ALTER TABLE priceoption ADD COLUMN image TEXT"))
+                if "condition" not in po_cols:
+                    conn.execute(
+                        text("ALTER TABLE priceoption ADD COLUMN condition VARCHAR NOT NULL DEFAULT ''")
+                    )
+                conn.commit()
+
             # 記帳分類：主分類 → 次分類（parent_id）
             lc_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(ledgercategory)"))]
             if lc_cols and "parent_id" not in lc_cols:

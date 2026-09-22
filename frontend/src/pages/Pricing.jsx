@@ -112,14 +112,42 @@ function OptionForm({ initial, onSave, onCancel }) {
 
 /* ---------- 一列候選 ---------- */
 
+function StoreBadge({ store }) {
+  if (!store) return null;
+  return (
+    <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{store}</span>
+  );
+}
+
+function CondBadge({ condition }) {
+  if (condition === "used")
+    return <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">二手</span>;
+  if (condition === "new")
+    return <span className="shrink-0 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">新品</span>;
+  return null;
+}
+
 function OptionRow({ opt, cheapest, onEdit, onDelete }) {
   const title = [opt.brand, opt.name].filter(Boolean).join("｜") || "（未命名）";
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+      className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 ${
         cheapest ? "border-emerald-300 bg-emerald-50/60" : "border-slate-200 bg-white"
       }`}
     >
+      {opt.image ? (
+        <img
+          src={opt.image}
+          alt=""
+          loading="lazy"
+          className="h-12 w-12 shrink-0 rounded-lg bg-slate-100 object-contain"
+          onError={(e) => (e.currentTarget.style.display = "none")}
+        />
+      ) : (
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg text-slate-300">
+          🏷️
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-bold text-slate-800">{title}</span>
@@ -129,11 +157,11 @@ function OptionRow({ opt, cheapest, onEdit, onDelete }) {
             </span>
           )}
         </div>
-        {(opt.store || opt.note) && (
-          <p className="truncate text-xs text-slate-400">
-            {[opt.store, opt.note].filter(Boolean).join("・")}
-          </p>
-        )}
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+          <StoreBadge store={opt.store} />
+          <CondBadge condition={opt.condition} />
+          {opt.note && <span className="truncate text-xs text-slate-400">{opt.note}</span>}
+        </div>
       </div>
       <span className={`shrink-0 text-sm font-bold ${cheapest ? "text-emerald-600" : "text-slate-700"}`}>
         {fmt(opt.price)}
@@ -367,22 +395,24 @@ function ProjectModal({ project, onClose, onSaved }) {
 
 function SearchModal({ project, onClose, onAdded }) {
   const [q, setQ] = useState(project.name ?? "");
-  const [results, setResults] = useState(null); // null＝還沒查
+  const [data, setData] = useState(null); // {results, sources} | null
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [addedUrls, setAddedUrls] = useState(() => new Set());
+  const [addedKeys, setAddedKeys] = useState(() => new Set());
+  const [storeFilter, setStoreFilter] = useState("all");
 
   async function run() {
     const query = q.trim();
     if (!query) return;
     setLoading(true);
     setErr("");
+    setStoreFilter("all");
     try {
-      const data = await searchWeb(query);
-      setResults(data.results ?? []);
+      const res = await searchWeb(query);
+      setData({ results: res.results ?? [], sources: res.sources ?? [] });
     } catch (e) {
       setErr(e?.response?.data?.detail || "查詢失敗，請稍後再試。");
-      setResults([]);
+      setData({ results: [], sources: [] });
     } finally {
       setLoading(false);
     }
@@ -401,11 +431,21 @@ function SearchModal({ project, onClose, onAdded }) {
       price: r.price ?? null,
       url: r.url || "",
       store: r.store || "",
+      image: r.image || null,
+      condition: r.condition || "",
       note: "",
     });
-    setAddedUrls((s) => new Set(s).add(r.url || r.title));
+    setAddedKeys((s) => new Set(s).add(r.url || r.title));
     onAdded();
   }
+
+  const allResults = data?.results ?? [];
+  const stores = useMemo(() => {
+    const m = new Map();
+    for (const r of allResults) m.set(r.store, (m.get(r.store) || 0) + 1);
+    return [...m.entries()];
+  }, [allResults]);
+  const shown = storeFilter === "all" ? allResults : allResults.filter((r) => r.store === storeFilter);
 
   const field =
     "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100";
@@ -413,12 +453,14 @@ function SearchModal({ project, onClose, onAdded }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 pb-3 pt-5">
-          <h2 className="text-lg font-black text-slate-900">🔍 查目前網路報價</h2>
-          <p className="mt-0.5 text-xs text-slate-400">來源：PChome 線上購物（即時）。點「加入候選」就會存進這個專案。</p>
+          <h2 className="text-lg font-black text-slate-900">🔍 貨比多間・查目前報價</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            來源：PChome（新品）、露天拍賣（含二手）。依價格由低到高排序，點「加入候選」就存進這個專案。
+          </p>
           <div className="mt-3 flex gap-2">
             <input
               autoFocus
@@ -437,35 +479,77 @@ function SearchModal({ project, onClose, onAdded }) {
               {loading ? "查詢中…" : "搜尋"}
             </button>
           </div>
+
+          {/* 來源狀態 + 篩選 */}
+          {!loading && data && (
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                {(data.sources ?? []).map((s) => (
+                  <span key={s.store} className={s.ok ? "text-slate-500" : "text-red-400"}>
+                    {s.ok ? "✓" : "✗"} {s.store}
+                    {s.ok ? `（${s.count}）` : "（查不到）"}
+                  </span>
+                ))}
+              </div>
+              {stores.length > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setStoreFilter("all")}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                      storeFilter === "all" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    全部（{allResults.length}）
+                  </button>
+                  {stores.map(([s, n]) => (
+                    <button
+                      key={s}
+                      onClick={() => setStoreFilter(s)}
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        storeFilter === s ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {s}（{n}）
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto border-t border-slate-100 bg-slate-50/50 px-4 py-4">
-          {loading && <p className="py-10 text-center text-sm text-slate-400">查詢中…</p>}
+          {loading && <p className="py-10 text-center text-sm text-slate-400">查詢中…（多家來源，稍等幾秒）</p>}
           {!loading && err && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{err}</div>
           )}
-          {!loading && !err && results && results.length === 0 && (
+          {!loading && !err && data && shown.length === 0 && (
             <p className="py-10 text-center text-sm text-slate-400">查不到商品，換個關鍵字試試。</p>
           )}
           {!loading &&
-            (results ?? []).map((r, i) => {
-              const added = addedUrls.has(r.url || r.title);
+            shown.map((r, i) => {
+              const added = addedKeys.has(r.url || r.title);
               return (
                 <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5">
-                  {r.image && (
+                  {r.image ? (
                     <img
                       src={r.image}
                       alt=""
                       loading="lazy"
-                      className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 object-contain"
+                      className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 object-contain"
                       onError={(e) => (e.currentTarget.style.display = "none")}
                     />
+                  ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xl text-slate-300">
+                      🏷️
+                    </div>
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 text-sm font-medium text-slate-700">{r.title}</p>
-                    <div className="mt-0.5 flex items-center gap-2">
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <span className="text-sm font-bold text-emerald-600">{fmt(r.price)}</span>
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{r.store}</span>
+                      <StoreBadge store={r.store} />
+                      <CondBadge condition={r.condition} />
                       {r.url && (
                         <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline">
                           看商品 ↗
