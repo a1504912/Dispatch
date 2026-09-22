@@ -7,6 +7,7 @@ import {
   listProjects,
   markBought,
   markShopping,
+  searchWeb,
   updateOption,
   updateProject,
 } from "../api/pricing";
@@ -362,9 +363,144 @@ function ProjectModal({ project, onClose, onSaved }) {
   );
 }
 
+/* ---------- 上網查報價 Modal ---------- */
+
+function SearchModal({ project, onClose, onAdded }) {
+  const [q, setQ] = useState(project.name ?? "");
+  const [results, setResults] = useState(null); // null＝還沒查
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [addedUrls, setAddedUrls] = useState(() => new Set());
+
+  async function run() {
+    const query = q.trim();
+    if (!query) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const data = await searchWeb(query);
+      setResults(data.results ?? []);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "查詢失敗，請稍後再試。");
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 開啟就先用專案名稱查一次
+  useEffect(() => {
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function add(r) {
+    await addOption(project.id, {
+      brand: "",
+      name: r.title,
+      price: r.price ?? null,
+      url: r.url || "",
+      store: r.store || "",
+      note: "",
+    });
+    setAddedUrls((s) => new Set(s).add(r.url || r.title));
+    onAdded();
+  }
+
+  const field =
+    "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pb-3 pt-5">
+          <h2 className="text-lg font-black text-slate-900">🔍 查目前網路報價</h2>
+          <p className="mt-0.5 text-xs text-slate-400">來源：PChome 線上購物（即時）。點「加入候選」就會存進這個專案。</p>
+          <div className="mt-3 flex gap-2">
+            <input
+              autoFocus
+              className={field}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && run()}
+              placeholder="搜尋關鍵字"
+            />
+            <button
+              type="button"
+              onClick={run}
+              disabled={loading || !q.trim()}
+              className="shrink-0 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 active:scale-95 disabled:opacity-40"
+            >
+              {loading ? "查詢中…" : "搜尋"}
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto border-t border-slate-100 bg-slate-50/50 px-4 py-4">
+          {loading && <p className="py-10 text-center text-sm text-slate-400">查詢中…</p>}
+          {!loading && err && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{err}</div>
+          )}
+          {!loading && !err && results && results.length === 0 && (
+            <p className="py-10 text-center text-sm text-slate-400">查不到商品，換個關鍵字試試。</p>
+          )}
+          {!loading &&
+            (results ?? []).map((r, i) => {
+              const added = addedUrls.has(r.url || r.title);
+              return (
+                <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5">
+                  {r.image && (
+                    <img
+                      src={r.image}
+                      alt=""
+                      loading="lazy"
+                      className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 object-contain"
+                      onError={(e) => (e.currentTarget.style.display = "none")}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-medium text-slate-700">{r.title}</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className="text-sm font-bold text-emerald-600">{fmt(r.price)}</span>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{r.store}</span>
+                      {r.url && (
+                        <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline">
+                          看商品 ↗
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => add(r)}
+                    disabled={added}
+                    className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-bold active:scale-95 ${
+                      added ? "bg-slate-100 text-slate-400" : "bg-emerald-600 text-white hover:bg-emerald-700"
+                    }`}
+                  >
+                    {added ? "✓ 已加入" : "＋ 加入候選"}
+                  </button>
+                </div>
+              );
+            })}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-100 px-6 py-3">
+          <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">
+            關閉
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- 專案卡片 ---------- */
 
-function ProjectCard({ project, onChange, onEditProject, onDeleteProject, onBuy }) {
+function ProjectCard({ project, onChange, onEditProject, onDeleteProject, onBuy, onSearch }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -465,6 +601,13 @@ function ProjectCard({ project, onChange, onEditProject, onDeleteProject, onBuy 
         >
           {open ? "▾ 收合報價" : `▸ 報價與品牌（${opts.length}）`}
         </button>
+        <button
+          type="button"
+          onClick={() => onSearch(project)}
+          className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-100"
+        >
+          🔍 查網路報價
+        </button>
         <div className="ml-auto flex gap-2">
           {bought ? (
             <>
@@ -544,6 +687,7 @@ export default function Pricing() {
   const [filter, setFilter] = useState("all");
   const [projectModal, setProjectModal] = useState(null); // {project} | {project:null}（新增）
   const [buyProject, setBuyProject] = useState(null);
+  const [searchProject, setSearchProject] = useState(null);
 
   function load() {
     setLoading(true);
@@ -629,6 +773,7 @@ export default function Pricing() {
               onEditProject={(pr) => setProjectModal({ project: pr })}
               onDeleteProject={handleDeleteProject}
               onBuy={(pr) => setBuyProject(pr)}
+              onSearch={(pr) => setSearchProject(pr)}
             />
           ))}
         </div>
@@ -653,6 +798,17 @@ export default function Pricing() {
             setBuyProject(null);
             load();
           }}
+        />
+      )}
+
+      {searchProject && (
+        <SearchModal
+          project={searchProject}
+          onClose={() => {
+            setSearchProject(null);
+            load();
+          }}
+          onAdded={load}
         />
       )}
     </div>

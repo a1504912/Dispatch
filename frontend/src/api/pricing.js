@@ -48,3 +48,10 @@ export async function updateOption(optionId, payload) {
 export async function deleteOption(optionId) {
   await client.delete(`/api/pricing/options/${optionId}`);
 }
+
+// ---------- 上網查報價（爬蟲） ----------
+
+export async function searchWeb(q) {
+  const { data } = await client.get("/api/pricing/search", { params: { q } });
+  return data;
+}

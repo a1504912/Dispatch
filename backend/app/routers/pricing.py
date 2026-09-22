@@ -62,6 +62,21 @@ def _options_for(session: Session, project_id: int) -> list[PriceOption]:
     ).all()
 
 
+# ---------- 上網查報價（爬蟲；不需要 AI） ----------
+
+
+@router.get("/search")
+def search_web(q: str):
+    """依關鍵字上網查目前報價（目前來源：PChome）。回傳商品清單讓前端一鍵加入候選。"""
+    from app import price_search
+
+    try:
+        results = price_search.search(q)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"查詢失敗（可能是主機連不到 PChome 或對方改版）：{exc}")
+    return {"ok": True, "query": q.strip(), "results": results}
+
+
 # ---------- 專案 ----------
 
 
