@@ -35,6 +35,13 @@ def _num(v):
         return None
 
 
+def _check(resp):
+    """非 2xx 時丟出含回應內容的錯誤，方便看出被擋原因或缺哪些欄位。"""
+    if resp.status_code >= 400:
+        body = (resp.text or "")[:300].replace("\n", " ")
+        raise RuntimeError(f"HTTP {resp.status_code}: {body}")
+
+
 def _snip(resp, extra: str = "") -> str:
     """把一次回應濃縮成短診斷字串。"""
     try:
@@ -169,9 +176,13 @@ def _search_shopee(query: str, limit: int):
         "scenario": "PAGE_GLOBAL_SEARCH",
         "version": 2,
     }
-    with httpx.Client(timeout=12.0, headers=headers, follow_redirects=True) as client:
-        resp = client.get(SHOPEE_URL, params=params)
-        resp.raise_for_status()
+    with httpx.Client(timeout=12.0, headers={"User-Agent": _UA}, follow_redirects=True) as client:
+        try:  # 先逛一下首頁拿 cookie，可能繞過基本擋爬
+            client.get("https://shopee.tw/", timeout=8.0)
+        except Exception:  # noqa: BLE001
+            pass
+        resp = client.get(SHOPEE_URL, params=params, headers=headers)
+        _check(resp)
         data = resp.json()
     sample = _snip(resp, f"items={len(data.get('items') or [])}")
 
@@ -298,10 +309,19 @@ def _search_carousell(query: str, limit: int):
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
-    body = {"count": limit, "query": query, "filters": [], "locale": "zh-TW", "sortParam": {"fieldName": "relevance"}}
+    body = {
+        "count": limit,
+        "query": query,
+        "filters": [],
+        "locale": "zh-TW",
+        "sortParam": {"fieldName": "relevance"},
+        "prefill": {},
+        "countryId": "1880251",  # 台灣（若不對，422 回應會告訴我們正確值）
+        "countryCollectionMethod": "DEVICE_LOCATION",
+    }
     with httpx.Client(timeout=12.0, headers=headers, follow_redirects=True) as client:
         resp = client.post(CAROUSELL_URL, json=body)
-        resp.raise_for_status()
+        _check(resp)
         data = resp.json()
     sample = _snip(resp)
 
