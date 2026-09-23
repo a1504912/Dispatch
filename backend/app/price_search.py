@@ -16,6 +16,7 @@
 
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote
 
 import httpx
 
@@ -100,30 +101,31 @@ def _search_momo(query: str, limit: int):
         resp = client.get(MOMO_URL, params=params)
         resp.raise_for_status()
         html = resp.text
-    sample = _snip(resp, f"len={len(html)}")
 
+    # momo 已改版為 Next.js：商品資料藏在 RSC 串流 JSON（引號被跳脫）→ 先還原再比對
+    text = html.replace('\\"', '"').replace("\\u002F", "/").replace("\\/", "/")
     out: list[dict] = []
-    for m in re.finditer(r"i_code=(\d+)", html):
+    seen: set[str] = set()
+    for m in re.finditer(r'"goodsCode":"?(\d{5,})"?', text):
         code = m.group(1)
-        seg = html[m.start(): m.start() + 1500]
-        name_m = (
-            re.search(r'class="prdName"[^>]*>([^<]+)</', seg)
-            or re.search(r'class="prd_name"[^>]*>([^<]+)</', seg)
-            or re.search(r'title="([^"]+)"', seg)
-        )
+        if code in seen:
+            continue
+        seen.add(code)
+        win = text[m.start(): m.start() + 1500]
+        name_m = re.search(r'"goodsName":"([^"]+)"', win)
         price_m = (
-            re.search(r'class="price"[^>]*>\s*<b>\s*\$?\s*([\d,]+)', seg)
-            or re.search(r'"price"[^>]*>[^\d]*([\d,]+)', seg)
-            or re.search(r'\$\s*([\d,]{2,})', seg)
+            re.search(r'"goodsPrice":"?([\d,]+)"?', win)
+            or re.search(r'"salePrice":"?([\d,]+)"?', win)
+            or re.search(r'"price":"?([\d,]+)"?', win)
         )
-        img_m = re.search(r'<img[^>]+src="(//[^"]+?\.(?:jpg|png|webp)[^"]*)"', seg) or re.search(
-            r'data-original="(//[^"]+?\.(?:jpg|png|webp)[^"]*)"', seg
-        )
+        img_m = re.search(r'"(?:imgUrl|goodsImg|imageUrl)":"([^"]+\.(?:jpg|png|webp)[^"]*)"', win)
         name = name_m.group(1).strip() if name_m else ""
         price = _num(price_m.group(1)) if price_m else None
         if not name or price is None:
             continue
-        image = ("https:" + img_m.group(1)) if img_m else None
+        image = img_m.group(1) if img_m else None
+        if image and image.startswith("//"):
+            image = "https:" + image
         out.append(
             {
                 "title": name,
@@ -136,6 +138,11 @@ def _search_momo(query: str, limit: int):
         )
         if len(out) >= limit:
             break
+    # 診斷：顯示頁面裡有哪些可用的資料標記，方便下一步對症下藥
+    sample = (
+        f"len={len(html)} goodsCode={'goodsCode' in text} goodsName={'goodsName' in text} "
+        f"nextData={'__NEXT_DATA__' in html} next_f={'__next_f' in html} i_code={'i_code' in html}"
+    )
     return out, sample
 
 
@@ -147,7 +154,7 @@ SHOPEE_URL = "https://shopee.tw/api/v4/search/search_items"
 def _search_shopee(query: str, limit: int):
     headers = {
         "User-Agent": _UA,
-        "Referer": f"https://shopee.tw/search?keyword={query}",
+        "Referer": f"https://shopee.tw/search?keyword={quote(query)}",
         "Accept": "application/json",
         "X-Requested-With": "XMLHttpRequest",
         "X-API-SOURCE": "pc",
@@ -217,15 +224,14 @@ def _search_ruten(query: str, limit: int):
         r2 = client.get(RUTEN_ITEMS, params={"gno": ",".join(ids), "level": "simple"})
         r2.raise_for_status()
         items = r2.json()
-    sample = _snip(r2, f"ids={len(ids)}")
 
     if isinstance(items, dict):
         items = items.get("data") or items.get("Rows") or []
 
     out: list[dict] = []
     for it in items or []:
-        name = (it.get("ProdName") or it.get("Name") or it.get("name") or "").strip()
-        pid = str(it.get("Id") or it.get("GoodsNo") or it.get("ProdId") or "").strip()
+        name = (it.get("name") or it.get("ProdName") or it.get("Name") or "").strip()
+        pid = str(it.get("id") or it.get("Id") or it.get("GoodsNo") or "").strip()
         price = _ruten_price(it)
         if not name or price is None:
             continue
@@ -239,20 +245,36 @@ def _search_ruten(query: str, limit: int):
                 "condition": "used",
             }
         )
+    # 診斷：把第一筆的欄位名列出來，方便鎖定價格/圖片欄位
+    keys = ",".join((items[0].keys())) if items and isinstance(items[0], dict) else "無資料"
+    sample = f"ids={len(ids)} keys=[{keys}]"
     return out, sample
 
 
 def _ruten_price(it: dict):
-    pr = it.get("PriceRange")
+    pr = it.get("PriceRange") or it.get("price_range")
     if isinstance(pr, (list, tuple)) and pr:
         return _num(pr[0])
-    for key in ("Price", "DirectPrice", "price", "GoodsPrice"):
+    if isinstance(pr, dict):  # 有時是 {"min":.., "max":..}
+        return _num(pr.get("min") or pr.get("Min"))
+    for key in (
+        "price", "Price", "direct_price", "DirectPrice",
+        "goods_price", "GoodsPrice", "sale_price", "min_price", "sell_price",
+    ):
         if it.get(key) is not None:
-            return _num(it.get(key))
+            n = _num(it.get(key))
+            if n is not None:
+                return n
     return None
 
 
 def _ruten_image(it: dict):
+    # 新版：images 物件，filename 為逗號分隔檔名
+    imgs = it.get("images")
+    if isinstance(imgs, dict):
+        fn = str(imgs.get("filename") or "").split(",")[0].strip()
+        if fn:
+            return f"https://gcs.rimg.com.tw/{fn}"
     img = it.get("Image") or it.get("image") or ""
     if isinstance(img, list):
         img = img[0] if img else ""
@@ -272,7 +294,7 @@ CAROUSELL_URL = "https://tw.carousell.com/api-service/filter/search/4.0/products
 def _search_carousell(query: str, limit: int):
     headers = {
         "User-Agent": _UA,
-        "Referer": f"https://tw.carousell.com/search/{query}",
+        "Referer": f"https://tw.carousell.com/search/{quote(query)}",
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
