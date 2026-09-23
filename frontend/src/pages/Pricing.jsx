@@ -400,15 +400,16 @@ function SearchModal({ project, onClose, onAdded }) {
   const [err, setErr] = useState("");
   const [addedKeys, setAddedKeys] = useState(() => new Set());
   const [storeFilter, setStoreFilter] = useState("all");
+  const [debug, setDebug] = useState(false);
 
-  async function run() {
+  async function run(useDebug = debug) {
     const query = q.trim();
     if (!query) return;
     setLoading(true);
     setErr("");
     setStoreFilter("all");
     try {
-      const res = await searchWeb(query);
+      const res = await searchWeb(query, useDebug);
       setData({ results: res.results ?? [], sources: res.sources ?? [] });
     } catch (e) {
       setErr(e?.response?.data?.detail || "查詢失敗，請稍後再試。");
@@ -483,14 +484,42 @@ function SearchModal({ project, onClose, onAdded }) {
           {/* 來源狀態 + 篩選 */}
           {!loading && data && (
             <div className="mt-3 space-y-2">
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
                 {(data.sources ?? []).map((s) => (
-                  <span key={s.store} className={s.ok ? "text-slate-500" : "text-red-400"}>
+                  <span key={s.store} className={s.ok ? "text-slate-500" : "text-red-400"} title={s.error || ""}>
                     {s.ok ? "✓" : "✗"} {s.store}
                     {s.ok ? `（${s.count}）` : "（查不到）"}
                   </span>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !debug;
+                    setDebug(next);
+                    run(next);
+                  }}
+                  className={`ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                    debug ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-100"
+                  }`}
+                >
+                  🐞 診斷
+                </button>
               </div>
+
+              {/* 診斷樣本：把每家實際回傳貼出來，方便回報 */}
+              {debug && (
+                <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-lg bg-slate-900 p-2 font-mono text-[10px] leading-relaxed text-slate-200">
+                  {(data.sources ?? []).map((s) => (
+                    <div key={s.store}>
+                      <span className={s.ok ? "text-emerald-400" : "text-red-400"}>
+                        [{s.store}] {s.ok ? `ok ${s.count}` : "FAIL"}
+                      </span>{" "}
+                      <span className="break-all text-slate-400">{s.error || s.sample || ""}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {stores.length > 1 && (
                 <div className="flex flex-wrap gap-1.5">
                   <button
