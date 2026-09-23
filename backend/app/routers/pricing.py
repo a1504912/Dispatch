@@ -68,15 +68,21 @@ def _options_for(session: Session, project_id: int) -> list[PriceOption]:
 
 
 @router.get("/search")
-def search_web(q: str, debug: int = 0):
+def search_web(
+    q: str,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    debug: int = 0,
+):
     """依關鍵字上網查目前報價（多家來源）。回傳商品清單讓前端一鍵加入候選。
 
+    給 min_price/max_price 時，各家會針對價位區間翻頁抓、湊滿數量。
     debug=1 時每個來源附上原始回傳片段，方便對照修正解析。
     """
     from app import price_search
 
     try:
-        data = price_search.search(q, debug=bool(debug))
+        data = price_search.search(q, min_price=min_price, max_price=max_price, debug=bool(debug))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"查詢失敗（可能是主機連不到外網或對方改版）：{exc}")
     return {

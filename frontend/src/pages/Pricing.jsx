@@ -404,14 +404,14 @@ function SearchModal({ project, onClose, onAdded }) {
   const [maxP, setMaxP] = useState("");
   const [debug, setDebug] = useState(false);
 
-  async function run(useDebug = debug) {
+  async function run(useDebug = debug, mn = minP, mx = maxP) {
     const query = q.trim();
     if (!query) return;
     setLoading(true);
     setErr("");
     setStoreFilter("all");
     try {
-      const res = await searchWeb(query, useDebug);
+      const res = await searchWeb(query, { minP: mn, maxP: mx, debug: useDebug });
       setData({ results: res.results ?? [], sources: res.sources ?? [] });
     } catch (e) {
       setErr(e?.response?.data?.detail || "查詢失敗，請稍後再試。");
@@ -448,15 +448,8 @@ function SearchModal({ project, onClose, onAdded }) {
     for (const r of allResults) m.set(r.store, (m.get(r.store) || 0) + 1);
     return [...m.entries()];
   }, [allResults]);
-  const lo = minP === "" ? null : Number(minP);
-  const hi = maxP === "" ? null : Number(maxP);
-  const shown = allResults.filter((r) => {
-    if (storeFilter !== "all" && r.store !== storeFilter) return false;
-    const p = r.price;
-    if (lo !== null && (p === null || p === undefined || p < lo)) return false;
-    if (hi !== null && (p === null || p === undefined || p > hi)) return false;
-    return true;
-  });
+  // 價位由後端重新搜尋，這裡只做通路篩選
+  const shown = storeFilter === "all" ? allResults : allResults.filter((r) => r.store === storeFilter);
   const shownRange = useMemo(() => {
     const ps = shown.map((r) => r.price).filter((p) => p !== null && p !== undefined);
     return ps.length ? [Math.min(...ps), Math.max(...ps)] : null;
@@ -474,7 +467,7 @@ function SearchModal({ project, onClose, onAdded }) {
         <div className="px-6 pb-3 pt-5">
           <h2 className="text-lg font-black text-slate-900">🔍 貨比多間・查目前報價</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            來源：PChome、momo（即時、依價格由低到高）。可用下方價位區間篩選，點「加入候選」就存進這個專案。
+            來源：PChome、momo（新品）＋旋轉拍賣（二手）。設價位區間會重新去各家翻頁抓、湊滿數量。點「加入候選」就存進這個專案。
           </p>
           <div className="mt-3 flex gap-2">
             <input
@@ -558,7 +551,7 @@ function SearchModal({ project, onClose, onAdded }) {
                 </div>
               )}
 
-              {/* 價位區間 */}
+              {/* 價位區間：改後端重新搜尋（不是篩眼前結果） */}
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span className="font-medium">價位</span>
                 <input
@@ -566,6 +559,7 @@ function SearchModal({ project, onClose, onAdded }) {
                   inputMode="numeric"
                   value={minP}
                   onChange={(e) => setMinP(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && run()}
                   placeholder="最低"
                   className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 />
@@ -575,15 +569,24 @@ function SearchModal({ project, onClose, onAdded }) {
                   inputMode="numeric"
                   value={maxP}
                   onChange={(e) => setMaxP(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && run()}
                   placeholder="最高"
                   className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 />
+                <button
+                  type="button"
+                  onClick={() => run()}
+                  className="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-bold text-white hover:bg-slate-600 active:scale-95"
+                >
+                  套用
+                </button>
                 {(minP || maxP) && (
                   <button
                     type="button"
                     onClick={() => {
                       setMinP("");
                       setMaxP("");
+                      run(debug, "", "");
                     }}
                     className="text-slate-400 hover:text-slate-600"
                   >
@@ -592,7 +595,7 @@ function SearchModal({ project, onClose, onAdded }) {
                 )}
                 {shownRange && (
                   <span className="ml-auto text-slate-400">
-                    目前 {fmt(shownRange[0])} ~ {fmt(shownRange[1])}・{shown.length} 筆
+                    此頁 {fmt(shownRange[0])} ~ {fmt(shownRange[1])}・{shown.length} 筆
                   </span>
                 )}
               </div>

@@ -51,9 +51,11 @@ export async function deleteOption(optionId) {
 
 // ---------- 上網查報價（爬蟲） ----------
 
-export async function searchWeb(q, debug = false) {
-  const { data } = await client.get("/api/pricing/search", {
-    params: debug ? { q, debug: 1 } : { q },
-  });
+export async function searchWeb(q, { minP, maxP, debug } = {}) {
+  const params = { q };
+  if (minP !== "" && minP != null) params.min_price = minP;
+  if (maxP !== "" && maxP != null) params.max_price = maxP;
+  if (debug) params.debug = 1;
+  const { data } = await client.get("/api/pricing/search", { params });
   return data;
 }

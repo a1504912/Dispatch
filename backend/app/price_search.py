@@ -56,38 +56,61 @@ def _snip(resp, extra: str = "") -> str:
 PCHOME_URL = "https://ecshweb.pchome.com.tw/search/v3.3/all/results"
 
 
-def _search_pchome(query: str, limit: int):
+def _search_pchome(query: str, limit: int, min_price=None, max_price=None):
     headers = {"User-Agent": _UA, "Referer": "https://ecshweb.pchome.com.tw/", "Accept": "application/json"}
+    # 有設價位就用價格排序，翻頁時能提早停；否則用熱銷排序
+    if max_price is not None:
+        sort = "price/ac"  # 便宜→貴
+    elif min_price is not None:
+        sort = "price/dc"  # 貴→便宜
+    else:
+        sort = "sale/dc"
     out: list[dict] = []
     sample = ""
-    pages = max(1, (limit + 19) // 20)  # 每頁約 20 筆
+    MAX_PAGES = 15
     with httpx.Client(timeout=12.0, headers=headers, follow_redirects=True) as client:
-        for page in range(1, pages + 1):
-            resp = client.get(PCHOME_URL, params={"q": query, "page": page, "sort": "sale/dc"})
-            resp.raise_for_status()
+        for page in range(1, MAX_PAGES + 1):
+            resp = client.get(PCHOME_URL, params={"q": query, "page": page, "sort": sort})
+            _check(resp)
             data = resp.json()
             if page == 1:
-                sample = _snip(resp, f"totalPage={data.get('totalPage')}")
+                sample = _snip(resp, f"totalPage={data.get('totalPage')} sort={sort}")
             prods = data.get("prods") or []
+            if not prods:
+                break
+            stop = False
             for p in prods:
-                pid = (p.get("Id") or "").strip()
                 name = (p.get("name") or "").strip()
-                price = p.get("price")
+                price = _num(p.get("price"))
                 if not name or price is None:
                     continue
+                if min_price is not None and price < min_price:
+                    if sort == "price/dc":  # 貴→便宜，之後只會更小 → 停
+                        stop = True
+                        break
+                    continue
+                if max_price is not None and price > max_price:
+                    if sort == "price/ac":  # 便宜→貴，之後只會更大 → 停
+                        stop = True
+                        break
+                    continue
+                pid = (p.get("Id") or "").strip()
                 pic = (p.get("picS") or p.get("picB") or "").strip()
                 image = f"https://cs-a.ecimg.tw{pic}" if pic.startswith("/") else (pic or None)
                 out.append(
                     {
                         "title": name,
-                        "price": _num(price),
+                        "price": price,
                         "url": f"https://24h.pchome.com.tw/prod/{pid}" if pid else "",
                         "store": "PChome",
                         "image": image,
                         "condition": "new",
                     }
                 )
-            if len(out) >= limit or page >= (data.get("totalPage") or 1):
+                if len(out) >= limit:
+                    stop = True
+                    break
+            if stop or page >= (data.get("totalPage") or 1):
                 break
     return out[:limit], sample
 
@@ -97,59 +120,69 @@ def _search_pchome(query: str, limit: int):
 MOMO_URL = "https://www.momoshop.com.tw/search/searchShop.jsp"
 
 
-def _search_momo(query: str, limit: int):
+def _search_momo(query: str, limit: int, min_price=None, max_price=None):
     headers = {
         "User-Agent": _UA,
         "Referer": "https://www.momoshop.com.tw/",
         "Accept": "text/html,application/xhtml+xml",
     }
-    params = {"keyword": query, "searchType": "1", "curPage": "1", "_isFuzzy": "0"}
-    with httpx.Client(timeout=12.0, headers=headers, follow_redirects=True) as client:
-        resp = client.get(MOMO_URL, params=params)
-        resp.raise_for_status()
-        html = resp.text
-
-    # momo 已改版為 Next.js：商品資料藏在 RSC 串流 JSON（引號被跳脫）→ 先還原再比對
-    text = html.replace('\\"', '"').replace("\\u002F", "/").replace("\\/", "/")
     out: list[dict] = []
     seen: set[str] = set()
-    for m in re.finditer(r'"goodsCode":"?(\d{5,})"?', text):
-        code = m.group(1)
-        if code in seen:
-            continue
-        seen.add(code)
-        win = text[m.start(): m.start() + 1500]
-        name_m = re.search(r'"goodsName":"([^"]+)"', win)
-        price_m = (
-            re.search(r'"goodsPrice":"?([\d,]+)"?', win)
-            or re.search(r'"salePrice":"?([\d,]+)"?', win)
-            or re.search(r'"price":"?([\d,]+)"?', win)
-        )
-        img_m = re.search(r'"(?:imgUrl|goodsImg|imageUrl)":"([^"]+\.(?:jpg|png|webp)[^"]*)"', win)
-        name = name_m.group(1).strip() if name_m else ""
-        price = _num(price_m.group(1)) if price_m else None
-        if not name or price is None:
-            continue
-        image = img_m.group(1) if img_m else None
-        if image and image.startswith("//"):
-            image = "https:" + image
-        out.append(
-            {
-                "title": name,
-                "price": price,
-                "url": f"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code={code}",
-                "store": "momo",
-                "image": image,
-                "condition": "new",
-            }
-        )
-        if len(out) >= limit:
-            break
-    # 診斷：顯示頁面裡有哪些可用的資料標記，方便下一步對症下藥
-    sample = (
-        f"len={len(html)} goodsCode={'goodsCode' in text} goodsName={'goodsName' in text} "
-        f"nextData={'__NEXT_DATA__' in html} next_f={'__next_f' in html} i_code={'i_code' in html}"
-    )
+    sample = ""
+    MAX_PAGES = 6
+    with httpx.Client(timeout=12.0, headers=headers, follow_redirects=True) as client:
+        for page in range(1, MAX_PAGES + 1):
+            params = {"keyword": query, "searchType": "1", "curPage": str(page), "_isFuzzy": "0"}
+            resp = client.get(MOMO_URL, params=params)
+            _check(resp)
+            html = resp.text
+            # momo 為 Next.js：商品資料藏在 RSC 串流 JSON（引號被跳脫）→ 先還原再比對
+            text = html.replace('\\"', '"').replace("\\u002F", "/").replace("\\/", "/")
+            if page == 1:
+                sample = (
+                    f"len={len(html)} goodsCode={'goodsCode' in text} goodsName={'goodsName' in text} "
+                    f"next_f={'__next_f' in html}"
+                )
+            found = 0
+            for m in re.finditer(r'"goodsCode":"?(\d{5,})"?', text):
+                code = m.group(1)
+                if code in seen:
+                    continue
+                seen.add(code)
+                found += 1
+                win = text[m.start(): m.start() + 1500]
+                name_m = re.search(r'"goodsName":"([^"]+)"', win)
+                price_m = (
+                    re.search(r'"goodsPrice":"?([\d,]+)"?', win)
+                    or re.search(r'"salePrice":"?([\d,]+)"?', win)
+                    or re.search(r'"price":"?([\d,]+)"?', win)
+                )
+                img_m = re.search(r'"(?:imgUrl|goodsImg|imageUrl)":"([^"]+\.(?:jpg|png|webp)[^"]*)"', win)
+                name = name_m.group(1).strip() if name_m else ""
+                price = _num(price_m.group(1)) if price_m else None
+                if not name or price is None:
+                    continue
+                if min_price is not None and price < min_price:
+                    continue
+                if max_price is not None and price > max_price:
+                    continue
+                image = img_m.group(1) if img_m else None
+                if image and image.startswith("//"):
+                    image = "https:" + image
+                out.append(
+                    {
+                        "title": name,
+                        "price": price,
+                        "url": f"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code={code}",
+                        "store": "momo",
+                        "image": image,
+                        "condition": "new",
+                    }
+                )
+                if len(out) >= limit:
+                    break
+            if len(out) >= limit or found == 0:
+                break
     return out, sample
 
 
@@ -158,7 +191,7 @@ def _search_momo(query: str, limit: int):
 SHOPEE_URL = "https://shopee.tw/api/v4/search/search_items"
 
 
-def _search_shopee(query: str, limit: int):
+def _search_shopee(query: str, limit: int, min_price=None, max_price=None):
     headers = {
         "User-Agent": _UA,
         "Referer": f"https://shopee.tw/search?keyword={quote(query)}",
@@ -219,7 +252,7 @@ RUTEN_SEARCH = "https://rtapi.ruten.com.tw/api/search/v3/index.php/core/prod"
 RUTEN_ITEMS = "https://rapi.ruten.com.tw/api/items/v2/list"
 
 
-def _search_ruten(query: str, limit: int):
+def _search_ruten(query: str, limit: int, min_price=None, max_price=None):
     headers = {"User-Agent": _UA, "Referer": "https://www.ruten.com.tw/", "Accept": "application/json"}
     with httpx.Client(timeout=12.0, headers=headers, follow_redirects=True) as client:
         r1 = client.get(
@@ -302,17 +335,31 @@ def _ruten_image(it: dict):
 CAROUSELL_URL = "https://tw.carousell.com/api-service/filter/search/4.0/products/"
 
 
-def _search_carousell(query: str, limit: int):
+def _search_carousell(query: str, limit: int, min_price=None, max_price=None):
     headers = {
         "User-Agent": _UA,
         "Referer": f"https://tw.carousell.com/search/{quote(query)}",
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+    # 價位帶進 filters（rangedFilter），server 端就先幫我們篩
+    filters = []
+    if min_price is not None or max_price is not None:
+        filters.append(
+            {
+                "rangedFilter": {
+                    "fieldName": "price",
+                    "range": {
+                        "start": {"value": str(int(min_price))} if min_price is not None else None,
+                        "end": {"value": str(int(max_price))} if max_price is not None else None,
+                    },
+                }
+            }
+        )
     body = {
         "count": limit,
         "query": query,
-        "filters": [],
+        "filters": filters,
         "locale": "zh-TW",
         "sortParam": {"fieldName": "relevance"},
         "prefill": {},
@@ -327,13 +374,17 @@ def _search_carousell(query: str, limit: int):
 
     results = (data.get("data") or data).get("results") or data.get("results") or []
     out: list[dict] = []
-    for r in results[:limit]:
+    for r in results:
         card = r.get("listingCard") or r
         pid = str(card.get("id") or "").strip()
         title = _carousell_text(card, ("title",))
         price = _carousell_price(card)
         image = _carousell_image(card)
         if not title or price is None:
+            continue
+        if min_price is not None and price < min_price:
+            continue
+        if max_price is not None and price > max_price:
             continue
         out.append(
             {
@@ -345,6 +396,8 @@ def _search_carousell(query: str, limit: int):
                 "condition": "used",
             }
         )
+        if len(out) >= limit:
+            break
     return out, sample
 
 
@@ -384,25 +437,26 @@ def _carousell_image(card: dict):
 
 # ---------- 彙整 ----------
 
-# 目前啟用的來源（都是新品、相關度高）。
-# 蝦皮(403 擋爬)、露天(結果太雜)、旋轉(422)暫時停用，函式保留以便日後再開。
+# 目前啟用的來源。蝦皮(403 擋爬)、露天(結果太雜)暫時停用，函式保留以便日後再開。
 SOURCES = [
     ("PChome", _search_pchome),
     ("momo", _search_momo),
+    ("旋轉拍賣", _search_carousell),
 ]
 
 
-def _run_one(name, fn, query, limit):
+def _run_one(name, fn, query, limit, min_price, max_price):
     try:
-        rows, sample = fn(query, limit)
+        rows, sample = fn(query, limit, min_price, max_price)
         return name, rows, None, sample
     except Exception as exc:  # noqa: BLE001
         return name, [], f"{type(exc).__name__}: {exc}"[:250], ""
 
 
-def search(query: str, limit_per_source: int = 30, debug: bool = False) -> dict:
+def search(query: str, limit_per_source: int = 60, min_price=None, max_price=None, debug: bool = False) -> dict:
     """依關鍵字上網查目前報價，平行彙整多家來源。
 
+    有給 min_price/max_price 時，各家會針對價位區間去翻頁抓，湊滿數量再回傳（而非只篩眼前結果）。
     回傳 {results, sources}；results 依價格由低到高排序。每個 source 含 store/ok/count，
     失敗時含 error；debug=True 時另含 sample（原始回傳片段）方便對照修正。
     """
@@ -413,7 +467,10 @@ def search(query: str, limit_per_source: int = 30, debug: bool = False) -> dict:
     results: list[dict] = []
     status: dict[str, dict] = {}
     with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
-        futures = [pool.submit(_run_one, name, fn, query, limit_per_source) for name, fn in SOURCES]
+        futures = [
+            pool.submit(_run_one, name, fn, query, limit_per_source, min_price, max_price)
+            for name, fn in SOURCES
+        ]
         for fut in as_completed(futures):
             name, rows, err, sample = fut.result()
             results.extend(rows)
