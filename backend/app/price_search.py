@@ -384,12 +384,11 @@ def _carousell_image(card: dict):
 
 # ---------- 彙整 ----------
 
+# 目前啟用的來源（都是新品、相關度高）。
+# 蝦皮(403 擋爬)、露天(結果太雜)、旋轉(422)暫時停用，函式保留以便日後再開。
 SOURCES = [
     ("PChome", _search_pchome),
     ("momo", _search_momo),
-    ("蝦皮", _search_shopee),
-    ("露天拍賣", _search_ruten),
-    ("旋轉拍賣", _search_carousell),
 ]
 
 
