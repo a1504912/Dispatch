@@ -1,0 +1,532 @@
+import { useEffect, useState } from "react";
+import { createTransaction, updateTransaction } from "../api/ledger";
+import { listMembers, createMember } from "../api/members";
+import { createSplitBill } from "../api/splitbills";
+import { listEvents } from "../api/events";
+import { listAccounts } from "../api/accounts";
+import { listInvoices, invoiceLink } from "../api/invoices";
+import { NO_BACKEND } from "../localMode";
+import { evalExpr, hasOperator } from "../calc";
+import CalcButtons from "./CalcButtons.jsx";
+
+const r2 = (n) => Math.round(n * 100) / 100;
+const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+
+// 單一帳戶餘額（跟資產頁同一套算法）
+function balanceOf(acc, txs) {
+  let bal = Number(acc.initial) || 0;
+  for (const t of txs) {
+    const isThis = t.account_id === acc.id || (t.account_id == null && t.account === acc.name);
+    if (t.kind === "transfer") {
+      if (t.account_id === acc.id) bal -= t.amount;
+      if (t.to_account_id === acc.id) bal += t.amount;
+    } else if (t.kind === "adjust") {
+      if (t.account_id === acc.id) bal += t.amount;
+    } else if (t.kind === "income" && isThis) {
+      bal += t.amount;
+    } else if (t.kind === "expense" && isThis) {
+      bal -= t.amount;
+    }
+  }
+  return bal;
+}
+const todayStr = () => {
+  const d = new Date();
+  const p = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+function computeShares(method, parts, total, inputs) {
+  const out = {};
+  if (parts.length === 0) return out;
+  if (method === "equal") {
+    const base = r2(total / parts.length);
+    parts.forEach((p) => (out[p] = base));
+    out[parts[0]] = r2(base + (total - base * parts.length));
+  } else if (method === "exact") {
+    parts.forEach((p) => (out[p] = Number(inputs[p]) || 0));
+  } else {
+    const weights = parts.map((p) => {
+      const v = inputs[p];
+      return v === "" || v == null ? 1 : Number(v) || 0; // 份數：留空＝1 份
+    });
+    const sumW = weights.reduce((a, b) => a + b, 0) || 1;
+    let acc = 0;
+    parts.forEach((p, i) => {
+      out[p] = r2((total * weights[i]) / sumW);
+      acc += out[p];
+    });
+    out[parts[0]] = r2(out[parts[0]] + (total - acc));
+  }
+  return out;
+}
+
+export default function TransactionModal({ open, initial, categories = [], txs = [], onClose, onSaved, onManageCategories }) {
+  const isEdit = Boolean(initial?.id);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [splitOn, setSplitOn] = useState(false);
+  const [method, setMethod] = useState("equal");
+  const [checked, setChecked] = useState({});
+  const [inputs, setInputs] = useState({});
+  const [invoices, setInvoices] = useState([]); // 可對應的發票
+  const [linkInv, setLinkInv] = useState(""); // 這筆對應的發票 id（字串）
+  const [newMemberName, setNewMemberName] = useState(""); // 新增代墊人
+  const [addingMember, setAddingMember] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      kind: initial?.kind ?? "expense",
+      amount: initial?.amount != null ? String(initial.amount) : "",
+      category: initial?.category ?? "",
+      subcategory: initial?.subcategory ?? "",
+      note: initial?.note ?? "",
+      date: initial?.date ?? todayStr(),
+      account: initial?.account ?? "",
+      account_id: initial?.account_id ?? null,
+      to_account_id: initial?.to_account_id ?? null,
+      event_id: initial?.event_id ?? null,
+    });
+    setSplitOn(false);
+    setMethod("equal");
+    setSaving(false);
+    listMembers().then(setMembers).catch(() => setMembers([]));
+    listAccounts()
+      .then((accs) => {
+        setAccounts(accs);
+        setForm((f) => {
+          if (!f) return f;
+          if (f.account_id) return f;
+          // 預設選第一個「可用帳戶」（沒有子帳戶的類型，或某個子帳戶）
+          const usable = accs.filter((a) => a.parent_id || !accs.some((x) => x.parent_id === a.id));
+          const first = usable.find((a) => !a.exclude_from_total) || usable[0];
+          return first ? { ...f, account_id: first.id, account: first.name } : f;
+        });
+      })
+      .catch(() => setAccounts([]));
+    listEvents()
+      .then((evs) => setEvents(evs.filter((e) => !e.is_task).sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))))
+      .catch(() => setEvents([]));
+    // 載入發票（給「這筆對應哪張發票」用），並預選已綁定的
+    setLinkInv("");
+    if (!NO_BACKEND) {
+      listInvoices()
+        .then((invs) => {
+          setInvoices(invs);
+          const linked = invs.find((i) => i.transaction_id === initial?.id);
+          if (linked) setLinkInv(String(linked.id));
+        })
+        .catch(() => setInvoices([]));
+    }
+  }, [open, initial]);
+
+  useEffect(() => {
+    // 預設只勾「你」，其他人不勾（保留已勾的，新加的人預設不勾）
+    setChecked((prev) => {
+      const c = { self: prev.self ?? true };
+      members.forEach((m) => { c[String(m.id)] = prev[String(m.id)] ?? false; });
+      return c;
+    });
+    setInputs((prev) => {
+      const w = { self: prev.self ?? "" };
+      members.forEach((m) => { w[String(m.id)] = prev[String(m.id)] ?? ""; });
+      return w;
+    });
+  }, [members, splitOn]);
+
+  if (!open || !form) return null;
+
+  const isTransfer = form.kind === "transfer";
+  const cats = categories.filter((c) => c.kind === form.kind && !c.parent_id);
+  const selectedCat = cats.find((c) => c.name === form.category);
+  const subCats = selectedCat ? categories.filter((c) => c.parent_id === selectedCat.id) : [];
+
+  const amountNum = evalExpr(form.amount);
+  const showCalc = hasOperator(form.amount);
+  const everyone = ["self", ...members.map((m) => String(m.id))];
+  const parts = everyone.filter((w) => checked[w]);
+  const shares = computeShares(method, parts, amountNum, inputs);
+  const shareSum = parts.reduce((s, p) => s + (shares[p] || 0), 0);
+  const nameOf = (w) => (w === "self" ? "你" : members.find((m) => String(m.id) === w)?.name || "?");
+  const emojiOf = (w) => (w === "self" ? "🧑‍💻" : members.find((m) => String(m.id) === w)?.emoji || "🙂");
+  const exactBad = splitOn && method === "exact" && Math.abs(shareSum - amountNum) > 0.5;
+
+  // 「各自」模式：已填金額的合計、還沒填的人、剩餘可分配的金額
+  const exactFilled = parts.reduce((s, w) => {
+    const v = inputs[w];
+    return s + (v === "" || v == null ? 0 : Number(v) || 0);
+  }, 0);
+  const exactEmpty = parts.filter((w) => inputs[w] === "" || inputs[w] == null);
+  const exactRemain = Math.round((amountNum - exactFilled) * 100) / 100;
+
+  function autoDistribute() {
+    if (method !== "exact" || !(amountNum > 0) || exactEmpty.length === 0 || exactRemain <= 0) return;
+    const per = Math.floor(exactRemain / exactEmpty.length);
+    const next = { ...inputs };
+    exactEmpty.forEach((w, i) => {
+      next[w] = String(i < exactEmpty.length - 1 ? per : exactRemain - per * (exactEmpty.length - 1));
+    });
+    setInputs(next);
+  }
+
+  const field =
+    "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+
+  const transferBad = isTransfer && (!form.account_id || !form.to_account_id || form.account_id === form.to_account_id);
+  // 支出/收入允許負數（沖銷、退款）；轉帳與分帳仍需正數
+  const amountOk = isTransfer ? amountNum > 0 : amountNum !== 0 && Number.isFinite(amountNum);
+  const canSave = amountOk && !exactBad && !transferBad && !saving && (!splitOn || amountNum > 0);
+
+  // 帳戶：主分類（類型）→ 子帳戶
+  const topAccounts = accounts.filter((a) => !a.parent_id);
+  const accChildren = (id) => accounts.filter((a) => a.parent_id === id);
+  const usableAccounts = accounts.filter((a) => a.parent_id || !accounts.some((x) => x.parent_id === a.id));
+  const selAcc = accounts.find((a) => a.id === form.account_id);
+  const selTopId = selAcc ? selAcc.parent_id || selAcc.id : null;
+  const subAccts = selTopId ? accChildren(selTopId) : [];
+
+  // 餘額：算的時候排除「正在編輯的這一筆」，這樣「記後」預估才不會重複計算
+  const txsBase = isEdit ? txs.filter((t) => t.id !== initial.id) : txs;
+  const balOf = (acc) => balanceOf(acc, txsBase);
+  const topBal = (top) => {
+    const kids = accChildren(top.id);
+    return kids.length ? kids.reduce((s, k) => s + balOf(k), 0) : balOf(top);
+  };
+  const selBal = selAcc ? balOf(selAcc) : 0;
+  const afterBal = selBal + (form.kind === "income" ? amountNum : -amountNum);
+  const showAfter = !isTransfer && selAcc && Number.isFinite(amountNum) && amountNum !== 0;
+
+  // 「不計入總資產」的帳戶不在選單顯示（除非正好是這筆已選的帳戶，才留著能改）
+  const visibleTop = topAccounts.filter((a) => !a.exclude_from_total || a.id === selTopId);
+  const visibleSub = subAccts.filter((s) => !s.exclude_from_total || s.id === form.account_id);
+  const transferAccts = usableAccounts.filter(
+    (a) => !a.exclude_from_total || a.id === form.account_id || a.id === form.to_account_id
+  );
+
+  function pickType(top) {
+    const kids = accChildren(top.id);
+    if (kids.length) setForm({ ...form, account_id: kids[0].id, account: kids[0].name });
+    else setForm({ ...form, account_id: top.id, account: top.name });
+  }
+  function pickSub(sub) {
+    setForm({ ...form, account_id: sub.id, account: sub.name });
+  }
+
+  async function addMember() {
+    const name = newMemberName.trim();
+    if (!name || addingMember) return;
+    setAddingMember(true);
+    try {
+      const created = await createMember({ name, emoji: "🙂" });
+      setNewMemberName("");
+      setMembers((prev) => [...prev, created]);
+      setChecked((c) => ({ ...c, [String(created.id)]: true })); // 新增的人預設勾起來
+      setInputs((w) => ({ ...w, [String(created.id)]: "" }));
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      let splitBillId = initial?.split_bill_id ?? null;
+      if (splitOn && !isEdit && form.kind === "expense" && parts.length > 1) {
+        const arr = parts.map((p) => ({ who: p, value: shares[p] || 0 }));
+        const bill = await createSplitBill({
+          title: form.note.trim() || form.category || "分帳",
+          total: amountNum,
+          date: form.date,
+          category: form.category,
+          payer: "self",
+          method,
+          shares: JSON.stringify(arr),
+          note: "",
+        });
+        splitBillId = bill?.id ?? null;
+      }
+      const payload = {
+        kind: form.kind,
+        amount: amountNum,
+        category: isTransfer ? "" : form.category || "其他",
+        subcategory: isTransfer ? "" : form.subcategory || "",
+        note: form.note.trim(),
+        date: form.date || todayStr(),
+        account: form.account || "",
+        account_id: form.account_id ?? null,
+        to_account_id: isTransfer ? form.to_account_id ?? null : null,
+        event_id: form.event_id ?? null,
+        split_bill_id: splitBillId,
+      };
+      let saved;
+      if (isEdit) saved = await updateTransaction(initial.id, payload);
+      else saved = await createTransaction(payload);
+      // 綁定/解除綁定對應的發票
+      if (!NO_BACKEND) {
+        const txId = saved?.id ?? initial?.id;
+        const prev = invoices.find((i) => i.transaction_id === initial?.id);
+        const newId = linkInv ? Number(linkInv) : null;
+        try {
+          if (prev && prev.id !== newId) await invoiceLink(prev.id, null); // 解除舊的
+          if (newId && (!prev || prev.id !== newId)) await invoiceLink(newId, txId); // 綁新的
+        } catch {
+          /* 綁定失敗不擋記帳 */
+        }
+      }
+      onSaved(saved || { id: initial?.id });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="text-lg font-black text-slate-900">{isEdit ? "編輯記錄" : "新增記錄"}</h2>
+          <button onClick={onClose} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {/* 支出 / 收入 / 轉帳 */}
+          <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
+            {[["expense", "支出", "text-red-600"], ["income", "收入", "text-emerald-600"], ["transfer", "轉帳", "text-sky-600"]].map(([k, label, col]) => (
+              <button key={k} type="button"
+                onClick={() => setForm((f) => ({ ...f, kind: k, category: "", subcategory: "" }))}
+                className={`flex-1 rounded-lg px-3 py-1.5 transition ${form.kind === k ? `bg-white ${col} shadow-sm` : "text-slate-500"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* 分類（支出/收入才有） */}
+          {!isTransfer && (
+            <>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {cats.map((c) => (
+                  <button key={c.id ?? c.name} type="button"
+                    onClick={() => setForm({ ...form, category: c.name, subcategory: "" })}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition ${form.category === c.name ? "bg-indigo-600 text-white shadow" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200"}`}>
+                    {c.emoji} {c.name}
+                  </button>
+                ))}
+                {onManageCategories && (
+                  <button type="button" onClick={onManageCategories}
+                    className="shrink-0 rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-400 transition hover:border-indigo-300 hover:text-indigo-500">
+                    ✏️ 管理
+                  </button>
+                )}
+              </div>
+              {subCats.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto border-l-2 border-slate-100 pl-3">
+                  <button type="button" onClick={() => setForm({ ...form, subcategory: "" })}
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${!form.subcategory ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>不分</button>
+                  {subCats.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setForm({ ...form, subcategory: s.name })}
+                      className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${form.subcategory === s.name ? "bg-indigo-500 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200"}`}>{s.name}</button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 金額（可打算式，例：120+80）+ 日期 */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+              <input type="text" inputMode="decimal" placeholder="金額（可算式）" value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })} className={`${field} w-full pl-7 text-lg font-bold`} autoFocus />
+              {showCalc && (
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600">＝ {money(amountNum)}</span>
+              )}
+            </div>
+            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={`${field} w-36`} />
+          </div>
+          {/* 計算機按鈕 */}
+          <CalcButtons value={form.amount} onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
+
+          <input className={`${field} w-full`} placeholder="備註（可留空）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+
+          {/* 帳戶 */}
+          {isTransfer ? (
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <p className="mb-1 text-xs font-bold text-slate-500">從</p>
+                <select value={form.account_id ?? ""} onChange={(e) => setForm({ ...form, account_id: Number(e.target.value) })} className={`${field} w-full`}>
+                  {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+                </select>
+              </div>
+              <span className="mt-5 text-slate-400">→</span>
+              <div className="flex-1">
+                <p className="mb-1 text-xs font-bold text-slate-500">到</p>
+                <select value={form.to_account_id ?? ""} onChange={(e) => setForm({ ...form, to_account_id: Number(e.target.value) })} className={`${field} w-full`}>
+                  <option value="">選擇</option>
+                  {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="mb-1 text-xs font-bold text-slate-500">帳戶</p>
+              {/* 帳戶類型：整齊格子，並顯示各自餘額 */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {visibleTop.map((a) => {
+                  const on = selTopId === a.id;
+                  return (
+                    <button key={a.id} type="button" onClick={() => pickType(a)}
+                      className={`rounded-xl px-2 py-2 text-center transition ${on ? "bg-slate-800 text-white shadow-sm" : "bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"}`}>
+                      <span className="block truncate text-sm font-medium">{a.emoji} {a.name}</span>
+                      <span className={`block text-[11px] tabular-nums ${on ? "text-slate-300" : topBal(a) < 0 ? "text-rose-500" : "text-slate-400"}`}>{money(topBal(a))}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {visibleSub.length > 0 && (
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5 border-l-2 border-slate-100 pl-2">
+                  {visibleSub.map((s) => {
+                    const on = form.account_id === s.id;
+                    return (
+                      <button key={s.id} type="button" onClick={() => pickSub(s)}
+                        className={`rounded-xl px-2 py-1.5 text-center transition ${on ? "bg-slate-700 text-white" : "bg-slate-50 text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100"}`}>
+                        <span className="block truncate text-xs font-medium">{s.name}</span>
+                        <span className={`block text-[10px] tabular-nums ${on ? "text-slate-300" : balOf(s) < 0 ? "text-rose-500" : "text-slate-400"}`}>{money(balOf(s))}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {/* 目前餘額 + 記這筆後剩多少 */}
+              {selAcc && (
+                <p className="mt-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+                  {selAcc.emoji} {selAcc.name}　目前 <b className="text-slate-700">{money(selBal)}</b>
+                  {showAfter && (
+                    <> → 記後 <b className={afterBal < 0 ? "text-rose-500" : "text-slate-800"}>{money(afterBal)}</b></>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 記帳時分帳（支出、新增時） */}
+          {form.kind === "expense" && !isEdit && (
+            <div className="rounded-xl border border-slate-200 p-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-amber-600">
+                <input type="checkbox" checked={splitOn} onChange={(e) => setSplitOn(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+                ⊕ 其中有代墊給別人？快速分攤
+              </label>
+              {splitOn && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex rounded-lg bg-slate-100 p-1 text-xs font-medium">
+                    {[["equal", "平均"], ["exact", "各自"], ["shares", "份數"]].map(([k, l]) => (
+                      <button key={k} type="button" onClick={() => setMethod(k)}
+                        className={`flex-1 rounded-md px-2 py-1 transition ${method === k ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}>{l}</button>
+                    ))}
+                  </div>
+                  <div className="space-y-1.5">
+                    {everyone.map((w) => {
+                      const on = !!checked[w];
+                      return (
+                        <div
+                          key={w}
+                          className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition ${on ? "border-indigo-200 bg-indigo-50/50" : "border-slate-200 bg-white"}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setChecked({ ...checked, [w]: !on })}
+                            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                          >
+                            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-slate-300 text-transparent"}`}>✓</span>
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-base">{emojiOf(w)}</span>
+                            <span className={`truncate text-sm ${on ? "font-semibold text-slate-800" : "text-slate-500"}`}>{nameOf(w)}{w === "self" && "（你）"}</span>
+                          </button>
+                          {on && method !== "equal" && (
+                            <input type="number" min="0" value={inputs[w] ?? ""} onChange={(e) => setInputs({ ...inputs, [w]: e.target.value })}
+                              placeholder={method === "exact" ? "金額" : "份"} className="w-20 shrink-0 rounded-md border border-slate-200 px-2 py-1 text-sm" />
+                          )}
+                          {on && <span className="w-16 shrink-0 text-right text-sm font-bold text-slate-700">{money(shares[w] || 0)}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 直接新增代墊人 */}
+                  <div className="flex gap-2">
+                    <input
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMember(); } }}
+                      placeholder="新增代墊人，例：小明"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-indigo-400"
+                    />
+                    <button type="button" onClick={addMember} disabled={!newMemberName.trim() || addingMember}
+                      className="shrink-0 rounded-lg bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-600 disabled:opacity-40">＋</button>
+                  </div>
+
+                  {method === "exact" && exactEmpty.length > 0 && exactRemain > 0 && (
+                    <button
+                      type="button"
+                      onClick={autoDistribute}
+                      className="w-full rounded-lg border border-indigo-200 bg-indigo-50 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-100 active:scale-[0.99]"
+                    >
+                      ⚡ 把剩餘 {money(exactRemain)} 平均分給沒填的 {exactEmpty.length} 人
+                    </button>
+                  )}
+
+                  <p className={`text-right text-xs ${exactBad ? "text-red-500" : "text-slate-400"}`}>
+                    分攤合計 {money(shareSum)} / {money(amountNum)}{exactBad && "（需相符）"}
+                  </p>
+                  <p className="text-[11px] text-slate-400">勾選要一起分攤的人（預設只勾你）。記一筆支出＝你付的全額；別人那份會進「分帳」等他還你。</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 對應發票（支出、有發票時才顯示） */}
+          {!isTransfer && form.kind === "expense" && !NO_BACKEND && (() => {
+            const pickable = invoices.filter(
+              (i) => !i.transaction_id || String(i.id) === linkInv || i.transaction_id === initial?.id
+            );
+            if (pickable.length === 0) return null;
+            return (
+              <div>
+                <p className="mb-1 text-xs font-bold text-slate-500">對應發票（選填）</p>
+                <select value={linkInv} onChange={(e) => setLinkInv(e.target.value)} className={`${field} w-full`}>
+                  <option value="">🧾 不對應</option>
+                  {pickable.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {Number((i.date || "").slice(5, 7))}/{Number((i.date || "").slice(8, 10))} {i.seller_name || i.inv_num}（{money(i.amount)}）
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
+
+          {/* 連結行程 */}
+          <div>
+            <p className="mb-1 text-xs font-bold text-slate-500">所屬行程（選填）</p>
+            <select value={form.event_id ?? ""} onChange={(e) => setForm({ ...form, event_id: e.target.value ? Number(e.target.value) : null })} className={`${field} w-full`}>
+              <option value="">✈️ 不連結</option>
+              {events.map((ev) => (
+                <option key={ev.id} value={ev.id}>{String(ev.start_time).slice(5, 10)} {ev.title}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
+          <button onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">取消</button>
+          <button onClick={handleSave} disabled={!canSave}
+            className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-6 py-2 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none">
+            {saving ? "儲存中…" : isEdit ? "儲存" : "新增一筆"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,6 +1,8 @@
 import client from "./client";
+import { NO_BACKEND } from "../localMode";
 
 export async function listAgents() {
+  if (NO_BACKEND) return []; // 沒有後端就沒有 AI 員工
   const { data } = await client.get("/api/agents");
   return data;
 }
