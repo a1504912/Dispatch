@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   addOption,
+  askAdvice,
   createProject,
   deleteOption,
   deleteProject,
@@ -848,6 +849,85 @@ function ProjectCard({ project, onChange, onEditProject, onDeleteProject, onBuy,
   );
 }
 
+/* ---------- 問 AI 給建議 ---------- */
+
+function AdvicePanel() {
+  const [provider, setProvider] = useState("gpt");
+  const [prompt, setPrompt] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function ask() {
+    const q = prompt.trim();
+    if (!q || loading) return;
+    setLoading(true);
+    setErr("");
+    setAnswer("");
+    try {
+      const res = await askAdvice(provider, q);
+      setAnswer(res.answer || "（沒有回覆）");
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "詢問失敗，請稍後再試。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const tab = (key, label, cls) =>
+    `rounded-lg px-3 py-1.5 text-sm font-bold transition ${
+      provider === key ? cls : "text-slate-500 hover:text-slate-700"
+    }`;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-black text-slate-900">🤖 問 AI 給建議</h2>
+        <div className="flex rounded-xl bg-slate-100 p-1">
+          <button type="button" onClick={() => setProvider("gpt")} className={tab("gpt", "GPT", "bg-white text-slate-800 shadow-sm")}>
+            🤖 GPT
+          </button>
+          <button type="button" onClick={() => setProvider("claude")} className={tab("claude", "Claude", "bg-white text-orange-600 shadow-sm")}>
+            ✳️ Claude
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-slate-400">
+        直接問主機上登入的 {provider === "gpt" ? "Codex（GPT）" : "Claude Code"}，用你的訂閱額度（免額外付費，會扣上面的用量）。可能要等十幾秒。
+      </p>
+
+      <textarea
+        className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+        rows={3}
+        placeholder="例：推薦 CP 值高的 27 吋 4K 螢幕品牌，預算 8000 以內，主要用來看影片和文書。"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") ask();
+        }}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={ask}
+          disabled={!prompt.trim() || loading}
+          className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40"
+        >
+          {loading ? "詢問中…（請稍候）" : "詢問"}
+        </button>
+        <span className="text-xs text-slate-400">⌘/Ctrl + Enter 送出</span>
+      </div>
+
+      {err && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{err}</div>}
+      {answer && (
+        <div className="mt-3 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm leading-relaxed text-slate-700">
+          {answer}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- 主頁 ---------- */
 
 export default function Pricing() {
@@ -947,6 +1027,9 @@ export default function Pricing() {
           ))}
         </div>
       )}
+
+      {/* 問 AI 給建議 */}
+      <AdvicePanel />
 
       {projectModal && (
         <ProjectModal

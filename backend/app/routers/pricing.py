@@ -93,6 +93,27 @@ def search_web(
     }
 
 
+# ---------- 問 AI 給建議（呼叫主機上的 Codex / Claude CLI） ----------
+
+
+class AdviceIn(BaseModel):
+    provider: str  # gpt / claude
+    prompt: str
+
+
+@router.post("/advise")
+def advise(body: AdviceIn):
+    from app import ai_advise
+
+    try:
+        answer = ai_advise.ask(body.provider, body.prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"ok": True, "provider": body.provider, "answer": answer}
+
+
 # ---------- 專案 ----------
 
 

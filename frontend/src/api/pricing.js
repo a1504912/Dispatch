@@ -59,3 +59,10 @@ export async function searchWeb(q, { minP, maxP, debug } = {}) {
   const { data } = await client.get("/api/pricing/search", { params });
   return data;
 }
+
+// ---------- 問 AI 給建議 ----------
+
+export async function askAdvice(provider, prompt) {
+  const { data } = await client.post("/api/pricing/advise", { provider, prompt });
+  return data;
+}
