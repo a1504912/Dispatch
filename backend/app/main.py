@@ -15,6 +15,7 @@ from app.routers import (
     budgets,
     categories,
     chat,
+    claude,
     codex,
     events,
     games,
@@ -124,6 +125,7 @@ app.include_router(invoices.router)
 app.include_router(subscriptions.router)
 app.include_router(pricing.router)
 app.include_router(codex.router)
+app.include_router(claude.router)
 
 
 @app.get("/api/health")

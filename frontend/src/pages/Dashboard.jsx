@@ -16,6 +16,7 @@ import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
 import EventSearch from "../components/EventSearch.jsx";
 import CodexUsage from "../components/CodexUsage.jsx";
+import ClaudeUsage from "../components/ClaudeUsage.jsx";
 import { getWeatherLoc, setWeatherLoc, getWeekForecast } from "../api/weather";
 
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
@@ -501,8 +502,13 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Codex 用量卡片 */}
-      {!NO_BACKEND && <CodexUsage />}
+      {/* AI 用量卡片：Codex（GPT）＋ Claude */}
+      {!NO_BACKEND && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <CodexUsage />
+          <ClaudeUsage />
+        </div>
+      )}
 
       {/* 行事曆 + 清單 + 對話 */}
       <div>
