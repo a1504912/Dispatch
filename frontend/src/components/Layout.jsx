@@ -6,6 +6,7 @@ import { LOCAL_MODE, NO_BACKEND } from "../localMode";
 import { SUPABASE_MODE, supabase } from "../supabase";
 import Lightbox from "./Lightbox.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
+import SidebarUsage from "./SidebarUsage.jsx";
 
 function CalendarIcon({ className }) {
   return (
@@ -290,6 +291,13 @@ export default function Layout() {
         <nav className="flex flex-col gap-1 px-3">
           <NavItems variant="side" />
         </nav>
+
+        {/* AI 用量（Codex / Claude）—— 側邊欄常駐，可捲動 */}
+        {!NO_BACKEND && (
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+            <SidebarUsage />
+          </div>
+        )}
 
         <div className="mt-auto space-y-2 p-4">
           <div className="rounded-xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
