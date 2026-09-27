@@ -27,10 +27,12 @@ def _auth_path() -> str:
 
 
 def read_codex_auth() -> dict | None:
-    """讀 Codex CLI 登入檔；讀不到回 None。"""
+    """讀 Codex CLI 登入檔；讀不到或格式怪就回 None（不丟例外）。"""
     try:
-        with open(_auth_path(), encoding="utf-8") as f:
-            return json.load(f)
+        with open(_auth_path(), "rb") as f:
+            raw = f.read()
+        text = raw.decode("utf-8-sig", errors="replace")  # 容錯：吃掉 BOM、壞字元
+        return json.loads(text)
     except Exception:  # noqa: BLE001
         return None
 
