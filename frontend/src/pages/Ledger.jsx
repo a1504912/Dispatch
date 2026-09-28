@@ -344,7 +344,7 @@ export default function Ledger() {
       ) : tab === "subs" ? (
         <div className="mx-auto max-w-2xl"><Subscriptions categories={allCats} onChanged={load} /></div>
       ) : tab === "budget" ? (
-        <div className="mx-auto max-w-2xl"><Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} onChanged={loadBudgets} /></div>
+        <div className="mx-auto max-w-2xl"><Budget budgets={budgets} monthTxs={monthTxs} categories={allCats} monthLabel={monthLabel} offset={offset} setOffset={setOffset} onChanged={loadBudgets} /></div>
       ) : tab === "analysis" ? (
         <div className="mx-auto max-w-2xl"><Analysis monthTxs={monthTxs} txs={txs} categories={allCats} monthLabel={monthLabel} offset={offset} setOffset={setOffset} /></div>
       ) : (

@@ -15,7 +15,7 @@ function Bar({ spent, amount }) {
   );
 }
 
-export default function Budget({ budgets = [], monthTxs = [], categories = [], monthLabel, onChanged }) {
+export default function Budget({ budgets = [], monthTxs = [], categories = [], monthLabel, offset = 0, setOffset, onChanged }) {
   const [overallInput, setOverallInput] = useState("");
   const [newCat, setNewCat] = useState("");
   const [newAmt, setNewAmt] = useState("");
@@ -54,10 +54,26 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
 
   const field =
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+  const navBtn =
+    "flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700";
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-slate-500">{monthLabel} 的預算與花費</p>
+      {/* 月份切換（預算每月共用，花費依所選月份計算） */}
+      <div className="flex items-center gap-1">
+        <button onClick={() => setOffset?.((o) => o - 1)} className={navBtn}>‹</button>
+        <span className="min-w-[7rem] text-center text-sm font-black text-slate-800">{monthLabel}</span>
+        <button onClick={() => setOffset?.((o) => o + 1)} className={navBtn}>›</button>
+        {offset !== 0 && (
+          <button
+            onClick={() => setOffset?.(0)}
+            className="ml-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-100"
+          >
+            今天
+          </button>
+        )}
+        <span className="ml-1 text-sm text-slate-400">的預算與花費</span>
+      </div>
 
       {/* 總預算 */}
       <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-5 shadow-sm">
