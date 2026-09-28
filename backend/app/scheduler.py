@@ -278,6 +278,76 @@ def _check_subscriptions(session: Session, now: datetime) -> None:
         _mark_sent(session, tag)
 
 
+def _check_usage_resets(session: Session, now: datetime) -> None:
+    """每 15 分鐘看一次 Codex/Claude 用量；某窗格重置、且之前用超過門檻就推播。
+
+    只在「之前用量高（被卡住過）」時提醒重置，避免每 5 小時／每週都被吵。
+    讀用量本身不消耗對話額度。憑證缺失時安靜略過。
+    """
+    if now.minute % 15 != 0:
+        return
+    if push.get_setting(session, "usage_reset_notify", "1") != "1":
+        return
+    try:
+        threshold = float(push.get_setting(session, "usage_reset_threshold", "80"))
+    except (ValueError, TypeError):
+        threshold = 80.0
+
+    checks: list[tuple] = []  # (provider, emoji, key, label, used, reset_val)
+
+    try:
+        from app import codex_usage
+
+        cx = codex_usage.fetch_usage(session)
+        for key, label, w in [
+            ("primary", "5 小時", cx.get("primary")),
+            ("secondary", "每週", cx.get("secondary")),
+        ]:
+            if w and w.get("used_percent") is not None:
+                rv = w.get("reset_at")
+                if rv is None and w.get("reset_after_seconds") is not None:
+                    rv = (cx.get("fetched_at") or 0) + w["reset_after_seconds"]
+                checks.append(("Codex", "🤖", key, label, w["used_percent"], rv))
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        from app import claude_usage
+
+        cl = claude_usage.fetch_usage(session)
+        wanted = {"five_hour": "5 小時", "seven_day": "每週"}
+        for w in cl.get("windows") or []:
+            if w.get("key") in wanted and w.get("used_percent") is not None:
+                checks.append(("Claude", "✳️", w["key"], wanted[w["key"]], w["used_percent"], w.get("resets_at")))
+    except Exception:  # noqa: BLE001
+        pass
+
+    for provider, emoji, key, label, used, reset_val in checks:
+        skey = f"usage_state:{provider}:{key}"
+        prev = push.get_setting(session, skey, "")
+        if prev and reset_val is not None:
+            try:
+                p_reset_s, p_used_s = prev.split("|")
+                p_reset = float(p_reset_s) if p_reset_s not in ("", "None") else None
+                p_used = float(p_used_s)
+            except (ValueError, TypeError):
+                p_reset, p_used = None, None
+            if p_reset is not None and reset_val > p_reset and p_used >= threshold:
+                tag = f"usagereset:{provider}:{key}:{int(reset_val)}"
+                if not _already_sent(session, tag):
+                    push.send_to_all(
+                        session,
+                        {
+                            "title": f"{emoji} {provider} 額度已重置",
+                            "body": f"{label}額度重置了（之前用到 {int(p_used)}%），現在可以繼續用了。",
+                            "url": "/dashboard",
+                            "tag": tag,
+                        },
+                    )
+                    _mark_sent(session, tag)
+        push.set_setting(session, skey, f"{reset_val}|{round(float(used), 1)}")
+
+
 def _tick() -> None:
     now = _now_local()
     with Session(engine) as session:
@@ -287,6 +357,7 @@ def _tick() -> None:
             _check_budget_overspend(session, now)
             _check_subscriptions(session, now)
             _check_new_free_games(session, now)
+            _check_usage_resets(session, now)
             if now.minute == 0:  # 每小時整點清一次舊標記
                 _prune(session)
         except Exception as exc:  # noqa: BLE001
