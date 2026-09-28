@@ -221,6 +221,26 @@ class Invoice(SQLModel, table=True):
     synced_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class HealthLog(SQLModel, table=True):
+    """健康紀錄：體重／喝水／飲食／運動，用 kind 區分，同一張表。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str  # weight（體重）/ water（喝水）/ food（飲食）/ exercise（運動）
+    date: date  # 這筆屬於哪一天
+    time: str = ""  # HH:MM（可空）
+    # weight
+    weight: Optional[float] = None  # 公斤
+    # water
+    amount: Optional[int] = None  # 毫升
+    # food / exercise 共用
+    name: str = ""  # 食物名稱 或 運動名稱
+    meal: str = ""  # breakfast/lunch/dinner/snack（飲食用）
+    calories: Optional[int] = None  # 飲食攝取 或 運動消耗 大卡
+    duration: Optional[int] = None  # 運動時長（分鐘）
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class PriceProject(SQLModel, table=True):
     """比價專案：想買的一樣東西（電腦、螢幕…），底下放多個候選品牌/報價。"""
 
