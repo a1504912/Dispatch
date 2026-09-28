@@ -69,7 +69,7 @@ function Sparkline({ series, goal }) {
 /* ---------- 月曆 ---------- */
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
-function MonthCalendar({ month, days, waterGoal, onPickDay, onPrev, onNext, onToday }) {
+function MonthCalendar({ month, days, waterGoal, selected, onPickDay, onPrev, onNext, onToday }) {
   const [y, m] = month.split("-").map(Number);
   const first = new Date(y, m - 1, 1);
   const lead = first.getDay(); // 0=Sun
@@ -103,13 +103,18 @@ function MonthCalendar({ month, days, waterGoal, onPickDay, onPrev, onNext, onTo
           const info = days[iso];
           const dayNum = Number(iso.slice(8, 10));
           const isToday = iso === todayIso;
+          const isSel = iso === selected;
           const waterHit = info && waterGoal && info.water_total >= waterGoal;
           return (
             <button
               key={iso}
               onClick={() => onPickDay(iso)}
               className={`flex min-h-[70px] flex-col rounded-lg border p-1 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 ${
-                isToday ? "border-indigo-400 bg-indigo-50/60" : "border-slate-100 bg-white"
+                isSel
+                  ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                  : isToday
+                    ? "border-indigo-300 bg-indigo-50/50"
+                    : "border-slate-100 bg-white"
               }`}
             >
               <span className={`text-[11px] font-bold ${isToday ? "text-indigo-600" : "text-slate-500"}`}>{dayNum}</span>
@@ -138,7 +143,6 @@ export default function Health() {
   const [data, setData] = useState(null);
   const [weights, setWeights] = useState({ series: [], goal: null });
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("day"); // day | month
   const [month, setMonth] = useState(todayStr().slice(0, 7));
   const [monthData, setMonthData] = useState({ days: {}, water_goal: 2000 });
 
@@ -147,6 +151,12 @@ export default function Health() {
   const [waterInput, setWaterInput] = useState("");
   const [food, setFood] = useState({ name: "", meal: "breakfast", calories: "" });
   const [ex, setEx] = useState({ name: "", duration: "", calories: "" });
+
+  function loadMonth(mo = month) {
+    getMonth(mo)
+      .then(setMonthData)
+      .catch(() => setMonthData({ days: {}, water_goal: 2000 }));
+  }
 
   function load() {
     setLoading(true);
@@ -157,21 +167,22 @@ export default function Health() {
       })
       .catch(() => setData(null))
       .finally(() => setLoading(false));
+    loadMonth(); // 同步更新月曆
   }
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);
 
-  function loadMonth(mo = month) {
-    getMonth(mo)
-      .then(setMonthData)
-      .catch(() => setMonthData({ days: {}, water_goal: 2000 }));
-  }
+  // 選到的日期換月時，月曆跟著切到那個月
   useEffect(() => {
-    if (view === "month") loadMonth();
+    setMonth(day.slice(0, 7));
+  }, [day]);
+  // 手動切換月曆月份時載入該月
+  useEffect(() => {
+    loadMonth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, month]);
+  }, [month]);
 
   function shiftMonth(mo, n) {
     const [yy, mm] = mo.split("-").map(Number);
@@ -255,37 +266,30 @@ export default function Health() {
           <h1 className="text-2xl font-black text-slate-900">健康</h1>
           <p className="mt-1 text-sm text-slate-500">記錄體重、飲食、喝水與運動。</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 每日 / 月曆 切換 */}
-          <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
-            <button onClick={() => setView("day")} className={`rounded-lg px-3 py-1.5 transition ${view === "day" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>每日</button>
-            <button onClick={() => { setMonth(day.slice(0, 7)); setView("month"); }} className={`rounded-lg px-3 py-1.5 transition ${view === "month" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>月曆</button>
-          </div>
-          {/* 日期切換（每日檢視才顯示） */}
-          {view === "day" && (
-            <div className="flex items-center gap-1">
-              <button onClick={() => setDay((d) => addDays(d, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
-              <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 outline-none" />
-              <button onClick={() => setDay((d) => addDays(d, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
-              {!isToday && (
-                <button onClick={() => setDay(todayStr())} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">今天</button>
-              )}
-            </div>
+        {/* 日期切換 */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => setDay((d) => addDays(d, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
+          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 outline-none" />
+          <button onClick={() => setDay((d) => addDays(d, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
+          {!isToday && (
+            <button onClick={() => setDay(todayStr())} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">今天</button>
           )}
         </div>
       </div>
 
-      {view === "month" ? (
-        <MonthCalendar
-          month={month}
-          days={monthData.days || {}}
-          waterGoal={monthData.water_goal}
-          onPickDay={(iso) => { setDay(iso); setView("day"); }}
-          onPrev={() => setMonth((mo) => shiftMonth(mo, -1))}
-          onNext={() => setMonth((mo) => shiftMonth(mo, 1))}
-          onToday={() => setMonth(todayStr().slice(0, 7))}
-        />
-      ) : loading && !data ? (
+      {/* 月曆：點某天切到那天 */}
+      <MonthCalendar
+        month={month}
+        days={monthData.days || {}}
+        waterGoal={monthData.water_goal}
+        selected={day}
+        onPickDay={(iso) => setDay(iso)}
+        onPrev={() => setMonth((mo) => shiftMonth(mo, -1))}
+        onNext={() => setMonth((mo) => shiftMonth(mo, 1))}
+        onToday={() => setMonth(todayStr().slice(0, 7))}
+      />
+
+      {loading && !data ? (
         <p className="py-16 text-center text-sm text-slate-400">載入中…</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
