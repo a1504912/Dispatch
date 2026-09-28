@@ -77,6 +77,53 @@ def day(date: str | None = None, session: Session = Depends(get_session)):
     }
 
 
+# ---------- 整月彙總（月曆用） ----------
+
+
+@router.get("/month")
+def month(month: str | None = None, session: Session = Depends(get_session)):
+    """回傳某月每天的彙總：{ "YYYY-MM-DD": {weight, food_calories, exercise_calories, water_total, has_exercise} }。"""
+    if month:
+        try:
+            y, m = (int(x) for x in month.split("-")[:2])
+        except (ValueError, TypeError):
+            t = date.today()
+            y, m = t.year, t.month
+    else:
+        t = date.today()
+        y, m = t.year, t.month
+    start = date(y, m, 1)
+    end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+
+    rows = session.exec(
+        select(HealthLog).where(HealthLog.date >= start, HealthLog.date < end)
+    ).all()
+
+    days: dict[str, dict] = {}
+    weight_pick: dict[str, HealthLog] = {}
+    for r in rows:
+        key = r.date.isoformat()
+        d = days.setdefault(
+            key,
+            {"weight": None, "food_calories": 0, "exercise_calories": 0, "water_total": 0, "has_exercise": False},
+        )
+        if r.kind == "weight" and r.weight is not None:
+            cur = weight_pick.get(key)
+            if not cur or (r.time or "", r.id or 0) > (cur.time or "", cur.id or 0):
+                weight_pick[key] = r
+                d["weight"] = r.weight
+        elif r.kind == "water":
+            d["water_total"] += r.amount or 0
+        elif r.kind == "food":
+            d["food_calories"] += r.calories or 0
+        elif r.kind == "exercise":
+            d["exercise_calories"] += r.calories or 0
+            d["has_exercise"] = True
+
+    goal = get_setting(session, K_WATER_GOAL, "2000")
+    return {"month": f"{y:04d}-{m:02d}", "days": days, "water_goal": int(goal or 2000)}
+
+
 # ---------- 體重趨勢 ----------
 
 

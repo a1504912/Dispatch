@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addLog, deleteLog, getDay, getHealthSettings, getWeights, saveHealthSettings } from "../api/health";
+import { addLog, deleteLog, getDay, getMonth, getWeights, saveHealthSettings } from "../api/health";
 
 function todayStr() {
   const d = new Date();
@@ -66,11 +66,81 @@ function Sparkline({ series, goal }) {
   );
 }
 
+/* ---------- 月曆 ---------- */
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
+function MonthCalendar({ month, days, waterGoal, onPickDay, onPrev, onNext, onToday }) {
+  const [y, m] = month.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const lead = first.getDay(); // 0=Sun
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const todayIso = todayStr();
+
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+
+  const label = `${y} 年 ${m} 月`;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+      <div className="mb-2 flex items-center justify-center gap-1">
+        <button onClick={onPrev} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
+        <span className="min-w-[7rem] text-center text-sm font-black text-slate-800">{label}</span>
+        <button onClick={onNext} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
+        <button onClick={onToday} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">本月</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400">
+        {WEEKDAYS.map((w) => (
+          <div key={w} className="py-1">{w}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((iso, i) => {
+          if (!iso) return <div key={i} />;
+          const info = days[iso];
+          const dayNum = Number(iso.slice(8, 10));
+          const isToday = iso === todayIso;
+          const waterHit = info && waterGoal && info.water_total >= waterGoal;
+          return (
+            <button
+              key={iso}
+              onClick={() => onPickDay(iso)}
+              className={`flex min-h-[70px] flex-col rounded-lg border p-1 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 ${
+                isToday ? "border-indigo-400 bg-indigo-50/60" : "border-slate-100 bg-white"
+              }`}
+            >
+              <span className={`text-[11px] font-bold ${isToday ? "text-indigo-600" : "text-slate-500"}`}>{dayNum}</span>
+              {info && (
+                <span className="mt-0.5 flex flex-col gap-0.5 text-[10px] leading-tight">
+                  {info.weight != null && <span className="font-bold text-slate-700">{info.weight}kg</span>}
+                  {info.food_calories > 0 && <span className="text-rose-500">🔥{info.food_calories}</span>}
+                  {info.water_total > 0 && (
+                    <span className={waterHit ? "text-sky-600" : "text-sky-400"}>
+                      💧{info.water_total >= 1000 ? (info.water_total / 1000).toFixed(1) + "L" : info.water_total}
+                    </span>
+                  )}
+                  {info.has_exercise && <span className="text-emerald-600">🏃{info.exercise_calories > 0 ? info.exercise_calories : ""}</span>}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Health() {
   const [day, setDay] = useState(todayStr());
   const [data, setData] = useState(null);
   const [weights, setWeights] = useState({ series: [], goal: null });
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("day"); // day | month
+  const [month, setMonth] = useState(todayStr().slice(0, 7));
+  const [monthData, setMonthData] = useState({ days: {}, water_goal: 2000 });
 
   // 輸入狀態
   const [weightInput, setWeightInput] = useState("");
@@ -92,6 +162,22 @@ export default function Health() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);
+
+  function loadMonth(mo = month) {
+    getMonth(mo)
+      .then(setMonthData)
+      .catch(() => setMonthData({ days: {}, water_goal: 2000 }));
+  }
+  useEffect(() => {
+    if (view === "month") loadMonth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, month]);
+
+  function shiftMonth(mo, n) {
+    const [yy, mm] = mo.split("-").map(Number);
+    const d = new Date(yy, mm - 1 + n, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
 
   async function logWeight() {
     const v = Number(weightInput);
@@ -169,18 +255,37 @@ export default function Health() {
           <h1 className="text-2xl font-black text-slate-900">健康</h1>
           <p className="mt-1 text-sm text-slate-500">記錄體重、飲食、喝水與運動。</p>
         </div>
-        {/* 日期切換 */}
-        <div className="flex items-center gap-1">
-          <button onClick={() => setDay((d) => addDays(d, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
-          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 outline-none" />
-          <button onClick={() => setDay((d) => addDays(d, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
-          {!isToday && (
-            <button onClick={() => setDay(todayStr())} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">今天</button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 每日 / 月曆 切換 */}
+          <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-medium">
+            <button onClick={() => setView("day")} className={`rounded-lg px-3 py-1.5 transition ${view === "day" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>每日</button>
+            <button onClick={() => { setMonth(day.slice(0, 7)); setView("month"); }} className={`rounded-lg px-3 py-1.5 transition ${view === "month" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>月曆</button>
+          </div>
+          {/* 日期切換（每日檢視才顯示） */}
+          {view === "day" && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => setDay((d) => addDays(d, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
+              <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 outline-none" />
+              <button onClick={() => setDay((d) => addDays(d, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
+              {!isToday && (
+                <button onClick={() => setDay(todayStr())} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">今天</button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {loading && !data ? (
+      {view === "month" ? (
+        <MonthCalendar
+          month={month}
+          days={monthData.days || {}}
+          waterGoal={monthData.water_goal}
+          onPickDay={(iso) => { setDay(iso); setView("day"); }}
+          onPrev={() => setMonth((mo) => shiftMonth(mo, -1))}
+          onNext={() => setMonth((mo) => shiftMonth(mo, 1))}
+          onToday={() => setMonth(todayStr().slice(0, 7))}
+        />
+      ) : loading && !data ? (
         <p className="py-16 text-center text-sm text-slate-400">載入中…</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

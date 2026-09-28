@@ -10,6 +10,11 @@ export async function getWeights(days = 60) {
   return data;
 }
 
+export async function getMonth(month) {
+  const { data } = await client.get("/api/health/month", { params: month ? { month } : {} });
+  return data;
+}
+
 export async function addLog(payload) {
   const { data } = await client.post("/api/health", payload);
   return data;
