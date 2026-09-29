@@ -399,13 +399,23 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       files: form.files?.length ? JSON.stringify(form.files) : null,
     };
     try {
+      // 明細輸入框裡打了字但還沒按 ＋ 的，也一起算進去
+      const typed = newSub.trim();
       if (isEdit) {
         await updateEvent(initial.id, payload);
+        if (typed) {
+          try {
+            await createSubtask(initial.id, typed);
+          } catch {
+            /* 略過 */
+          }
+        }
       } else {
         const created = await createEvent(payload);
         // 把新增時暫存的明細一起建立
-        if (created?.id && pendingSubs.length) {
-          for (const t of pendingSubs) {
+        const subs = [...pendingSubs, ...(typed ? [typed] : [])];
+        if (created?.id && subs.length) {
+          for (const t of subs) {
             try {
               await createSubtask(created.id, t);
             } catch {
