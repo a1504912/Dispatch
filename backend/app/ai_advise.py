@@ -83,6 +83,56 @@ def _ask_claude(prompt: str) -> str:
         return answer
 
 
+def _save_image(tmp: str, image_bytes: bytes, ext: str) -> str:
+    path = os.path.join(tmp, f"food.{ext}")
+    with open(path, "wb") as f:
+        f.write(image_bytes)
+    return path
+
+
+def ask_with_image(provider: str, prompt: str, image_bytes: bytes, ext: str = "jpg") -> str:
+    """帶一張圖片問 AI。圖片存到暫存資料夾，題目一樣走 stdin。"""
+    prompt = (prompt or "").strip()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            img = _save_image(tmp, image_bytes, ext)
+            if provider == "gpt":
+                exe = _resolve("codex")
+                if not exe:
+                    raise RuntimeError("主機找不到 codex 指令，請確認 Codex CLI 已安裝並在 PATH。")
+                outfile = os.path.join(tmp, "out.txt")
+                # 注意順序：--image 可接多個值，要放在題目 "-" 之後，否則會把 "-" 當成圖片
+                cmd = _base_cmd(exe) + [
+                    "exec", "--skip-git-repo-check", "--sandbox", "read-only",
+                    "-o", outfile, "-", "--image", img,
+                ]
+                proc = _run(cmd, prompt, tmp)
+                answer = ""
+                try:
+                    with open(outfile, encoding="utf-8", errors="replace") as f:
+                        answer = f.read().strip()
+                except Exception:  # noqa: BLE001
+                    pass
+                answer = answer or (proc.stdout or "").strip()
+                if not answer:
+                    raise RuntimeError((proc.stderr or "Codex 沒有回覆").strip()[:500])
+                return answer
+            if provider == "claude":
+                exe = _resolve("claude")
+                if not exe:
+                    raise RuntimeError("主機找不到 claude 指令，請先安裝 Claude Code CLI。")
+                full = f"圖片檔案：{os.path.basename(img)}（在目前資料夾，請用 Read 工具讀取這張圖）\n\n{prompt}"
+                cmd = _base_cmd(exe) + ["-p", "--allowedTools", "Read"]
+                proc = _run(cmd, full, tmp)
+                answer = (proc.stdout or "").strip()
+                if not answer:
+                    raise RuntimeError((proc.stderr or "Claude 沒有回覆").strip()[:500])
+                return answer
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("AI 回覆逾時，請稍後再試。")
+    raise ValueError("provider 必須是 gpt 或 claude")
+
+
 def ask(provider: str, prompt: str) -> str:
     prompt = (prompt or "").strip()
     if not prompt:

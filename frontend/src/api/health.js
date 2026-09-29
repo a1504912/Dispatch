@@ -15,6 +15,12 @@ export async function getMonth(month) {
   return data;
 }
 
+// 拍照估熱量：provider = gpt / claude，image = data URL
+export async function estimateFood(provider, image, note = "") {
+  const { data } = await client.post("/api/health/estimate", { provider, image, note });
+  return data;
+}
+
 export async function addLog(payload) {
   const { data } = await client.post("/api/health", payload);
   return data;

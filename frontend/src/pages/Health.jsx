@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { addLog, deleteLog, getDay, getMonth, getWeights, saveHealthSettings } from "../api/health";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { addLog, deleteLog, estimateFood, getDay, getMonth, getWeights, saveHealthSettings } from "../api/health";
+import { compressImageFile } from "../imageCompress";
 
 function todayStr() {
   const d = new Date();
@@ -133,6 +134,192 @@ function MonthCalendar({ month, days, waterGoal, selected, onPickDay, onPrev, on
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+
+/* ---------- 拍照估熱量（問 GPT / Claude，估完一鍵記進飲食） ---------- */
+function guessMeal() {
+  const h = new Date().getHours();
+  if (h < 10) return "breakfast";
+  if (h < 14) return "lunch";
+  if (h < 17) return "snack";
+  if (h < 21) return "dinner";
+  return "snack";
+}
+
+function PhotoEstimate({ day, onRecorded }) {
+  const [provider, setProvider] = useState("claude");
+  const [image, setImage] = useState("");
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null); // {items:[{name,calories,on}], total, note, raw}
+  const [meal, setMeal] = useState(guessMeal());
+  const [saved, setSaved] = useState("");
+  const fileRef = useRef(null);
+
+  async function pick(file) {
+    if (!file || !file.type?.startsWith("image/")) return;
+    const url = await compressImageFile(file, 1280, 0.8);
+    if (url) {
+      setImage(url);
+      setResult(null);
+      setErr("");
+      setSaved("");
+    }
+  }
+
+  // 在頁面任何地方 Ctrl+V 貼圖
+  useEffect(() => {
+    function onPaste(e) {
+      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
+      if (item) pick(item.getAsFile());
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
+  async function run() {
+    if (!image || loading) return;
+    setLoading(true);
+    setErr("");
+    setResult(null);
+    setSaved("");
+    try {
+      const r = await estimateFood(provider, image, note);
+      setResult({ ...r, items: (r.items || []).map((i) => ({ ...i, on: true })) });
+      setMeal(guessMeal());
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "估算失敗，請稍後再試。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function setItem(idx, patch) {
+    setResult((r) => ({ ...r, items: r.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
+  }
+
+  const chosen = (result?.items || []).filter((i) => i.on && i.name.trim());
+  const chosenTotal = chosen.reduce((s, i) => s + (Number(i.calories) || 0), 0);
+
+  async function record() {
+    for (const it of chosen) {
+      await addLog({
+        kind: "food",
+        date: day,
+        name: it.name.trim(),
+        meal,
+        calories: it.calories === "" || it.calories == null ? null : Number(it.calories),
+        time: nowHM(),
+        note: "📷 AI 估算",
+      });
+    }
+    setSaved(`已記錄 ${chosen.length} 筆到 ${mealLabel(meal)}`);
+    setResult(null);
+    setImage("");
+    setNote("");
+    onRecorded?.();
+  }
+
+  const tab = (key) =>
+    `rounded-lg px-3 py-1.5 text-sm font-bold transition ${provider === key ? "bg-white shadow-sm " + (key === "claude" ? "text-orange-600" : "text-slate-800") : "text-slate-500 hover:text-slate-700"}`;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-black text-slate-900">📷 拍照估熱量</h2>
+        <div className="flex rounded-xl bg-slate-100 p-1">
+          <button type="button" onClick={() => setProvider("gpt")} className={tab("gpt")}>🤖 GPT</button>
+          <button type="button" onClick={() => setProvider("claude")} className={tab("claude")}>✳️ Claude</button>
+        </div>
+        <span className="text-xs text-slate-400">用主機上登入的 CLI、扣你的訂閱額度；估算約需十幾秒～一分鐘。</span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_minmax(0,1fr)]">
+        {/* 圖片 */}
+        <div>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              pick(e.dataTransfer.files?.[0]);
+            }}
+            className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40"
+          >
+            {image ? (
+              <img src={image} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="px-4 text-center leading-relaxed">點此選照片 / 拖曳進來<br />或直接 Ctrl+V 貼上</span>
+            )}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+        </div>
+
+        {/* 補充 + 結果 */}
+        <div className="min-w-0 space-y-3">
+          <div className="flex gap-2">
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && run()}
+              placeholder="補充（可空）：例：飯只吃一半、無糖"
+              className={field}
+            />
+            <button
+              type="button"
+              onClick={run}
+              disabled={!image || loading}
+              className="shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40"
+            >
+              {loading ? "估算中…" : "估算熱量"}
+            </button>
+          </div>
+
+          {err && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{err}</div>}
+          {saved && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">✓ {saved}</div>}
+          {!image && !result && !err && !saved && (
+            <p className="text-sm text-slate-400">放一張餐點照片，AI 會列出每樣食物的估計熱量，確認後一鍵記進今天的飲食。</p>
+          )}
+
+          {result && result.items.length > 0 && (
+            <div className="space-y-2">
+              {result.items.map((it, i) => (
+                <div key={i} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${it.on ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60"}`}>
+                  <input type="checkbox" checked={it.on} onChange={(e) => setItem(i, { on: e.target.checked })} className="h-4 w-4 shrink-0 accent-indigo-600" />
+                  <input value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none" />
+                  <input type="number" value={it.calories ?? ""} onChange={(e) => setItem(i, { calories: e.target.value })} className="w-20 shrink-0 rounded-md border border-slate-200 px-2 py-1 text-right text-sm outline-none focus:border-indigo-400" />
+                  <span className="shrink-0 text-xs text-slate-400">kcal</span>
+                </div>
+              ))}
+              {result.note && <p className="text-xs text-slate-400">💡 {result.note}</p>}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-sm text-slate-600">合計 <span className="font-black text-rose-600">{chosenTotal}</span> kcal，記到</span>
+                <select value={meal} onChange={(e) => setMeal(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none">
+                  {MEALS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={record}
+                  disabled={chosen.length === 0}
+                  className="rounded-xl bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 active:scale-95 disabled:opacity-40"
+                >
+                  ✓ 記錄到飲食（{chosen.length} 筆）
+                </button>
+              </div>
+            </div>
+          )}
+          {result && result.items.length === 0 && (
+            <div className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              {result.raw || "AI 沒有辨識出食物，換張清楚一點的照片試試。"}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -427,6 +614,9 @@ export default function Health() {
         </div>
       )}
       </div>
+
+      {/* 拍照估熱量（整寬） */}
+      <PhotoEstimate day={day} onRecorded={load} />
     </div>
   );
 }

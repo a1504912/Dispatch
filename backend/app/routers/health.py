@@ -196,6 +196,76 @@ def delete_log(log_id: int, session: Session = Depends(get_session)):
         session.commit()
 
 
+# ---------- 拍照估熱量（呼叫主機上的 Codex / Claude CLI） ----------
+
+
+class EstimateIn(BaseModel):
+    provider: str  # gpt / claude
+    image: str  # data URL（data:image/jpeg;base64,...）
+    note: str = ""
+
+
+ESTIMATE_PROMPT = """你是營養師。請看這張餐點照片，辨識出每一樣食物，估算份量與熱量（大卡）。{note}
+只輸出一段 JSON，不要任何其他文字或說明，格式：
+{{"items":[{{"name":"食物名稱（繁體中文，含大概份量）","calories":整數}}],"total":整數,"note":"一句話說明估算依據或提醒"}}"""
+
+
+def _parse_estimate(text: str) -> dict:
+    """從 AI 回覆裡抓出 JSON；容許前後夾雜文字或 ```json 區塊。"""
+    import json as _json
+    import re
+
+    s = text.strip()
+    s = re.sub(r"^```(?:json)?|```$", "", s, flags=re.M).strip()
+    start, end = s.find("{"), s.rfind("}")
+    if start == -1 or end <= start:
+        raise ValueError("no json")
+    data = _json.loads(s[start : end + 1])
+    items = []
+    for it in data.get("items") or []:
+        name = str(it.get("name") or "").strip()
+        try:
+            cal = int(round(float(it.get("calories"))))
+        except (TypeError, ValueError):
+            cal = None
+        if name:
+            items.append({"name": name, "calories": cal})
+    total = data.get("total")
+    try:
+        total = int(round(float(total)))
+    except (TypeError, ValueError):
+        total = sum(i["calories"] or 0 for i in items)
+    return {"items": items, "total": total, "note": str(data.get("note") or "")}
+
+
+@router.post("/estimate")
+def estimate(body: EstimateIn):
+    import base64
+
+    from app import ai_advise
+
+    if body.provider not in ("gpt", "claude"):
+        raise HTTPException(status_code=400, detail="provider 必須是 gpt 或 claude")
+    try:
+        header, b64 = body.image.split(",", 1)
+        raw = base64.b64decode(b64)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="圖片格式不正確")
+    ext = "png" if "png" in header else "webp" if "webp" in header else "jpg"
+    note = f"\n使用者補充：{body.note.strip()}" if body.note.strip() else ""
+    try:
+        answer = ai_advise.ask_with_image(body.provider, ESTIMATE_PROMPT.format(note=note), raw, ext)
+    except Exception as exc:  # noqa: BLE001
+        # 4xx：避免 5xx 被 Cloudflare 換成它自己的錯誤訊息
+        raise HTTPException(status_code=424, detail=str(exc))
+    try:
+        result = _parse_estimate(answer)
+    except Exception:  # noqa: BLE001
+        result = {"items": [], "total": None, "note": ""}
+    result["raw"] = answer[:2000]
+    return result
+
+
 # ---------- 設定（喝水目標、目標體重） ----------
 
 
