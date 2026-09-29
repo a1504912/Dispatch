@@ -84,25 +84,34 @@ export default function SidebarUsage() {
   const [claudeLoading, setClaudeLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
 
-  function loadCodex() {
+  // 失敗時自動再試一次（tunnel 偶爾閃斷）
+  function loadCodex(retried = false) {
     setCodexLoading(true);
     setCodexErr("");
     getCodexUsage()
       .then(setCodex)
       .catch((e) => {
+        if (!retried) {
+          setTimeout(() => loadCodex(true), 4000);
+          return;
+        }
         setCodex(null);
-        setCodexErr(shorten(e?.response?.data?.detail) || "未連結");
+        setCodexErr(errText(e));
       })
       .finally(() => setCodexLoading(false));
   }
-  function loadClaude() {
+  function loadClaude(retried = false) {
     setClaudeLoading(true);
     setClaudeErr("");
     getClaudeUsage()
       .then(setClaude)
       .catch((e) => {
+        if (!retried) {
+          setTimeout(() => loadClaude(true), 4000);
+          return;
+        }
         setClaude(null);
-        setClaudeErr(shorten(e?.response?.data?.detail) || "未連結");
+        setClaudeErr(errText(e));
       })
       .finally(() => setClaudeLoading(false));
   }
@@ -140,7 +149,7 @@ export default function SidebarUsage() {
         loading={codexLoading}
         err={codexErr}
         now={now}
-        onReload={loadCodex}
+        onReload={() => loadCodex()}
       />
       <Block
         emoji="✳️"
@@ -150,16 +159,22 @@ export default function SidebarUsage() {
         loading={claudeLoading}
         err={claudeErr}
         now={now}
-        onReload={loadClaude}
+        onReload={() => loadClaude()}
       />
     </div>
   );
 }
 
-function shorten(msg) {
-  if (!msg) return "";
+function errText(e) {
+  const status = e?.response?.status;
+  const msg = String(e?.response?.data?.detail || e?.message || "");
+  // Cloudflare tunnel / 網路層的錯（主機這次沒正常回應），不是 Claude/Codex 本身
+  if (!e?.response || /origin web server|cloudflare|network error|timeout/i.test(msg) || [520, 521, 522, 523, 524, 530].includes(status)) {
+    return "連線暫時中斷，按 ↻ 重試";
+  }
   if (msg.includes("找不到")) return "未連結（無登入檔）";
   if (msg.includes("過期")) return "token 過期，請重登";
   if (msg.includes("限流")) return "限流中，稍後再試";
+  if (!msg) return status ? `錯誤 ${status}` : "查詢失敗";
   return msg.length > 40 ? msg.slice(0, 40) + "…" : msg;
 }
