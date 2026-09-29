@@ -79,13 +79,22 @@ def get_event(event_id: int, session: Session = Depends(get_session)):
 
 @router.post("", response_model=Event, status_code=201)
 def create_event(payload: EventCreate, session: Session = Depends(get_session)):
-    event = Event.model_validate(payload)
+    event = Event.model_validate(payload.model_dump(exclude={"subtasks"}))
     event.thumb = thumbs.thumb_for(event.image, event.images)
     session.add(event)
+    session.flush()  # 先拿到 event.id，明細跟行程同一筆交易一起寫入
+    _add_subtasks(session, event.id, payload.subtasks)
     session.commit()
     session.refresh(event)
     _propagate_push(session, event)
     return event
+
+
+def _add_subtasks(session: Session, event_id: int, titles: list[str] | None) -> None:
+    for t in titles or []:
+        t = (t or "").strip()
+        if t:
+            session.add(Subtask(event_id=event_id, title=t))
 
 
 @router.put("/{event_id}", response_model=Event)
@@ -97,10 +106,11 @@ def update_event(
     event = session.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    for key, value in payload.model_dump().items():
+    for key, value in payload.model_dump(exclude={"subtasks"}).items():
         setattr(event, key, value)
     event.thumb = thumbs.thumb_for(event.image, event.images)
     session.add(event)
+    _add_subtasks(session, event.id, payload.subtasks)
     session.commit()
     session.refresh(event)
     _propagate_push(session, event)

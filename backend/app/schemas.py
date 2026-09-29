@@ -35,6 +35,8 @@ class EventCreate(SQLModel):
     is_task: bool = False
     links: Optional[str] = None
     files: Optional[str] = None
+    # 同一個請求順便建立的明細標題（新增時暫存的、或編輯時框裡剛打的），不存進 Event 本身
+    subtasks: Optional[list[str]] = None
 
 
 # ---------- Category ----------

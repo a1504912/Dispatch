@@ -17,6 +17,7 @@ function safeArr(v) {
   return [];
 }
 import { compressImageFile } from "../imageCompress";
+import { NO_BACKEND } from "../localMode";
 import {
   createSubtask,
   deleteSubtask,
@@ -398,34 +399,27 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       links: form.links?.length ? JSON.stringify(form.links) : null,
       files: form.files?.length ? JSON.stringify(form.files) : null,
     };
+    // 要一起建立的明細：新增時暫存的 ＋ 明細框裡打了字但還沒按 ＋ 的
+    const typed = newSub.trim();
+    const subs = isEdit ? (typed ? [typed] : []) : [...pendingSubs, ...(typed ? [typed] : [])];
     try {
-      // 明細輸入框裡打了字但還沒按 ＋ 的，也一起算進去
-      const typed = newSub.trim();
-      if (isEdit) {
-        await updateEvent(initial.id, payload);
-        if (typed) {
-          try {
-            await createSubtask(initial.id, typed);
-          } catch {
-            /* 略過 */
-          }
-        }
+      if (!NO_BACKEND) {
+        // 自架後端：明細跟行程放同一個請求，後端同一筆交易寫入，不會只成功一半
+        const body = subs.length ? { ...payload, subtasks: subs } : payload;
+        if (isEdit) await updateEvent(initial.id, body);
+        else await createEvent(body);
       } else {
-        const created = await createEvent(payload);
-        // 把新增時暫存的明細一起建立
-        const subs = [...pendingSubs, ...(typed ? [typed] : [])];
-        if (created?.id && subs.length) {
-          for (const t of subs) {
-            try {
-              await createSubtask(created.id, t);
-            } catch {
-              /* 單筆失敗略過，不擋存檔 */
-            }
-          }
-        }
+        // 離線 / 雲端模式：沒有後端，逐筆建立
+        const ev = isEdit ? await updateEvent(initial.id, payload) : await createEvent(payload);
+        const eid = isEdit ? initial.id : ev?.id;
+        for (const t of subs) await createSubtask(eid, t);
       }
       onSaved?.();
       onClose();
+    } catch (err) {
+      // 不再默默吞掉：存檔失敗就留在視窗、告訴使用者，內容不會不見
+      const msg = err?.response?.data?.detail || err?.message || "未知錯誤";
+      window.alert(`存檔失敗，請再按一次存檔。\n（${typeof msg === "string" ? msg : JSON.stringify(msg)}）`);
     } finally {
       setSaving(false);
     }
