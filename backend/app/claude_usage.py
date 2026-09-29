@@ -125,6 +125,19 @@ def fetch_usage(session, debug: bool = False) -> dict:
         raise RuntimeError(
             "找不到 Claude 憑證：主機沒有 ~/.claude/.credentials.json，也還沒在設定頁貼 token。"
         )
+    # 登入檔的 token 有期限；Claude Code CLI 只有「被使用時」才會自動換新
+    if source == "claude-cli":
+        exp = ((read_claude_creds() or {}).get("claudeAiOauth") or {}).get("expiresAt")
+        try:
+            if exp and float(exp) / 1000 < time.time():
+                cached = _cached_or_none()
+                if cached:
+                    return {**cached, "stale": True}
+                raise RuntimeError(
+                    "Claude 登入已過期：在主機開終端機執行一次 claude（進去再離開即可），token 就會自動換新。"
+                )
+        except (TypeError, ValueError):
+            pass
     headers = {
         "Authorization": f"Bearer {token}",
         "anthropic-beta": "oauth-2025-04-20",

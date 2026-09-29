@@ -16,7 +16,8 @@ def usage(debug: int = 0, session: Session = Depends(get_session)):
     try:
         return claude_usage.fetch_usage(session, debug=bool(debug))
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=str(exc))
+        # 用 4xx：5xx 會被 Cloudflare 換成它自己的錯誤頁，蓋掉真正原因
+        raise HTTPException(status_code=424, detail=str(exc))
 
 
 @router.get("/settings")

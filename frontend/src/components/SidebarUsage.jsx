@@ -91,7 +91,7 @@ export default function SidebarUsage() {
     getCodexUsage()
       .then(setCodex)
       .catch((e) => {
-        if (!retried) {
+        if (!retried && isTransient(e)) {
           setTimeout(() => loadCodex(true), 4000);
           return;
         }
@@ -106,7 +106,7 @@ export default function SidebarUsage() {
     getClaudeUsage()
       .then(setClaude)
       .catch((e) => {
-        if (!retried) {
+        if (!retried && isTransient(e)) {
           setTimeout(() => loadClaude(true), 4000);
           return;
         }
@@ -165,6 +165,11 @@ export default function SidebarUsage() {
   );
 }
 
+function isTransient(e) {
+  const st = e?.response?.status;
+  return !e?.response || st >= 500;
+}
+
 function errText(e) {
   const status = e?.response?.status;
   const msg = String(e?.response?.data?.detail || e?.message || "");
@@ -173,7 +178,8 @@ function errText(e) {
     return "連線暫時中斷，按 ↻ 重試";
   }
   if (msg.includes("找不到")) return "未連結（無登入檔）";
-  if (msg.includes("過期")) return "token 過期，請重登";
+  if (msg.includes("登入已過期")) return "登入過期：到主機執行一次 claude";
+  if (msg.includes("過期")) return "token 過期：主機重新登入一次";
   if (msg.includes("限流")) return "限流中，稍後再試";
   if (!msg) return status ? `錯誤 ${status}` : "查詢失敗";
   return msg.length > 40 ? msg.slice(0, 40) + "…" : msg;
