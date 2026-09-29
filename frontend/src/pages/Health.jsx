@@ -14,7 +14,7 @@ function nowHM() {
   return new Date().toTimeString().slice(0, 5);
 }
 const field =
-  "w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+  "w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
 const MEALS = [
   ["breakfast", "早餐"],
@@ -26,8 +26,8 @@ const mealLabel = (m) => MEALS.find(([k]) => k === m)?.[1] || "其他";
 
 function Card({ title, emoji, right, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
         <h2 className="text-base font-black text-slate-900">
           {emoji} {title}
         </h2>
@@ -54,7 +54,7 @@ function Sparkline({ series, goal }) {
   const y = (v) => h - ((v - min) / (max - min)) * h;
   const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.weight).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="mt-2 h-16 w-full" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-1 h-12 w-full" preserveAspectRatio="none">
       {goal != null && (
         <line x1="0" y1={y(goal)} x2={w} y2={y(goal)} stroke="#a7f3d0" strokeWidth="1.5" strokeDasharray="4 4" />
       )}
@@ -85,7 +85,7 @@ function MonthCalendar({ month, days, waterGoal, selected, onPickDay, onPrev, on
   const label = `${y} 年 ${m} 月`;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-center gap-1">
         <button onClick={onPrev} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
         <span className="min-w-[7rem] text-center text-sm font-black text-slate-800">{label}</span>
@@ -109,7 +109,7 @@ function MonthCalendar({ month, days, waterGoal, selected, onPickDay, onPrev, on
             <button
               key={iso}
               onClick={() => onPickDay(iso)}
-              className={`flex min-h-[70px] flex-col rounded-lg border p-1 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 ${
+              className={`flex min-h-[48px] min-w-0 flex-col overflow-hidden rounded-lg border p-0.5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 ${
                 isSel
                   ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
                   : isToday
@@ -119,15 +119,15 @@ function MonthCalendar({ month, days, waterGoal, selected, onPickDay, onPrev, on
             >
               <span className={`text-[11px] font-bold ${isToday ? "text-indigo-600" : "text-slate-500"}`}>{dayNum}</span>
               {info && (
-                <span className="mt-0.5 flex flex-col gap-0.5 text-[10px] leading-tight">
-                  {info.weight != null && <span className="font-bold text-slate-700">{info.weight}kg</span>}
-                  {info.food_calories > 0 && <span className="text-rose-500">🔥{info.food_calories}</span>}
+                <span className="flex min-w-0 flex-col text-[9px] leading-tight">
+                  {info.weight != null && <span className="truncate font-bold text-slate-700">{info.weight}</span>}
+                  {info.food_calories > 0 && <span className="truncate text-rose-500">🔥{info.food_calories}</span>}
                   {info.water_total > 0 && (
-                    <span className={waterHit ? "text-sky-600" : "text-sky-400"}>
+                    <span className={`truncate ${waterHit ? "text-sky-600" : "text-sky-400"}`}>
                       💧{info.water_total >= 1000 ? (info.water_total / 1000).toFixed(1) + "L" : info.water_total}
                     </span>
                   )}
-                  {info.has_exercise && <span className="text-emerald-600">🏃{info.exercise_calories > 0 ? info.exercise_calories : ""}</span>}
+                  {info.has_exercise && <span className="truncate text-emerald-600">🏃{info.exercise_calories > 0 ? info.exercise_calories : ""}</span>}
                 </span>
               )}
             </button>
@@ -277,22 +277,25 @@ export default function Health() {
         </div>
       </div>
 
-      {/* 月曆：點某天切到那天 */}
-      <MonthCalendar
-        month={month}
-        days={monthData.days || {}}
-        waterGoal={monthData.water_goal}
-        selected={day}
-        onPickDay={(iso) => setDay(iso)}
-        onPrev={() => setMonth((mo) => shiftMonth(mo, -1))}
-        onNext={() => setMonth((mo) => shiftMonth(mo, 1))}
-        onToday={() => setMonth(todayStr().slice(0, 7))}
-      />
+      {/* 桌機：左月曆、右輸入，一頁看完；手機：上下堆疊 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
+      <div className="lg:sticky lg:top-4">
+        <MonthCalendar
+          month={month}
+          days={monthData.days || {}}
+          waterGoal={monthData.water_goal}
+          selected={day}
+          onPickDay={(iso) => setDay(iso)}
+          onPrev={() => setMonth((mo) => shiftMonth(mo, -1))}
+          onNext={() => setMonth((mo) => shiftMonth(mo, 1))}
+          onToday={() => setMonth(todayStr().slice(0, 7))}
+        />
+      </div>
 
       {loading && !data ? (
         <p className="py-16 text-center text-sm text-slate-400">載入中…</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-2">
           {/* 體重 */}
           <Card
             title="體重"
@@ -304,7 +307,7 @@ export default function Health() {
             }
           >
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-black text-slate-900">{data?.weight != null ? data.weight : "—"}</span>
+              <span className="text-2xl font-black text-slate-900">{data?.weight != null ? data.weight : "—"}</span>
               <span className="pb-1 text-sm text-slate-400">kg</span>
               {weightDelta != null && (
                 <span className={`pb-1 text-xs font-bold ${weightDelta > 0 ? "text-rose-500" : weightDelta < 0 ? "text-emerald-600" : "text-slate-400"}`}>
@@ -334,7 +337,7 @@ export default function Health() {
             }
           >
             <div className="flex items-end justify-between">
-              <span className="text-3xl font-black text-sky-600">
+              <span className="text-2xl font-black text-sky-600">
                 {data?.water_total || 0}
                 <span className="ml-1 text-sm font-medium text-slate-400">/ {data?.water_goal} ml</span>
               </span>
@@ -379,7 +382,7 @@ export default function Health() {
               ))}
               {(!data?.food || data.food.length === 0) && <p className="text-sm text-slate-400">今天還沒記錄飲食。</p>}
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[7rem_1fr_6rem_auto]">
+            <div className="mt-3 grid grid-cols-[5.5rem_minmax(0,1fr)_4.5rem_auto] gap-2">
               <select value={food.meal} onChange={(e) => setFood({ ...food, meal: e.target.value })} className={field}>
                 {MEALS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
@@ -406,7 +409,7 @@ export default function Health() {
               ))}
               {(!data?.exercise || data.exercise.length === 0) && <p className="text-sm text-slate-400">今天還沒記錄運動。</p>}
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_6rem_6rem_auto]">
+            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_4rem_4.5rem_auto] gap-2">
               <input value={ex.name} onChange={(e) => setEx({ ...ex, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addExercise()} placeholder="運動項目" className={field} />
               <input type="number" inputMode="numeric" value={ex.duration} onChange={(e) => setEx({ ...ex, duration: e.target.value })} placeholder="分鐘" className={field} />
               <input type="number" inputMode="numeric" value={ex.calories} onChange={(e) => setEx({ ...ex, calories: e.target.value })} placeholder="kcal" className={field} />
@@ -415,7 +418,7 @@ export default function Health() {
           </Card>
 
           {/* 當日淨熱量小結 */}
-          <div className="lg:col-span-2">
+          <div className="xl:col-span-2">
             <div className="rounded-2xl bg-slate-50 px-5 py-3 text-sm text-slate-600">
               當日淨熱量：<span className="font-black text-slate-800">{netCal} kcal</span>
               <span className="ml-2 text-xs text-slate-400">（攝取 {data?.food_calories || 0} − 運動 {data?.exercise_calories || 0}）</span>
@@ -423,6 +426,7 @@ export default function Health() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
