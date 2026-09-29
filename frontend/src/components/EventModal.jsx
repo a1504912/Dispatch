@@ -162,6 +162,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [saving, setSaving] = useState(false);
   const [subtasks, setSubtasks] = useState([]);
   const [newSub, setNewSub] = useState("");
+  // 新增行程時，明細先暫存本地（還沒有 event_id），存檔時一起建立
+  const [pendingSubs, setPendingSubs] = useState([]);
   const [editingSubId, setEditingSubId] = useState(null);
   const [editingSubText, setEditingSubText] = useState("");
   const [dateSubId, setDateSubId] = useState(null);
@@ -215,7 +217,13 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
 
   async function handleAddSubtask(e) {
     e.preventDefault();
-    if (!newSub.trim() || !initial?.id) return;
+    if (!newSub.trim()) return;
+    // 新增行程（還沒存）：先暫存，等存檔一起建立
+    if (!initial?.id) {
+      setPendingSubs((p) => [...p, newSub.trim()]);
+      setNewSub("");
+      return;
+    }
     await createSubtask(initial.id, newSub.trim());
     setNewSub("");
     refreshSubtasks();
@@ -295,6 +303,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     });
     setNewSub("");
     setSubtasks([]);
+    setPendingSubs([]);
     setPasteSubId(null);
     setImagesLoading(false);
     setFilesLoading(false);
@@ -390,8 +399,21 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       files: form.files?.length ? JSON.stringify(form.files) : null,
     };
     try {
-      if (isEdit) await updateEvent(initial.id, payload);
-      else await createEvent(payload);
+      if (isEdit) {
+        await updateEvent(initial.id, payload);
+      } else {
+        const created = await createEvent(payload);
+        // 把新增時暫存的明細一起建立
+        if (created?.id && pendingSubs.length) {
+          for (const t of pendingSubs) {
+            try {
+              await createSubtask(created.id, t);
+            } catch {
+              /* 單筆失敗略過，不擋存檔 */
+            }
+          }
+        }
+      }
       onSaved?.();
       onClose();
     } finally {
@@ -653,16 +675,55 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">
               明細
-              {subtasks.length > 0 && (
+              {isEdit && subtasks.length > 0 && (
                 <span className="ml-2 font-normal text-slate-400">
                   {subtasks.filter((s) => s.done).length}/{subtasks.length} 完成
                 </span>
               )}
+              {!isEdit && pendingSubs.length > 0 && (
+                <span className="ml-2 font-normal text-slate-400">{pendingSubs.length} 項</span>
+              )}
             </label>
             {!isEdit ? (
-              <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-xs text-slate-400">
-                先儲存行程，就可以新增明細項目。
-              </p>
+              <div className="space-y-1.5">
+                {pendingSubs.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <span className="text-slate-300">☐</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{t}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingSubs((p) => p.filter((_, idx) => idx !== i))}
+                      className="shrink-0 text-slate-300 hover:text-red-500"
+                      title="移除"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <div className="flex gap-1.5">
+                  <input
+                    className={`${field} flex-1`}
+                    placeholder="新增明細（存檔時一起建立）"
+                    value={newSub}
+                    onChange={(e) => setNewSub(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddSubtask(e);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSubtask}
+                    disabled={!newSub.trim()}
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-bold text-indigo-600 shadow-sm transition hover:bg-indigo-50 active:scale-95 disabled:opacity-40"
+                  >
+                    ＋
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">照片、到期日等進階設定，存檔後再點開明細即可加。</p>
+              </div>
             ) : (
               <div className="space-y-1.5">
                 {subtasksLoading && subtasks.length === 0 && (
