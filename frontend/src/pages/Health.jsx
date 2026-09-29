@@ -160,6 +160,7 @@ function PhotoEstimate({ day, onRecorded }) {
   const [meal, setMeal] = useState(guessMeal());
   const [saved, setSaved] = useState("");
   const fileRef = useRef(null);
+  const camRef = useRef(null);
 
   async function pick(file) {
     if (!file || !file.type?.startsWith("image/")) return;
@@ -255,10 +256,16 @@ function PhotoEstimate({ day, onRecorded }) {
             {image ? (
               <img src={image} alt="" className="h-full w-full object-cover" />
             ) : (
-              <span className="px-4 text-center leading-relaxed">點此選照片 / 拖曳進來<br />或直接 Ctrl+V 貼上</span>
+              <span className="px-4 text-center leading-relaxed">點此選照片 / 拖曳進來<br />電腦可直接 Ctrl+V 貼上</span>
             )}
           </button>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          {/* 相簿（不加 capture，手機會給相簿/相機選單）＋ 直接拍照（capture 開相機） */}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-slate-200 bg-white py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95">🖼️ 從相簿選</button>
+            <button type="button" onClick={() => camRef.current?.click()} className="rounded-xl border border-slate-200 bg-white py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95">📸 拍照</button>
+          </div>
         </div>
 
         {/* 補充 + 結果 */}
