@@ -206,7 +206,7 @@ function PhotoEstimate({ day, onRecorded }) {
   }, []);
 
   async function run() {
-    if (!image || loading) return;
+    if ((!image && !note.trim()) || loading) return;
     setLoading(true);
     setErr("");
     setResult(null);
@@ -254,7 +254,7 @@ function PhotoEstimate({ day, onRecorded }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-black text-slate-900">📷 拍照估熱量</h2>
+        <h2 className="text-base font-black text-slate-900">🍽️ 問 AI 估熱量</h2>
         <div className="flex rounded-xl bg-slate-100 p-1">
           <button type="button" onClick={() => setProvider("gpt")} className={tab("gpt")}>🤖 GPT</button>
           <button type="button" onClick={() => setProvider("claude")} className={tab("claude")}>✳️ Claude</button>
@@ -276,9 +276,18 @@ function PhotoEstimate({ day, onRecorded }) {
             className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40"
           >
             {image ? (
-              <img src={image} alt="" className="h-full w-full object-cover" />
+              <span className="relative block h-full w-full">
+                <img src={image} alt="" className="h-full w-full object-cover" />
+                <span
+                  role="button"
+                  onClick={(e) => { e.stopPropagation(); setImage(""); setResult(null); }}
+                  className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white hover:bg-black/80"
+                >
+                  ✕ 移除
+                </span>
+              </span>
             ) : (
-              <span className="px-4 text-center leading-relaxed">點此選照片 / 拖曳進來<br />電腦可直接 Ctrl+V 貼上</span>
+              <span className="px-4 text-center leading-relaxed">（選填）點此選照片 / 拖曳進來<br />電腦可直接 Ctrl+V 貼上</span>
             )}
           </button>
           {/* 相簿（不加 capture，手機會給相簿/相機選單）＋ 直接拍照（capture 開相機） */}
@@ -297,13 +306,13 @@ function PhotoEstimate({ day, onRecorded }) {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && run()}
-              placeholder="補充（可空）：例：飯只吃一半、無糖"
+              placeholder={image ? "補充（可空）：例：飯只吃一半、無糖" : "直接打字問：例：麥當勞 中薯、大麥克"}
               className={field}
             />
             <button
               type="button"
               onClick={run}
-              disabled={!image || loading}
+              disabled={(!image && !note.trim()) || loading}
               className="shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40"
             >
               {loading ? "估算中…" : "估算熱量"}
@@ -312,8 +321,8 @@ function PhotoEstimate({ day, onRecorded }) {
 
           {err && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{err}</div>}
           {saved && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">✓ {saved}</div>}
-          {!image && !result && !err && !saved && (
-            <p className="text-sm text-slate-400">放一張餐點照片，AI 會列出每樣食物的估計熱量，確認後一鍵記進今天的飲食。</p>
+          {!result && !err && !saved && !loading && (
+            <p className="text-sm text-slate-400">直接打字（例：麥當勞 中薯）或放一張餐點照片，AI 會列出每樣食物的熱量，確認後一鍵記進今天的飲食。</p>
           )}
 
           {result && result.items.length > 0 && (

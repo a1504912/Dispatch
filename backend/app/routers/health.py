@@ -207,13 +207,19 @@ def delete_log(log_id: int, session: Session = Depends(get_session)):
 
 class EstimateIn(BaseModel):
     provider: str  # gpt / claude
-    image: str  # data URL（data:image/jpeg;base64,...）
-    note: str = ""
+    image: str = ""  # data URL（data:image/jpeg;base64,...）；可空＝純文字詢問
+    note: str = ""  # 文字描述（純文字模式時就是主要內容）
 
 
 ESTIMATE_PROMPT = """你是營養師。請看這張餐點照片，辨識出每一樣食物，估算份量與熱量（大卡）。{note}
 只輸出一段 JSON，不要任何其他文字或說明，格式：
 {{"items":[{{"name":"食物名稱（繁體中文，含大概份量）","calories":整數}}],"total":整數,"note":"一句話說明估算依據或提醒"}}"""
+
+
+TEXT_PROMPT = """你是營養師。使用者說他吃了：{desc}
+請列出每一樣食物並估算熱量（大卡）。如果是連鎖店品項（例如麥當勞中薯、星巴克拿鐵），請以該品牌在台灣官方公布的熱量為準，並寫出完整品名與份量。
+只輸出一段 JSON，不要任何其他文字或說明，格式：
+{{"items":[{{"name":"食物名稱（繁體中文，含品牌與份量）","calories":整數}}],"total":整數,"note":"一句話說明資料來源或估算依據"}}"""
 
 
 def _parse_estimate(text: str) -> dict:
@@ -252,15 +258,24 @@ def estimate(body: EstimateIn):
 
     if body.provider not in ("gpt", "claude"):
         raise HTTPException(status_code=400, detail="provider 必須是 gpt 或 claude")
+    desc = body.note.strip()
+    if not body.image and not desc:
+        raise HTTPException(status_code=400, detail="請輸入吃了什麼，或附上照片")
     try:
-        header, b64 = body.image.split(",", 1)
-        raw = base64.b64decode(b64)
-    except Exception:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail="圖片格式不正確")
-    ext = "png" if "png" in header else "webp" if "webp" in header else "jpg"
-    note = f"\n使用者補充：{body.note.strip()}" if body.note.strip() else ""
-    try:
-        answer = ai_advise.ask_with_image(body.provider, ESTIMATE_PROMPT.format(note=note), raw, ext)
+        if body.image:
+            try:
+                header, b64 = body.image.split(",", 1)
+                raw = base64.b64decode(b64)
+            except Exception:  # noqa: BLE001
+                raise HTTPException(status_code=400, detail="圖片格式不正確")
+            ext = "png" if "png" in header else "webp" if "webp" in header else "jpg"
+            note = f"\n使用者補充：{desc}" if desc else ""
+            answer = ai_advise.ask_with_image(body.provider, ESTIMATE_PROMPT.format(note=note), raw, ext)
+        else:
+            # 純文字：例「麥當勞 中薯」
+            answer = ai_advise.ask(body.provider, TEXT_PROMPT.format(desc=desc))
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         # 4xx：避免 5xx 被 Cloudflare 換成它自己的錯誤訊息
         raise HTTPException(status_code=424, detail=str(exc))
