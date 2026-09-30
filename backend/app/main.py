@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
 from app.database import init_db
@@ -51,6 +52,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Dispatch API", version="0.1.0", lifespan=lifespan)
+
+
+# 經 Cloudflare tunnel 對外時，後端回 5xx 會被 Cloudflare 換成它自己的錯誤訊息
+# （"The origin web server returned an invalid or incomplete response..."），
+# 真正原因就看不到了。所以一律把 5xx 改成 424，錯誤內容原封不動保留。
+@app.exception_handler(StarletteHTTPException)
+async def _http_exc_handler(request: Request, exc: StarletteHTTPException):
+    status = 424 if exc.status_code >= 500 else exc.status_code
+    return JSONResponse({"detail": exc.detail}, status_code=status, headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exc_handler(request: Request, exc: Exception):
+    # 程式沒預料到的錯誤：也用 424 帶出原因，方便看畫面就知道哪裡壞
+    return JSONResponse({"detail": f"伺服器錯誤：{type(exc).__name__}: {str(exc)[:300]}"}, status_code=424)
 
 # 不需要登入的路徑（登入本身、健康檢查、Google OAuth 回跳）
 AUTH_EXEMPT_PATHS = {"/", "/api/health", "/api/auth/login", "/api/auth/status", "/api/google/callback"}
