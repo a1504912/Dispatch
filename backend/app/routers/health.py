@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 
 K_WATER_GOAL = "health_water_goal"  # 每日喝水目標（ml）
 K_WEIGHT_GOAL = "health_weight_goal"  # 目標體重（kg）
+K_HEIGHT = "health_height"  # 身高（cm，固定值、不按天記錄，用來算 BMI）
 
 
 def _parse_date(s: str | None) -> date:
@@ -147,7 +148,12 @@ def weights(days: int = 60, session: Session = Depends(get_session)):
         for k, v in sorted(by_day.items(), key=lambda kv: kv[0])
     ]
     goal = get_setting(session, K_WEIGHT_GOAL, "")
-    return {"series": series, "goal": float(goal) if goal else None}
+    height = get_setting(session, K_HEIGHT, "")
+    return {
+        "series": series,
+        "goal": float(goal) if goal else None,
+        "height": float(height) if height else None,
+    }
 
 
 # ---------- 新增／刪除 ----------
@@ -272,6 +278,7 @@ def estimate(body: EstimateIn):
 class HealthSettings(BaseModel):
     water_goal: int | None = None
     weight_goal: float | None = None
+    height: float | None = None  # cm；傳 0 代表清除
 
 
 @router.get("/settings")
@@ -279,6 +286,7 @@ def get_settings(session: Session = Depends(get_session)):
     return {
         "water_goal": int(get_setting(session, K_WATER_GOAL, "2000") or 2000),
         "weight_goal": get_setting(session, K_WEIGHT_GOAL, "") or None,
+        "height": get_setting(session, K_HEIGHT, "") or None,
     }
 
 
@@ -288,4 +296,6 @@ def put_settings(payload: HealthSettings, session: Session = Depends(get_session
         set_setting(session, K_WATER_GOAL, str(int(payload.water_goal)))
     if payload.weight_goal is not None:
         set_setting(session, K_WEIGHT_GOAL, str(payload.weight_goal) if payload.weight_goal else "")
+    if payload.height is not None:
+        set_setting(session, K_HEIGHT, str(payload.height) if payload.height and payload.height > 0 else "")
     return {"ok": True}

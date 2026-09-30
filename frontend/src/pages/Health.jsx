@@ -39,6 +39,28 @@ function Card({ title, emoji, right, children }) {
   );
 }
 
+
+/* BMI：依衛福部國健署成人標準 */
+function bmiInfo(weight, heightCm) {
+  if (!weight || !heightCm) return null;
+  const m = heightCm / 100;
+  const bmi = weight / (m * m);
+  let label, cls;
+  if (bmi < 18.5) [label, cls] = ["過輕", "bg-sky-50 text-sky-700"];
+  else if (bmi < 24) [label, cls] = ["正常", "bg-emerald-50 text-emerald-700"];
+  else if (bmi < 27) [label, cls] = ["過重", "bg-amber-50 text-amber-700"];
+  else if (bmi < 30) [label, cls] = ["輕度肥胖", "bg-orange-50 text-orange-700"];
+  else if (bmi < 35) [label, cls] = ["中度肥胖", "bg-rose-50 text-rose-700"];
+  else [label, cls] = ["重度肥胖", "bg-red-100 text-red-700"];
+  return {
+    bmi: bmi.toFixed(1),
+    label,
+    cls,
+    lo: (18.5 * m * m).toFixed(1), // 健康體重範圍
+    hi: (24 * m * m).toFixed(1),
+  };
+}
+
 /* ---------- 體重趨勢小圖 ---------- */
 function Sparkline({ series, goal }) {
   if (!series || series.length < 2) return null;
@@ -435,6 +457,15 @@ export default function Health() {
       load();
     }
   }
+  async function setHeight() {
+    const v = prompt("身高（公分，固定值、用來算 BMI；留空清除）", weights.height ? String(weights.height) : "");
+    if (v == null) return;
+    const n = Number(v);
+    if (v.trim() !== "" && !(n > 50 && n < 250)) return;
+    await saveHealthSettings({ height: v.trim() === "" ? 0 : n });
+    load();
+  }
+
   async function setWeightGoal() {
     const v = prompt("目標體重（公斤，留空清除）", weights.goal ? String(weights.goal) : "");
     if (v == null) return;
@@ -495,9 +526,14 @@ export default function Health() {
             title="體重"
             emoji="⚖️"
             right={
-              <button onClick={setWeightGoal} className="text-xs text-slate-400 hover:text-indigo-600">
-                目標 {weights.goal ? `${weights.goal} kg` : "設定"}
-              </button>
+              <span className="flex items-center gap-3">
+                <button onClick={setHeight} className="text-xs text-slate-400 hover:text-indigo-600">
+                  身高 {weights.height ? `${weights.height} cm` : "設定"}
+                </button>
+                <button onClick={setWeightGoal} className="text-xs text-slate-400 hover:text-indigo-600">
+                  目標 {weights.goal ? `${weights.goal} kg` : "設定"}
+                </button>
+              </span>
             }
           >
             <div className="flex items-end gap-2">
@@ -513,6 +549,29 @@ export default function Health() {
                 <button onClick={() => remove(data.weight_id)} className="ml-auto pb-1 text-xs text-slate-300 hover:text-red-500">刪除</button>
               )}
             </div>
+            {/* BMI（今天沒量就用最近一次的體重） */}
+            {(() => {
+              const latest = data?.weight ?? weights.series?.[weights.series.length - 1]?.weight;
+              if (!weights.height) {
+                return (
+                  <button onClick={setHeight} className="mt-1 text-xs text-indigo-500 hover:underline">
+                    ＋ 設定身高，顯示 BMI
+                  </button>
+                );
+              }
+              const b = bmiInfo(latest, weights.height);
+              if (!b) return null;
+              const g = bmiInfo(weights.goal, weights.height);
+              return (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <span className="font-bold text-slate-700">BMI {b.bmi}</span>
+                  <span className={`rounded-full px-2 py-0.5 font-bold ${b.cls}`}>{b.label}</span>
+                  {data?.weight == null && <span className="text-slate-400">（最近一次體重）</span>}
+                  <span className="text-slate-400">健康體重 {b.lo}–{b.hi} kg</span>
+                  {g && <span className="text-slate-400">・目標 BMI {g.bmi}</span>}
+                </div>
+              );
+            })()}
             <Sparkline series={weights.series} goal={weights.goal} />
             <div className="mt-3 flex gap-2">
               <input type="number" inputMode="decimal" step="0.1" value={weightInput} onChange={(e) => setWeightInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && logWeight()} placeholder="輸入今日體重" className={field} />
