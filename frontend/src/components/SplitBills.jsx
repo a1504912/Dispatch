@@ -417,8 +417,16 @@ export default function SplitBills({ expenseCats = [] }) {
     return net;
   }, [bills, settlements]);
 
-  const owedToYou = Object.values(balances).filter((v) => v > 0).reduce((a, b) => a + b, 0);
-  const youOwe = Object.values(balances).filter((v) => v < 0).reduce((a, b) => a - b, 0);
+  // 每人差額先四捨五入到元；上方總額、欠誰、下方結算清單都用這一份，不會互相矛盾
+  // （例：平均分帳除不盡，欠三個人各 0.3 元 → 都算 0，不會總額顯示 $1 卻說結清）
+  const rounded = Object.entries(balances)
+    .map(([who, v]) => [who, Math.round(v)])
+    .filter(([, v]) => v !== 0);
+  const owedList = rounded.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const oweList = rounded.filter(([, v]) => v < 0).sort((a, b) => a[1] - b[1]);
+  const owedToYou = owedList.reduce((sum, [, v]) => sum + v, 0);
+  const youOwe = oweList.reduce((sum, [, v]) => sum - v, 0);
+  const whoText = (list) => list.map(([who, v]) => `${nameOf(who)} ${money(Math.abs(v))}`).join("、");
 
   async function handleDeleteBill(bill) {
     if (!window.confirm(`刪除分帳「${bill.title}」？`)) return;
@@ -429,12 +437,14 @@ export default function SplitBills({ expenseCats = [] }) {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <span>
             別人共欠你 <b className="text-emerald-600">{money(owedToYou)}</b>
+            {owedList.length > 0 && <span className="ml-1 text-xs text-slate-500">（{whoText(owedList)}）</span>}
           </span>
           <span>
             你共欠 <b className="text-red-500">{money(youOwe)}</b>
+            {oweList.length > 0 && <span className="ml-1 text-xs text-slate-500">（欠 {whoText(oweList)}）</span>}
           </span>
         </div>
         <div className="flex gap-2">
@@ -452,10 +462,7 @@ export default function SplitBills({ expenseCats = [] }) {
         <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-4 shadow-sm">
           <p className="mb-3 text-sm font-black text-slate-700">結算</p>
           <div className="space-y-2">
-            {Object.entries(balances)
-              .filter(([, v]) => Math.abs(v) >= 0.5)
-              .sort((a, b) => b[1] - a[1])
-              .map(([who, v]) => (
+            {[...owedList, ...oweList].map(([who, v]) => (
                 <div key={who} className="flex items-center justify-between gap-2">
                   <span className="text-sm text-slate-700">{emojiOf(who)} {nameOf(who)}</span>
                   <div className="flex items-center gap-2">
@@ -473,7 +480,7 @@ export default function SplitBills({ expenseCats = [] }) {
                   </div>
                 </div>
               ))}
-            {Object.values(balances).every((v) => Math.abs(v) < 0.5) && (
+            {rounded.length === 0 && (
               <p className="text-center text-sm text-slate-400">目前都結清了 🎉</p>
             )}
           </div>
