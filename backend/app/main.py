@@ -27,6 +27,7 @@ from app.routers import (
     members,
     models,
     news,
+    notes,
     pricing,
     splitbills,
     push,
@@ -144,6 +145,7 @@ app.include_router(pricing.router)
 app.include_router(codex.router)
 app.include_router(claude.router)
 app.include_router(health.router)
+app.include_router(notes.router)
 
 
 @app.get("/api/health")

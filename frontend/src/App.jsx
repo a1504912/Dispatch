@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
-import Todos from "./pages/Todos.jsx";
+import Notes from "./pages/Notes.jsx";
 import Ledger from "./pages/Ledger.jsx";
 import Health from "./pages/Health.jsx";
 import Pricing from "./pages/Pricing.jsx";
@@ -18,7 +18,9 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/todos" element={<Todos />} />
+        <Route path="/notes" element={<Notes />} />
+        {/* 舊的「待辦」改成記事本；舊網址導過去 */}
+        <Route path="/todos" element={<Navigate to="/notes" replace />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/health" element={<Health />} />
         <Route path="/pricing" element={<Pricing />} />

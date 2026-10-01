@@ -221,6 +221,33 @@ class Invoice(SQLModel, table=True):
     synced_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class Notebook(SQLModel, table=True):
+    """記事本的一個「專案」（像 LINE 的一個聊天室，自己記給自己）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    emoji: str = "📒"
+    hidden: bool = False  # 隱藏：平常不列出，要連點標題 5 下才看得到
+    pinned: bool = False  # 置頂
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)  # 最後一則的時間，用來排序
+
+
+class NoteItem(SQLModel, table=True):
+    """記事本裡的一則：文字 / 照片 / 影片 / 檔案 / 連結。照片影片檔存在硬碟，不進資料庫。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    notebook_id: int = Field(foreign_key="notebook.id", index=True)
+    kind: str = "text"  # text / image / video / file / link
+    text: str = ""  # 文字內容，或照片/影片的說明
+    media_path: Optional[str] = None  # backend/data/notes/ 底下的檔名
+    media_name: str = ""  # 原始檔名
+    media_type: str = ""  # MIME
+    media_size: int = 0
+    meta: Optional[str] = None  # 連結預覽 JSON：{url, title, description, image}
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class HealthLog(SQLModel, table=True):
     """健康紀錄：體重／喝水／飲食／運動，用 kind 區分，同一張表。"""
 

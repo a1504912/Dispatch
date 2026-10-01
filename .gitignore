@@ -21,3 +21,6 @@ dist/
 .vscode/
 deploy/update-status.txt
 deploy/invoice-debug/
+
+# 記事本的照片/影片/檔案（存在主機硬碟）
+backend/data/
