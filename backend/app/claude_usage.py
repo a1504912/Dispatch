@@ -244,7 +244,9 @@ def _one_window(key: str, label: str, w: dict) -> dict | None:
     if u is not None:
         try:
             u = float(u)
-            pct = round(u * 100, 1) if u <= 1 else round(u, 1)
+            # Anthropic 回傳的 utilization 就是百分比（0–100）。不要猜「<=1 是小數」：
+            # 剛重置後用了 1% 會回傳 1，被當小數乘 100 就變成 100%（顯示剩 0%）。
+            pct = round(min(max(u, 0.0), 100.0), 1)
         except (TypeError, ValueError):
             pct = None
     return {

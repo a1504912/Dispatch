@@ -38,7 +38,7 @@ function Line({ label, used, resetMs, now }) {
   );
 }
 
-function Block({ emoji, name, plan, lines, loading, err, now, onReload }) {
+function Block({ emoji, name, plan, stale, lines, loading, err, now, onReload }) {
   return (
     <div className="rounded-xl bg-white/5 p-2.5 ring-1 ring-white/10">
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -47,6 +47,11 @@ function Block({ emoji, name, plan, lines, loading, err, now, onReload }) {
         </span>
         {plan && (
           <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-slate-300">{plan}</span>
+        )}
+        {stale && (
+          <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300" title="暫時拿不到最新數字，顯示的是上一次的資料">
+            舊資料
+          </span>
         )}
         <button
           onClick={onReload}
@@ -155,6 +160,7 @@ export default function SidebarUsage() {
         emoji="✳️"
         name="Claude"
         plan={claude?.subscription_type}
+        stale={claude?.stale}
         lines={claudeLines}
         loading={claudeLoading}
         err={claudeErr}
