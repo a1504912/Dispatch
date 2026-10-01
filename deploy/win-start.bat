@@ -21,7 +21,7 @@ echo == Starting Dispatch on http://0.0.0.0:8000 ==
 echo (Keep this window open. Close it to stop Dispatch.)
 cd /d "%REPO%\backend"
 call .venv\Scripts\activate.bat
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 echo.
 echo ============================================================

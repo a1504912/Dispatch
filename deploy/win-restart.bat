@@ -34,7 +34,9 @@ echo deps>"%ST%"
 echo == Updating backend packages ==
 cd /d "%REPO%\backend"
 call .venv\Scripts\activate.bat
-pip install -r requirements.txt
+rem Use "python -m pip" (not pip.exe): Windows Smart App Control / Device Guard
+rem blocks the unsigned pip.exe / uvicorn.exe launchers, but python.exe is signed.
+python -m pip install -r requirements.txt
 rem Headless browser used by the e-invoice feature (fast no-op if installed)
 python -m playwright install chromium
 
@@ -46,7 +48,7 @@ timeout /t 2 >nul
 
 echo == Starting Dispatch on http://0.0.0.0:8000 ==
 echo (Keep this window open. Close it to stop Dispatch.)
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 rem Reaching here means the server stopped or FAILED TO START.
 rem When run by hand, stop so the error above stays visible.
