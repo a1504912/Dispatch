@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   addText,
+  commitEncryption,
   createNotebook,
   deleteItem,
   deleteNotebook,
@@ -9,6 +10,7 @@ import {
   listItems,
   listNotebooks,
   mediaUrl,
+  stageEncryptedBlob,
   updateNotebook,
   uploadFile,
 } from "../api/notes";
@@ -272,6 +274,49 @@ function Bubble({ item, cryptoKey, onDelete, onSaveEdit }) {
   );
 }
 
+/* ---------- 既有記事本改成加密（全部在瀏覽器加密） ---------- */
+async function encryptExisting(nbId, password, onStep) {
+  const salt = newSalt();
+  const key = await deriveKey(password, salt);
+  const enc_check = await makeCheck(key);
+
+  // 1) 拿到全部內容
+  let all = [];
+  let before = null;
+  for (;;) {
+    const rows = await listItems(nbId, before, 200);
+    all = [...rows, ...all];
+    if (rows.length < 200) break;
+    before = rows[0].id;
+  }
+
+  // 2) 逐則加密；有檔案的先下載、加密、上傳成暫存檔（資料庫還沒動）
+  const out = [];
+  for (let i = 0; i < all.length; i++) {
+    const it = all[i];
+    onStep(`加密中 ${i + 1} / ${all.length}`);
+    const entry = { id: it.id, text: it.text ? await encryptText(key, it.text) : "" };
+    if (it.media_url) {
+      onStep(`下載第 ${i + 1} / ${all.length} 則的檔案…`);
+      const buf = await fetchMediaBytes(it.media_url);
+      const blob = await encryptBytes(key, buf);
+      entry.enc_meta = await encryptText(
+        key,
+        JSON.stringify({ name: it.media_name, type: it.media_type || "application/octet-stream", size: it.media_size })
+      );
+      entry.blob = await stageEncryptedBlob(nbId, blob, (p) =>
+        onStep(`上傳第 ${i + 1} / ${all.length} 則（${Math.round(p * 100)}%）`)
+      );
+    }
+    out.push(entry);
+  }
+
+  // 3) 一次換掉；失敗的話原本內容不變
+  onStep("最後確認中…");
+  const nb = await commitEncryption(nbId, { enc_salt: salt, enc_check, items: out });
+  return { nb, key };
+}
+
 /* ---------- 新增 / 設定 記事本 ---------- */
 function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
   const isEdit = Boolean(initial?.id);
@@ -285,6 +330,8 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
   const [ack, setAck] = useState(false);
+  const [step, setStep] = useState(""); // 既有記事本加密的進度
+  const canEncrypt = !initial?.encrypted;
   const pwProblem = !encrypt
     ? ""
     : !cryptoSupported()
@@ -308,12 +355,21 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
         key = await deriveKey(pw1, salt);
         Object.assign(payload, { encrypted: true, enc_salt: salt, enc_check: await makeCheck(key) });
       }
-      const nb = isEdit ? await updateNotebook(initial.id, payload) : await createNotebook(payload);
+      let nb = isEdit ? await updateNotebook(initial.id, payload) : await createNotebook(payload);
+      if (isEdit && encrypt) {
+        // 既有內容：在瀏覽器下載→加密→上傳，最後一次換掉
+        setStep("準備中…");
+        const r = await encryptExisting(initial.id, pw1, setStep);
+        nb = r.nb;
+        key = r.key;
+      }
       onSaved(nb, key);
     } catch (e) {
-      window.alert(`儲存失敗：${e?.response?.data?.detail || e.message}`);
+      const msg = e?.response?.data?.detail || e.message;
+      window.alert(isEdit && encrypt ? `加密沒有完成，原本內容沒有變動。\n（${msg}）` : `儲存失敗：${msg}`);
     } finally {
       setSaving(false);
+      setStep("");
     }
   }
   async function remove() {
@@ -323,8 +379,8 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => !saving && onClose()}>
+      <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-black text-slate-900">{isEdit ? "記事本設定" : "新增記事本"}</h2>
         <div className="mt-4 space-y-4">
           <input
@@ -354,18 +410,21 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
             </label>
           )}
 
-          {isEdit ? (
-            initial.encrypted && (
-              <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">🔐 這本是加密記事本，密碼建立後無法更改。</p>
-            )
+          {!canEncrypt ? (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">🔐 這本是加密記事本，密碼建立後無法更改。</p>
           ) : (
             <div className="rounded-xl border border-slate-200 p-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-                <input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
+                <input type="checkbox" checked={encrypt} disabled={saving} onChange={(e) => setEncrypt(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
                 🔐 加密這本（用密碼加密，主機只存亂碼）
               </label>
               {encrypt && (
                 <div className="mt-3 space-y-2">
+                  {isEdit && (
+                    <p className="rounded-lg bg-slate-50 px-2.5 py-2 text-xs leading-relaxed text-slate-600">
+                      會把這本現有的 {initial.count} 則內容（含照片、影片、檔案）在你的裝置加密後重新上傳，影片多的話要等一下，過程中別關掉網頁。中途失敗原本內容不會變。網址的預覽圖會移除（連結本身保留）。
+                    </p>
+                  )}
                   <input type="password" autoComplete="new-password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="設定密碼（至少 6 個字）" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:bg-white" />
                   <input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="再輸入一次" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:bg-white" />
                   <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700">
@@ -373,6 +432,7 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
                     我了解：忘記密碼就永遠打不開，沒有任何方法能救回內容；密碼也之後無法更改。
                   </label>
                   {pwProblem && <p className="text-xs text-slate-500">{pwProblem}</p>}
+                  {step && <p className="text-xs font-bold text-emerald-700">🔐 {step}</p>}
                 </div>
               )}
             </div>
@@ -384,11 +444,11 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
               刪除
             </button>
           )}
-          <button onClick={onClose} className="ml-auto rounded-xl px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">
+          <button onClick={onClose} disabled={saving} className="ml-auto rounded-xl px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">
             取消
           </button>
           <button onClick={save} disabled={!name.trim() || saving || Boolean(pwProblem)} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2 text-sm font-bold text-white shadow-md shadow-indigo-200 disabled:opacity-40">
-            {saving ? (encrypt && !isEdit ? "產生金鑰中…" : "儲存中…") : isEdit ? "儲存" : "建立"}
+            {saving ? (encrypt ? (isEdit ? "加密中…" : "產生金鑰中…") : "儲存中…") : isEdit ? (encrypt ? "加密並儲存" : "儲存") : "建立"}
           </button>
         </div>
       </div>
@@ -819,7 +879,10 @@ export default function Notes() {
           onClose={() => setModal(null)}
           onSaved={(nb, key) => {
             setModal(null);
-            if (key) setKeys((k) => ({ ...k, [nb.id]: key })); // 剛建立的加密記事本直接解鎖
+            if (key) {
+              setKeys((k) => ({ ...k, [nb.id]: key })); // 剛建立／剛加密的記事本直接解鎖
+              if (selId === nb.id) setItems([]);
+            }
             loadNotebooks().then((rows) => {
               if (!modal.nb) setSelId(nb.id);
               // 設成隱藏後、又不在隱藏模式 → 從畫面消失

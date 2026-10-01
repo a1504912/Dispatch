@@ -72,3 +72,21 @@ export async function fetchMediaBytes(path) {
   const { data } = await client.get(path, { responseType: "arraybuffer" });
   return data;
 }
+
+// ---------- 既有記事本改成加密 ----------
+export async function stageEncryptedBlob(notebookId, blob, onProgress) {
+  const fd = new FormData();
+  fd.append("file", blob, "data.bin");
+  const { data } = await client.post(`/api/notes/notebooks/${notebookId}/encrypt/blob`, fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) onProgress(e.loaded / e.total);
+    },
+  });
+  return data.blob;
+}
+
+export async function commitEncryption(notebookId, payload) {
+  const { data } = await client.post(`/api/notes/notebooks/${notebookId}/encrypt/commit`, payload);
+  return data;
+}

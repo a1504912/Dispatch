@@ -309,6 +309,135 @@ def media(item_id: int, download: int = 0, session: Session = Depends(get_sessio
     return FileResponse(path, media_type=it.media_type)
 
 
+# ---------- 既有記事本改成加密 ----------
+# 兩段式，中途失敗原本內容完全不動：
+#   1) 瀏覽器把每個檔案加密後，用 encrypt/blob 先上傳成暫存檔（staged-xxx.bin），資料庫不變
+#   2) 全部好了再呼叫 encrypt/commit：同一筆交易把每則換成密文、記事本標成加密，成功後才刪明文檔
+
+STAGED_RE = re.compile(r"^staged-[0-9a-f]{32}\.bin$")
+
+
+def _cleanup_stale_staged(max_age_s: int = 24 * 3600) -> None:
+    import time
+
+    now = time.time()
+    for p in _media_dir().glob("staged-*.bin"):
+        try:
+            if now - p.stat().st_mtime > max_age_s:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+@router.post("/notebooks/{nb_id}/encrypt/blob", status_code=201)
+def encrypt_stage_blob(nb_id: int, file: UploadFile = File(...), session: Session = Depends(get_session)):
+    nb = _get_nb(session, nb_id)
+    if nb.encrypted:
+        raise HTTPException(status_code=400, detail="這本已經是加密記事本")
+    _cleanup_stale_staged()
+    name = f"staged-{uuid.uuid4().hex}.bin"
+    dest = _media_dir() / name
+    size = 0
+    with open(dest, "wb") as out:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD + 64:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="檔案太大（單檔上限 200MB）")
+            out.write(chunk)
+    return {"blob": name, "size": size}
+
+
+class EncItemIn(BaseModel):
+    id: int
+    text: str = ""  # 加密後的文字（沒有文字就空字串）
+    blob: str = ""  # encrypt/blob 回傳的暫存檔名（有檔案的才有）
+    enc_meta: str = ""  # 加密後的 {name,type,size}
+
+
+class EncryptCommitIn(BaseModel):
+    enc_salt: str
+    enc_check: str
+    items: list[EncItemIn]
+
+
+@router.post("/notebooks/{nb_id}/encrypt/commit")
+def encrypt_commit(nb_id: int, payload: EncryptCommitIn, session: Session = Depends(get_session)):
+    staged = [i.blob for i in payload.items if i.blob]
+
+    def fail(status: int, msg: str):
+        for b in staged:  # 失敗就把這次的暫存檔清掉，原本內容不動
+            if STAGED_RE.match(b):
+                (_media_dir() / b).unlink(missing_ok=True)
+        raise HTTPException(status_code=status, detail=msg)
+
+    nb = session.get(Notebook, nb_id)
+    if not nb:
+        fail(404, "找不到這個記事本")
+    if nb.encrypted:
+        fail(400, "這本已經是加密記事本")
+    if not (payload.enc_salt and payload.enc_check):
+        fail(400, "缺少密碼資料")
+    for b in staged:
+        if not STAGED_RE.match(b) or not (_media_dir() / b).is_file():
+            fail(400, "暫存檔不存在，請重新加密一次")
+
+    rows = session.exec(select(NoteItem).where(NoteItem.notebook_id == nb_id)).all()
+    by_id = {r.id: r for r in rows}
+    got = {i.id for i in payload.items}
+    if got != set(by_id):
+        fail(409, "加密期間這本有新增或刪除內容，請再試一次")
+    for i in payload.items:
+        r = by_id[i.id]
+        if r.text and not i.text.startswith("e1:"):
+            fail(400, "有內容沒有加密，請再試一次")
+        if r.media_path and not (i.blob and i.enc_meta):
+            fail(400, "有檔案沒有加密，請再試一次")
+
+    old_files: list[str] = []
+    renamed: list[str] = []
+    try:
+        for i in payload.items:
+            r = by_id[i.id]
+            r.text = i.text if r.text else ""
+            if r.media_path:
+                final = i.blob.removeprefix("staged-")
+                (_media_dir() / i.blob).rename(_media_dir() / final)
+                renamed.append(final)
+                old_files.append(r.media_path)
+                r.media_path = final
+                r.kind = "enc"
+                r.media_name = "encrypted.bin"
+                r.media_type = "application/octet-stream"
+                r.media_size = (_media_dir() / final).stat().st_size
+                r.meta = json.dumps({"enc": i.enc_meta})
+            else:
+                r.kind, r.meta = "text", None  # 連結預覽（標題、網址）是明文，一併拿掉
+            session.add(r)
+        nb.encrypted = True
+        nb.enc_salt = payload.enc_salt
+        nb.enc_check = payload.enc_check
+        session.add(nb)
+        session.commit()
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        for f in renamed:  # 已改名的密文檔也清掉；資料庫仍指向原本的明文檔
+            (_media_dir() / f).unlink(missing_ok=True)
+        fail(424, f"加密失敗，原本內容沒有變動：{exc}")
+
+    for f in old_files:  # 交易成功後才刪明文檔
+        try:
+            (_media_dir() / f).unlink(missing_ok=True)
+        except OSError:
+            pass
+    session.refresh(nb)
+    return _nb_dict(nb, session)
+
+
 def _remove_file(it: NoteItem) -> None:
     if it.media_path:
         try:
