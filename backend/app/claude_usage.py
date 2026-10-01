@@ -51,8 +51,17 @@ def read_claude_creds() -> dict | None:
 
 OAUTH_TOKEN_URLS = (
     "https://platform.claude.com/v1/oauth/token",
-    "https://console.anthropic.com/v1/oauth/token",  # 舊網址，新的連不到才用
+    "https://claude.ai/v1/oauth/token",
+    "https://console.anthropic.com/v1/oauth/token",  # 舊網址，前面都不行才用
 )
+# 這些網址前面有 Cloudflare 防機器人；User-Agent 不像 Claude Code 會被擋（403 "Just a moment..."）
+REFRESH_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "claude-cli/2.0.0 (external, cli)",
+}
+# 最近一次自動換新的結果（失敗原因會顯示在畫面上，方便除錯）
+LAST_REFRESH: dict = {"at": 0, "ok": None, "detail": ""}
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # Claude Code 的公開 client id
 REFRESH_EARLY_MS = 5 * 60 * 1000  # 過期前 5 分鐘就先換
 
@@ -81,6 +90,23 @@ def _acquire_lock(wait_s: float = 8.0) -> bool:
         if time.time() > deadline:
             return False
         time.sleep(0.3)
+
+
+def _describe_fail(r) -> str:
+    text = r.text or ""
+    if r.status_code == 403 and "Just a moment" in text:
+        return "403 被 Cloudflare 驗證擋下"
+    snippet = ""
+    try:
+        j = r.json()
+        err = j.get("error")
+        if isinstance(err, dict):
+            snippet = err.get("type") or err.get("message") or ""
+        else:
+            snippet = str(err or j.get("error_description") or "")
+    except ValueError:
+        snippet = text[:60].replace("\n", " ")
+    return f"HTTP {r.status_code} {snippet}".strip()
 
 
 def _release_lock() -> None:
@@ -112,11 +138,13 @@ def refresh_if_needed(force: bool = False) -> bool:
     except (TypeError, ValueError):
         exp = 0
     if not blk.get("refreshToken"):
+        LAST_REFRESH.update(at=time.time(), ok=False, detail="登入檔裡沒有 refresh token")
         return False
     if not force and exp and exp - time.time() * 1000 > REFRESH_EARLY_MS:
         return False  # 還很新，不用換
 
     if not _acquire_lock():
+        LAST_REFRESH.update(at=time.time(), ok=False, detail="等不到換新鎖（Claude Code 可能正在換）")
         return False
     try:
         # 拿到鎖後重讀：CLI 可能剛換過，就不要再花同一個 refresh token
@@ -135,18 +163,28 @@ def refresh_if_needed(force: bool = False) -> bool:
             body["scope"] = " ".join(scopes)
 
         tok = None
+        attempts: list[str] = []
         with httpx.Client(timeout=20.0, follow_redirects=False) as client:
             for url in OAUTH_TOKEN_URLS:
+                host = url.split("/")[2]
                 try:
-                    r = client.post(url, json=body, headers={"Content-Type": "application/json", "User-Agent": "anthropic"})
-                except httpx.HTTPError:
+                    r = client.post(url, json=body, headers=REFRESH_HEADERS)
+                except httpx.HTTPError as exc:
+                    attempts.append(f"{host} 連線失敗 {type(exc).__name__}")
                     continue
-                if r.status_code in (404, 405) or 300 <= r.status_code < 400:
-                    continue  # 這個網址不對，換下一個
                 if r.status_code == 200:
-                    tok = r.json()
-                break
+                    try:
+                        tok = r.json()
+                    except ValueError:
+                        tok = None
+                    if tok and tok.get("access_token"):
+                        break
+                    attempts.append(f"{host} 200 但沒有 token")
+                    continue
+                attempts.append(f"{host} {_describe_fail(r)}")
+                # 400/401（例如 invalid_grant＝refresh token 已失效）換網址也沒用，但仍記錄後試下一個
         if not tok or not tok.get("access_token"):
+            LAST_REFRESH.update(at=time.time(), ok=False, detail="；".join(attempts) or "沒有可用的網址")
             return False
 
         blk["accessToken"] = tok["access_token"]
@@ -161,8 +199,10 @@ def refresh_if_needed(force: bool = False) -> bool:
             blk["scopes"] = tok["scope"].split()
         creds["claudeAiOauth"] = blk
         _write_creds_atomic(creds)
+        LAST_REFRESH.update(at=time.time(), ok=True, detail="")
         return True
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        LAST_REFRESH.update(at=time.time(), ok=False, detail=f"{type(exc).__name__}: {str(exc)[:120]}")
         return False
     finally:
         _release_lock()
@@ -282,8 +322,9 @@ def fetch_usage(session, debug: bool = False) -> dict:
             return {**cached, "stale": True}
         raise RuntimeError("Anthropic 端點限流中（每分鐘只能查一次），請稍後再按更新。")
     if resp.status_code in (401, 403):
+        why = LAST_REFRESH.get("detail") or "未知原因"
         raise RuntimeError(
-            "Claude 登入已過期且自動換新失敗：在主機開終端機執行一次 claude（進去再離開），就會恢復。"
+            f"Claude 登入已過期，自動換新失敗（{why}）：在主機執行一次 claude 即可恢復。"
         )
     if resp.status_code >= 400:
         raise RuntimeError(f"HTTP {resp.status_code}: {(resp.text or '')[:200]}")

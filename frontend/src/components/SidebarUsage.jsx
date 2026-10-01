@@ -178,7 +178,11 @@ function errText(e) {
     return "連線暫時中斷，按 ↻ 重試";
   }
   if (msg.includes("找不到")) return "未連結（無登入檔）";
-  if (msg.includes("登入已過期")) return "登入過期：到主機執行一次 claude";
+  if (msg.includes("登入已過期")) {
+    // 把自動換新失敗的原因一併顯示（括號裡那段），方便截圖除錯
+    const why = msg.match(/（(.+?)）/)?.[1];
+    return why ? `登入過期，自動換新失敗：${why}` : "登入過期：到主機執行一次 claude";
+  }
   if (msg.includes("過期")) return "token 過期：主機重新登入一次";
   if (msg.includes("限流")) return "限流中，稍後再試";
   if (!msg) return status ? `錯誤 ${status}` : "查詢失敗";
