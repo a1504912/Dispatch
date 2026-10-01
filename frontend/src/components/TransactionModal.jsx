@@ -236,7 +236,8 @@ export default function TransactionModal({ open, initial, categories = [], txs =
     setSaving(true);
     try {
       let splitBillId = initial?.split_bill_id ?? null;
-      if (splitOn && !isEdit && form.kind === "expense" && parts.length > 1) {
+      // 只要有勾到「你以外的人」就掛帳（全額代墊、自己不分攤也要掛）；只勾自己才不必建分帳
+      if (splitOn && !isEdit && form.kind === "expense" && parts.some((p) => p !== "self")) {
         const arr = parts.map((p) => ({ who: p, value: shares[p] || 0 }));
         const bill = await createSplitBill({
           title: form.note.trim() || form.category || "分帳",
