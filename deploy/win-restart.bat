@@ -1,11 +1,17 @@
 @echo off
-rem Dispatch 一鍵更新 + 重啟（Windows）
-rem 直接雙擊執行時：先把自己複製到暫存再跑，避免 git pull 改寫「正在執行的腳本」
-rem 導致 cmd 找不到位置、視窗直接關閉。網頁「立即更新」會帶 %1=repo 進來，走正常流程。
+rem Dispatch one-click update + restart (Windows).
+rem
+rem KEEP THIS FILE ASCII-ONLY. cmd.exe reads .bat files using the system code
+rem page (Big5 on Traditional Chinese Windows). UTF-8 Chinese text in a .bat
+rem can swallow quotes and break commands.
+rem
+rem Double-click (no args): copy this script to %TEMP% and run the copy, so that
+rem "git pull" cannot rewrite the script while it is running.
+rem Web "Update now" passes %1=repo path and runs the normal flow directly.
 
 if "%~1"=="" (
   copy /y "%~f0" "%TEMP%\dispatch-update.bat" >nul
-  start "Dispatch 更新" "%TEMP%\dispatch-update.bat" "%~dp0.." manual
+  start "Dispatch Update" "%TEMP%\dispatch-update.bat" "%~dp0.." manual
   exit /b
 )
 
@@ -29,26 +35,27 @@ echo == Updating backend packages ==
 cd /d "%REPO%\backend"
 call .venv\Scripts\activate.bat
 pip install -r requirements.txt
-rem 發票功能需要的隱形瀏覽器（已裝過會很快略過）
+rem Headless browser used by the e-invoice feature (fast no-op if installed)
 python -m playwright install chromium
 
 echo restart>"%ST%"
 echo == Stopping old server on port 8000 ==
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000" ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
-rem 等一下讓 8000 埠確實釋放，避免新伺服器搶不到埠而秒退
+rem Give the OS a moment to release port 8000
 timeout /t 2 >nul
 
 echo == Starting Dispatch on http://0.0.0.0:8000 ==
 echo (Keep this window open. Close it to stop Dispatch.)
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-rem 跑到這裡＝伺服器已停止或「啟動失敗」。手動執行時停住，讓你看得到上面的錯誤原因。
+rem Reaching here means the server stopped or FAILED TO START.
+rem When run by hand, stop so the error above stays visible.
 if /i "%MANUAL%"=="manual" (
   echo.
   echo ============================================================
-  echo  伺服器已停止或啟動失敗。若上面有紅字，那就是原因。
-  echo  常見：8000 埠還被占用、venv 沒建好、git pull 有衝突。
-  echo  按任意鍵關閉這個視窗...
+  echo  Server stopped or failed to start. Any red text above is the reason.
+  echo  Common causes: port 8000 still in use, venv missing, git pull conflict.
+  echo  Take a screenshot of this window, then press any key to close.
   echo ============================================================
   pause >nul
 )

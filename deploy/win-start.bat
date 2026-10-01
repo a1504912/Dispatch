@@ -1,10 +1,11 @@
 @echo off
-rem Dispatch 開機/登入自動啟動：重掛 Tailscale Funnel + 啟動後端伺服器。
-rem 不做 git pull（那是 win-restart.bat 的事）；這支只負責「把服務拉起來」。
-rem 由 win-autostart-setup.bat 註冊成登入時自動執行。
+rem Dispatch start at boot/login: re-arm Tailscale Funnel + start the backend.
+rem No git pull here (that is win-restart.bat's job); this only brings services up.
+rem Registered by win-autostart-setup.bat to run at login.
+rem KEEP THIS FILE ASCII-ONLY (see win-restart.bat for why).
 
 set "REPO=%~dp0.."
-rem 確保找得到 tailscale（預設安裝路徑；已在 PATH 就無妨）
+rem Make sure tailscale is found (default install path; harmless if already in PATH)
 set "PATH=%PATH%;C:\Program Files\Tailscale"
 cd /d "%REPO%"
 
@@ -14,9 +15,17 @@ tailscale funnel --bg 8000
 
 echo == Stopping any old server on port 8000 ==
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000" ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+timeout /t 2 >nul
 
 echo == Starting Dispatch on http://0.0.0.0:8000 ==
 echo (Keep this window open. Close it to stop Dispatch.)
 cd /d "%REPO%\backend"
 call .venv\Scripts\activate.bat
 uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+echo.
+echo ============================================================
+echo  Server stopped or failed to start. Any red text above is the reason.
+echo  Take a screenshot of this window, then press any key to close.
+echo ============================================================
+pause >nul
