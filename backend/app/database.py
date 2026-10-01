@@ -71,6 +71,17 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE subtask ADD COLUMN images TEXT"))
                 conn.commit()
 
+            # 記事本：補上加密欄位
+            nb_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(notebook)"))]
+            if nb_cols:
+                if "encrypted" not in nb_cols:
+                    conn.execute(text("ALTER TABLE notebook ADD COLUMN encrypted BOOLEAN NOT NULL DEFAULT 0"))
+                if "enc_salt" not in nb_cols:
+                    conn.execute(text("ALTER TABLE notebook ADD COLUMN enc_salt VARCHAR NOT NULL DEFAULT ''"))
+                if "enc_check" not in nb_cols:
+                    conn.execute(text("ALTER TABLE notebook ADD COLUMN enc_check VARCHAR NOT NULL DEFAULT ''"))
+                conn.commit()
+
             # 比價候選：補上預覽圖、二手/新品欄位
             po_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(priceoption)"))]
             if po_cols:

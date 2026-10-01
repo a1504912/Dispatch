@@ -58,9 +58,11 @@ def _item_dict(it: NoteItem) -> dict:
     }
 
 
-def _preview_text(it: NoteItem | None) -> str:
+def _preview_text(it: NoteItem | None, encrypted: bool = False) -> str:
     if not it:
         return ""
+    if encrypted:
+        return "🔐 已加密的內容"
     if it.kind == "image":
         return "📷 照片" + (f"：{it.text}" if it.text else "")
     if it.kind == "video":
@@ -83,7 +85,10 @@ def _nb_dict(nb: Notebook, session: Session) -> dict:
         "pinned": nb.pinned,
         "updated_at": nb.updated_at.isoformat() + "Z",
         "count": count,
-        "last": _preview_text(last),
+        "last": _preview_text(last, nb.encrypted),
+        "encrypted": nb.encrypted,
+        "enc_salt": nb.enc_salt,
+        "enc_check": nb.enc_check,
     }
 
 
@@ -107,6 +112,10 @@ class NotebookIn(BaseModel):
     emoji: str = "📒"
     hidden: bool = False
     pinned: bool = False
+    # 只在建立時有效；之後不能改（改了舊內容就解不開）
+    encrypted: bool = False
+    enc_salt: str = ""
+    enc_check: str = ""
 
 
 @router.get("/notebooks")
@@ -122,7 +131,17 @@ def list_notebooks(include_hidden: int = 0, session: Session = Depends(get_sessi
 def create_notebook(payload: NotebookIn, session: Session = Depends(get_session)):
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="請輸入名稱")
-    nb = Notebook(name=payload.name.strip(), emoji=payload.emoji or "📒", hidden=payload.hidden, pinned=payload.pinned)
+    if payload.encrypted and not (payload.enc_salt and payload.enc_check):
+        raise HTTPException(status_code=400, detail="加密記事本缺少密碼資料")
+    nb = Notebook(
+        name=payload.name.strip(),
+        emoji=payload.emoji or "📒",
+        hidden=payload.hidden,
+        pinned=payload.pinned,
+        encrypted=payload.encrypted,
+        enc_salt=payload.enc_salt if payload.encrypted else "",
+        enc_check=payload.enc_check if payload.encrypted else "",
+    )
     session.add(nb)
     session.commit()
     session.refresh(nb)
@@ -182,7 +201,7 @@ def add_text(nb_id: int, payload: TextIn, session: Session = Depends(get_session
     if not text:
         raise HTTPException(status_code=400, detail="內容是空的")
     it = NoteItem(notebook_id=nb_id, kind="text", text=text)
-    m = URL_RE.search(text)
+    m = None if nb.encrypted else URL_RE.search(text)  # 加密內容是亂碼，不抓預覽
     if m:  # 有網址 → 當連結，順便抓標題/預覽圖
         it.kind = "link"
         it.meta = json.dumps(_link_preview(m.group(0)), ensure_ascii=False)
@@ -198,6 +217,7 @@ def upload(
     nb_id: int,
     file: UploadFile = File(...),
     caption: str = Form(""),
+    enc_meta: str = Form(""),  # 加密記事本：加密過的 {name,type,size}
     session: Session = Depends(get_session),
 ):
     nb = _get_nb(session, nb_id)
@@ -206,6 +226,11 @@ def upload(
     suffix = Path(file.filename or "").suffix.lower()
     if not re.fullmatch(r"\.[a-z0-9]{1,8}", suffix or ""):
         suffix = ""
+    if nb.encrypted:
+        # 主機看不到內容，也不知道是照片還是影片；檔名、類型都在 enc_meta 裡（加密）
+        if not enc_meta:
+            raise HTTPException(status_code=400, detail="加密記事本的檔案缺少加密資訊")
+        kind, ctype, suffix = "enc", "application/octet-stream", ".bin"
     name = f"{uuid.uuid4().hex}{suffix}"
     dest = _media_dir() / name
     size = 0
@@ -225,9 +250,10 @@ def upload(
         kind=kind,
         text=caption.strip(),
         media_path=name,
-        media_name=(file.filename or name)[:200],
+        media_name="encrypted.bin" if nb.encrypted else (file.filename or name)[:200],
         media_type=ctype,
         media_size=size,
+        meta=json.dumps({"enc": enc_meta}) if nb.encrypted else None,
     )
     session.add(it)
     _touch(session, nb)
@@ -242,7 +268,10 @@ def edit_item(item_id: int, payload: TextIn, session: Session = Depends(get_sess
     if not it:
         raise HTTPException(status_code=404, detail="找不到這則")
     it.text = payload.text.strip()
-    if it.kind in ("text", "link"):
+    nb = session.get(Notebook, it.notebook_id)
+    if nb and nb.encrypted:
+        pass  # 加密內容：原樣存，不判斷網址
+    elif it.kind in ("text", "link"):
         m = URL_RE.search(it.text)
         if m:
             old = json.loads(it.meta) if it.meta else {}

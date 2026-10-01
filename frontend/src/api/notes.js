@@ -32,10 +32,11 @@ export async function addText(notebookId, text) {
 }
 
 // 上傳照片/影片/檔案；onProgress(0~100)
-export async function uploadFile(notebookId, file, caption = "", onProgress) {
+export async function uploadFile(notebookId, file, caption = "", onProgress, encMeta = "") {
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("file", file, file.name || "file");
   fd.append("caption", caption);
+  if (encMeta) fd.append("enc_meta", encMeta);
   const { data } = await client.post(`/api/notes/notebooks/${notebookId}/upload`, fd, {
     headers: { "Content-Type": "multipart/form-data" },
     onUploadProgress: (e) => {
@@ -64,4 +65,10 @@ export function mediaUrl(path, download = false) {
   if (download) qs.set("download", "1");
   const q = qs.toString();
   return `${base}${path}${q ? `?${q}` : ""}`;
+}
+
+// 取回原始位元組（加密記事本要先下載再在瀏覽器解密）
+export async function fetchMediaBytes(path) {
+  const { data } = await client.get(path, { responseType: "arraybuffer" });
+  return data;
 }

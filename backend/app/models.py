@@ -229,6 +229,10 @@ class Notebook(SQLModel, table=True):
     emoji: str = "📒"
     hidden: bool = False  # 隱藏：平常不列出，要連點標題 5 下才看得到
     pinned: bool = False  # 置頂
+    # 加密記事本：內容在瀏覽器用密碼加密後才送來，主機只存亂碼，主機無法解密
+    encrypted: bool = False
+    enc_salt: str = ""  # PBKDF2 的 salt（base64，非機密）
+    enc_check: str = ""  # 用密碼加密的固定字串，用來驗證密碼對不對
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)  # 最後一則的時間，用來排序
 
