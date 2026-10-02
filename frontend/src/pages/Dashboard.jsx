@@ -57,7 +57,7 @@ function StatCard({ emoji, label, value, hint, onClick, accent }) {
 }
 
 // 統計卡點開後列出項目的視窗
-function StatListModal({ open, title, empty, children, onClose }) {
+function StatListModal({ open, title, empty, toolbar, children, onClose }) {
   if (!open) return null;
   return (
     <div
@@ -74,6 +74,7 @@ function StatListModal({ open, title, empty, children, onClose }) {
             ✕
           </button>
         </div>
+        {toolbar && <div className="border-b border-slate-100 px-6 py-3">{toolbar}</div>}
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-6 py-4">
           {children ?? <p className="py-10 text-center text-sm text-slate-400">{empty}</p>}
         </div>
@@ -201,6 +202,9 @@ export default function Dashboard() {
 
   // 統計卡點開的清單視窗："overdue" | "postponed" | null
   const [statModal, setStatModal] = useState(null);
+  // 未來事項查詢：範圍（天數，0＝全部）與關鍵字
+  const [futureDays, setFutureDays] = useState(30);
+  const [futureQ, setFutureQ] = useState("");
 
   // 天氣（併進週看板）
   const [weatherLoc, setWeatherLocState] = useState(getWeatherLoc);
@@ -433,6 +437,43 @@ export default function Dashboard() {
   // 延期項目：設了到期日的明細（附主項資訊）
   const eventById = {};
   for (const e of rawEvents) eventById[e.id] = e;
+  // 未來事項：明天以後、尚未完成的行程（不含待辦），依時間排序
+  const futureAll = rawEvents
+    .filter((e) => !e.is_task && !e.completed && eventDateStr(e) > todayStr)
+    .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  const futureLimit = (() => {
+    if (!futureDays) return null;
+    const d = new Date(today);
+    d.setDate(d.getDate() + futureDays);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  })();
+  const futureKw = futureQ.trim().toLowerCase();
+  const futureShown = futureAll.filter((e) => {
+    if (futureLimit && eventDateStr(e) > futureLimit) return false;
+    if (!futureKw) return true;
+    const subs = (subtasksByEvent[e.id] ?? []).map((s) => s.title).join(" ");
+    return `${e.title} ${e.description || ""} ${subs}`.toLowerCase().includes(futureKw);
+  });
+  const future7 = (() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 7);
+    const lim = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    return futureAll.filter((e) => eventDateStr(e) <= lim).length;
+  })();
+  const fmtFutureDay = (iso) => {
+    const d = new Date(`${iso}T00:00`);
+    const diff = Math.round((d - new Date(`${todayStr}T00:00`)) / 86400000);
+    const wk = "日一二三四五六"[d.getDay()];
+    const rel = diff === 1 ? "明天" : diff === 2 ? "後天" : `${diff} 天後`;
+    return `${d.getMonth() + 1}/${d.getDate()}（${wk}）・${rel}`;
+  };
+  const fmtEventTime = (e) => {
+    if (e.all_day) return "整天";
+    const s = new Date(e.start_time);
+    const en = new Date(e.end_time);
+    return `${pad2(s.getHours())}:${pad2(s.getMinutes())}–${pad2(en.getHours())}:${pad2(en.getMinutes())}`;
+  };
+
   const postponed = subtasks
     .filter((s) => s.due_date && !s.done) // 已完成的不算延期項目
     .map((s) => ({ ...s, parent: eventById[s.event_id] }))
@@ -475,7 +516,7 @@ export default function Dashboard() {
       </div>
 
       {/* 統計卡 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           emoji="🔴"
           accent="red"
@@ -497,6 +538,13 @@ export default function Dashboard() {
           label="今日行程"
           value={todayEvents.length === 0 ? 0 : `${todayDone}/${todayEvents.length}`}
           hint={todayEvents.length === 0 ? "件" : "件完成"}
+        />
+        <StatCard
+          emoji="🔭"
+          label="未來事項"
+          value={futureAll.length}
+          hint={future7 ? `件（7 天內 ${future7}）` : "件"}
+          onClick={() => setStatModal("future")}
         />
       </div>
 
@@ -725,6 +773,72 @@ export default function Dashboard() {
         }}
         onSaved={loadEvents}
       />
+
+      {/* 未來事項查詢 */}
+      <StatListModal
+        open={statModal === "future"}
+        title="🔭 未來事項"
+        onClose={() => setStatModal(null)}
+        toolbar={
+        <div className="space-y-2">
+          <input
+            value={futureQ}
+            onChange={(e) => setFutureQ(e.target.value)}
+            placeholder="搜尋標題、備註、明細…"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[[7, "7 天"], [30, "30 天"], [90, "90 天"], [0, "全部"]].map(([d, l]) => (
+              <button
+                key={d}
+                onClick={() => setFutureDays(d)}
+                className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                  futureDays === d ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+            <span className="ml-auto text-xs text-slate-400">{futureShown.length} 件</span>
+          </div>
+        </div>
+        }
+      >
+        {futureShown.length === 0 ? (
+          <p className="py-10 text-center text-sm text-slate-400">
+            {futureAll.length ? "這個範圍沒有符合的事項" : "沒有未來的行程"}
+          </p>
+        ) : (
+          futureShown.map((e, i) => {
+            const day = eventDateStr(e);
+            const newDay = i === 0 || eventDateStr(futureShown[i - 1]) !== day;
+            const subs = subtasksByEvent[e.id] ?? [];
+            const done = subs.filter((x) => x.done).length;
+            return (
+              <div key={e.id}>
+                {newDay && <p className={`mb-1 text-xs font-black text-slate-500 ${i === 0 ? "" : "mt-3"}`}>{fmtFutureDay(day)}</p>}
+                <button
+                  onClick={() => {
+                    setStatModal(null);
+                    openNewEvent(e);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left transition hover:bg-slate-50"
+                  style={{ borderLeft: `4px solid ${e.color}` }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{e.title}</p>
+                    <p className="text-xs text-slate-400">
+                      {fmtEventTime(e)}
+                      {subs.length > 0 && `　·　明細 ${done}/${subs.length}`}
+                      {e.source === "google" && "　·　Google"}
+                    </p>
+                  </div>
+                </button>
+              </div>
+            );
+          })
+        )}
+      </StatListModal>
 
       {/* 逾期未完成 */}
       <StatListModal
