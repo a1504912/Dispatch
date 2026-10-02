@@ -76,6 +76,18 @@ function WalletIcon({ className }) {
   );
 }
 
+function JournalIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+      />
+    </svg>
+  );
+}
+
 function HeartIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
@@ -160,9 +172,16 @@ function GearIcon({ className }) {
 
 const navItems = [
   { to: "/dashboard", label: "總覽", icon: CalendarIcon },
-  { to: "/notes", label: "記事本", icon: NoteIcon },
-  { to: "/ledger", label: "記帳", icon: WalletIcon },
-  { to: "/health", label: "健康", icon: HeartIcon },
+  // 記事本、記帳、健康收進「日常紀錄」群組
+  {
+    label: "日常紀錄",
+    icon: JournalIcon,
+    children: [
+      { to: "/notes", label: "記事本", icon: NoteIcon },
+      { to: "/ledger", label: "記帳", icon: WalletIcon },
+      { to: "/health", label: "健康", icon: HeartIcon },
+    ],
+  },
   // 新聞、免費遊戲、比價收進「情報站」群組；AI 員工需要後端，離線/雲端同步模式隱藏
   ...(NO_BACKEND
     ? []
