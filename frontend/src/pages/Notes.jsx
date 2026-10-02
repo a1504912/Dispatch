@@ -507,13 +507,39 @@ export default function Notes() {
     }
   }
   function lockNow() {
-    setKeys((k) => {
-      const n = { ...k };
-      delete n[selId];
-      return n;
-    });
-    setItems([]);
+    setKeys({});
+    setItems([]); // 解密後的內容也一起清掉
   }
+
+  // ---- 自動上鎖 ----
+  // 1) 離開這本（換一本或回清單）就忘記金鑰
+  useEffect(() => {
+    setKeys({});
+  }, [selId]);
+  // 2) 切到別的分頁 / 切到別的 App 超過 30 秒；3) 5 分鐘沒操作
+  const hasKey = Object.keys(keys).length > 0;
+  useEffect(() => {
+    if (!hasKey) return;
+    let hiddenAt = 0;
+    let idle = setTimeout(lockNow, 5 * 60 * 1000);
+    const bump = () => {
+      clearTimeout(idle);
+      idle = setTimeout(lockNow, 5 * 60 * 1000);
+    };
+    const onVis = () => {
+      if (document.hidden) hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > 30 * 1000) lockNow();
+    };
+    const evs = ["pointerdown", "keydown", "wheel", "touchstart"];
+    evs.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearTimeout(idle);
+      evs.forEach((e) => window.removeEventListener(e, bump));
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasKey]);
 
   function loadNotebooks(hidden = showHidden) {
     return listNotebooks(hidden)
@@ -766,7 +792,7 @@ export default function Notes() {
                 <div className="w-full max-w-xs rounded-2xl bg-white p-5 text-center shadow-sm">
                   <p className="text-3xl">🔐</p>
                   <p className="mt-2 font-black text-slate-800">加密記事本</p>
-                  <p className="mt-1 text-xs text-slate-400">輸入密碼解鎖。重新整理或按「鎖上」後要再輸入一次。</p>
+                  <p className="mt-1 text-xs text-slate-400">輸入密碼解鎖。離開這本、切到別的 App 超過 30 秒、5 分鐘沒操作都會自動鎖上。</p>
                   <input
                     type="password"
                     autoFocus
@@ -880,8 +906,10 @@ export default function Notes() {
           onSaved={(nb, key) => {
             setModal(null);
             if (key) {
-              setKeys((k) => ({ ...k, [nb.id]: key })); // 剛建立／剛加密的記事本直接解鎖
-              if (selId === nb.id) setItems([]);
+              // 剛建立／剛加密完：直接上鎖，要輸入一次密碼才看得到（順便確認密碼沒打錯）
+              setKeys({});
+              setItems([]);
+              flash("🔐 已加密並上鎖，輸入密碼即可開啟");
             }
             loadNotebooks().then((rows) => {
               if (!modal.nb) setSelId(nb.id);
