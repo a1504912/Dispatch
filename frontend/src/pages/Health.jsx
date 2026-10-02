@@ -1,0 +1,697 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { addLog, deleteLog, estimateFood, getDay, getMonth, getWeights, saveHealthSettings } from "../api/health";
+import { compressImageFile } from "../imageCompress";
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function addDays(s, n) {
+  const d = new Date(s + "T00:00");
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function nowHM() {
+  return new Date().toTimeString().slice(0, 5);
+}
+const field =
+  "w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+
+const MEALS = [
+  ["breakfast", "早餐"],
+  ["lunch", "午餐"],
+  ["dinner", "晚餐"],
+  ["snack", "點心"],
+];
+const mealLabel = (m) => MEALS.find(([k]) => k === m)?.[1] || "其他";
+
+function Card({ title, emoji, right, children }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-base font-black text-slate-900">
+          {emoji} {title}
+        </h2>
+        {right}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+
+/* BMI：依衛福部國健署成人標準 */
+function bmiInfo(weight, heightCm) {
+  if (!weight || !heightCm) return null;
+  const m = heightCm / 100;
+  const bmi = weight / (m * m);
+  let label, cls;
+  if (bmi < 18.5) [label, cls] = ["過輕", "bg-sky-50 text-sky-700"];
+  else if (bmi < 24) [label, cls] = ["正常", "bg-emerald-50 text-emerald-700"];
+  else if (bmi < 27) [label, cls] = ["過重", "bg-amber-50 text-amber-700"];
+  else if (bmi < 30) [label, cls] = ["輕度肥胖", "bg-orange-50 text-orange-700"];
+  else if (bmi < 35) [label, cls] = ["中度肥胖", "bg-rose-50 text-rose-700"];
+  else [label, cls] = ["重度肥胖", "bg-red-100 text-red-700"];
+  return {
+    bmi: bmi.toFixed(1),
+    label,
+    cls,
+    lo: (18.5 * m * m).toFixed(1), // 健康體重範圍
+    hi: (24 * m * m).toFixed(1),
+  };
+}
+
+/* ---------- 體重趨勢小圖 ---------- */
+function Sparkline({ series, goal }) {
+  if (!series || series.length < 2) return null;
+  const w = 260;
+  const h = 60;
+  const vals = series.map((s) => s.weight);
+  let min = Math.min(...vals, ...(goal ? [goal] : []));
+  let max = Math.max(...vals, ...(goal ? [goal] : []));
+  if (max - min < 1) {
+    min -= 1;
+    max += 1;
+  }
+  const x = (i) => (series.length === 1 ? w / 2 : (i / (series.length - 1)) * w);
+  const y = (v) => h - ((v - min) / (max - min)) * h;
+  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.weight).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-1 h-12 w-full" preserveAspectRatio="none">
+      {goal != null && (
+        <line x1="0" y1={y(goal)} x2={w} y2={y(goal)} stroke="#a7f3d0" strokeWidth="1.5" strokeDasharray="4 4" />
+      )}
+      <polyline points={pts} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {series.map((s, i) => (
+        <circle key={i} cx={x(i)} cy={y(s.weight)} r="2.5" fill="#6366f1" />
+      ))}
+    </svg>
+  );
+}
+
+/* ---------- 月曆 ---------- */
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
+function MonthCalendar({ month, days, waterGoal, selected, onPickDay, onPrev, onNext, onToday }) {
+  const [y, m] = month.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const lead = first.getDay(); // 0=Sun
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const todayIso = todayStr();
+
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+
+  const label = `${y} 年 ${m} 月`;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="mb-2 flex items-center justify-center gap-1">
+        <button onClick={onPrev} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
+        <span className="min-w-[7rem] text-center text-sm font-black text-slate-800">{label}</span>
+        <button onClick={onNext} className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
+        <button onClick={onToday} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">本月</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400">
+        {WEEKDAYS.map((w) => (
+          <div key={w} className="py-1">{w}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((iso, i) => {
+          if (!iso) return <div key={i} />;
+          const info = days[iso];
+          const dayNum = Number(iso.slice(8, 10));
+          const isToday = iso === todayIso;
+          const isSel = iso === selected;
+          const waterHit = info && waterGoal && info.water_total >= waterGoal;
+          return (
+            <button
+              key={iso}
+              onClick={() => onPickDay(iso)}
+              className={`flex min-h-[48px] min-w-0 flex-col overflow-hidden rounded-lg border p-0.5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 ${
+                isSel
+                  ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                  : isToday
+                    ? "border-indigo-300 bg-indigo-50/50"
+                    : "border-slate-100 bg-white"
+              }`}
+            >
+              <span className={`text-[11px] font-bold ${isToday ? "text-indigo-600" : "text-slate-500"}`}>{dayNum}</span>
+              {info && (
+                <span className="flex min-w-0 flex-col text-[9px] leading-tight">
+                  {info.weight != null && <span className="truncate font-bold text-slate-700">{info.weight}</span>}
+                  {info.food_calories > 0 && <span className="truncate text-rose-500">🔥{info.food_calories}</span>}
+                  {info.water_total > 0 && (
+                    <span className={`truncate ${waterHit ? "text-sky-600" : "text-sky-400"}`}>
+                      💧{info.water_total >= 1000 ? (info.water_total / 1000).toFixed(1) + "L" : info.water_total}
+                    </span>
+                  )}
+                  {info.has_exercise && <span className="truncate text-emerald-600">🏃{info.exercise_calories > 0 ? info.exercise_calories : ""}</span>}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+/* ---------- 拍照估熱量（問 GPT / Claude，估完一鍵記進飲食） ---------- */
+function guessMeal() {
+  const h = new Date().getHours();
+  if (h < 10) return "breakfast";
+  if (h < 14) return "lunch";
+  if (h < 17) return "snack";
+  if (h < 21) return "dinner";
+  return "snack";
+}
+
+function PhotoEstimate({ day, onRecorded }) {
+  const [provider, setProvider] = useState("claude");
+  const [image, setImage] = useState("");
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null); // {items:[{name,calories,on}], total, note, raw}
+  const [meal, setMeal] = useState(guessMeal());
+  const [saved, setSaved] = useState("");
+  const fileRef = useRef(null);
+  const camRef = useRef(null);
+
+  async function pick(file) {
+    if (!file || !file.type?.startsWith("image/")) return;
+    const url = await compressImageFile(file, 1280, 0.8);
+    if (url) {
+      setImage(url);
+      setResult(null);
+      setErr("");
+      setSaved("");
+    }
+  }
+
+  // 在頁面任何地方 Ctrl+V 貼圖
+  useEffect(() => {
+    function onPaste(e) {
+      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
+      if (item) pick(item.getAsFile());
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
+  async function run() {
+    if ((!image && !note.trim()) || loading) return;
+    setLoading(true);
+    setErr("");
+    setResult(null);
+    setSaved("");
+    try {
+      const r = await estimateFood(provider, image, note);
+      setResult({ ...r, items: (r.items || []).map((i) => ({ ...i, on: true })) });
+      setMeal(guessMeal());
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "估算失敗，請稍後再試。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function setItem(idx, patch) {
+    setResult((r) => ({ ...r, items: r.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
+  }
+
+  const chosen = (result?.items || []).filter((i) => i.on && i.name.trim());
+  const chosenTotal = chosen.reduce((s, i) => s + (Number(i.calories) || 0), 0);
+
+  async function record() {
+    for (const it of chosen) {
+      await addLog({
+        kind: "food",
+        date: day,
+        name: it.name.trim(),
+        meal,
+        calories: it.calories === "" || it.calories == null ? null : Number(it.calories),
+        time: nowHM(),
+        note: "📷 AI 估算",
+      });
+    }
+    setSaved(`已記錄 ${chosen.length} 筆到 ${mealLabel(meal)}`);
+    setResult(null);
+    setImage("");
+    setNote("");
+    onRecorded?.();
+  }
+
+  const tab = (key) =>
+    `rounded-lg px-3 py-1.5 text-sm font-bold transition ${provider === key ? "bg-white shadow-sm " + (key === "claude" ? "text-orange-600" : "text-slate-800") : "text-slate-500 hover:text-slate-700"}`;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h2 className="text-base font-black text-slate-900">🍽️ 問 AI 估熱量</h2>
+        <div className="flex rounded-xl bg-slate-100 p-1">
+          <button type="button" onClick={() => setProvider("gpt")} className={tab("gpt")}>🤖 GPT</button>
+          <button type="button" onClick={() => setProvider("claude")} className={tab("claude")}>✳️ Claude</button>
+        </div>
+        <span className="text-xs text-slate-400">用主機上登入的 CLI、扣你的訂閱額度；估算約需十幾秒～一分鐘。</span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_minmax(0,1fr)]">
+        {/* 圖片 */}
+        <div>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              pick(e.dataTransfer.files?.[0]);
+            }}
+            className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400 transition hover:border-indigo-300 hover:bg-indigo-50/40"
+          >
+            {image ? (
+              <span className="relative block h-full w-full">
+                <img src={image} alt="" className="h-full w-full object-cover" />
+                <span
+                  role="button"
+                  onClick={(e) => { e.stopPropagation(); setImage(""); setResult(null); }}
+                  className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white hover:bg-black/80"
+                >
+                  ✕ 移除
+                </span>
+              </span>
+            ) : (
+              <span className="px-4 text-center leading-relaxed">（選填）點此選照片 / 拖曳進來<br />電腦可直接 Ctrl+V 貼上</span>
+            )}
+          </button>
+          {/* 相簿（不加 capture，手機會給相簿/相機選單）＋ 直接拍照（capture 開相機） */}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-slate-200 bg-white py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95">🖼️ 從相簿選</button>
+            <button type="button" onClick={() => camRef.current?.click()} className="rounded-xl border border-slate-200 bg-white py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95">📸 拍照</button>
+          </div>
+        </div>
+
+        {/* 補充 + 結果 */}
+        <div className="min-w-0 space-y-3">
+          <div className="flex gap-2">
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && run()}
+              placeholder={image ? "補充（可空）：例：飯只吃一半、無糖" : "直接打字問：例：麥當勞 中薯、大麥克"}
+              className={field}
+            />
+            <button
+              type="button"
+              onClick={run}
+              disabled={(!image && !note.trim()) || loading}
+              className="shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40"
+            >
+              {loading ? "估算中…" : "估算熱量"}
+            </button>
+          </div>
+
+          {err && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{err}</div>}
+          {saved && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">✓ {saved}</div>}
+          {!result && !err && !saved && !loading && (
+            <p className="text-sm text-slate-400">直接打字（例：麥當勞 中薯）或放一張餐點照片，AI 會列出每樣食物的熱量，確認後一鍵記進今天的飲食。</p>
+          )}
+
+          {result && result.items.length > 0 && (
+            <div className="space-y-2">
+              {result.items.map((it, i) => (
+                <div key={i} className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${it.on ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60"}`}>
+                  <input type="checkbox" checked={it.on} onChange={(e) => setItem(i, { on: e.target.checked })} className="h-4 w-4 shrink-0 accent-indigo-600" />
+                  <input value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none" />
+                  <input type="number" value={it.calories ?? ""} onChange={(e) => setItem(i, { calories: e.target.value })} className="w-20 shrink-0 rounded-md border border-slate-200 px-2 py-1 text-right text-sm outline-none focus:border-indigo-400" />
+                  <span className="shrink-0 text-xs text-slate-400">kcal</span>
+                </div>
+              ))}
+              {result.note && <p className="text-xs text-slate-400">💡 {result.note}</p>}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-sm text-slate-600">合計 <span className="font-black text-rose-600">{chosenTotal}</span> kcal，記到</span>
+                <select value={meal} onChange={(e) => setMeal(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none">
+                  {MEALS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={record}
+                  disabled={chosen.length === 0}
+                  className="rounded-xl bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 active:scale-95 disabled:opacity-40"
+                >
+                  ✓ 記錄到飲食（{chosen.length} 筆）
+                </button>
+              </div>
+            </div>
+          )}
+          {result && result.items.length === 0 && (
+            <div className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              {result.raw || "AI 沒有辨識出食物，換張清楚一點的照片試試。"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Health() {
+  const [day, setDay] = useState(todayStr());
+  const [data, setData] = useState(null);
+  const [weights, setWeights] = useState({ series: [], goal: null });
+  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState(todayStr().slice(0, 7));
+  const [monthData, setMonthData] = useState({ days: {}, water_goal: 2000 });
+
+  // 輸入狀態
+  const [weightInput, setWeightInput] = useState("");
+  const [waterInput, setWaterInput] = useState("");
+  const [food, setFood] = useState({ name: "", meal: "breakfast", calories: "" });
+  const [ex, setEx] = useState({ name: "", duration: "", calories: "" });
+
+  function loadMonth(mo = month) {
+    getMonth(mo)
+      .then(setMonthData)
+      .catch(() => setMonthData({ days: {}, water_goal: 2000 }));
+  }
+
+  function load() {
+    setLoading(true);
+    Promise.all([getDay(day), getWeights(90)])
+      .then(([d, w]) => {
+        setData(d);
+        setWeights(w);
+      })
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+    loadMonth(); // 同步更新月曆
+  }
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day]);
+
+  // 選到的日期換月時，月曆跟著切到那個月
+  useEffect(() => {
+    setMonth(day.slice(0, 7));
+  }, [day]);
+  // 手動切換月曆月份時載入該月
+  useEffect(() => {
+    loadMonth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month]);
+
+  function shiftMonth(mo, n) {
+    const [yy, mm] = mo.split("-").map(Number);
+    const d = new Date(yy, mm - 1 + n, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  async function logWeight() {
+    const v = Number(weightInput);
+    if (!v || v <= 0) return;
+    await addLog({ kind: "weight", date: day, weight: v, time: nowHM() });
+    setWeightInput("");
+    load();
+  }
+  async function addWater(ml) {
+    if (!ml || ml <= 0) return;
+    await addLog({ kind: "water", date: day, amount: ml, time: nowHM() });
+    load();
+  }
+  async function addFood() {
+    if (!food.name.trim()) return;
+    await addLog({
+      kind: "food",
+      date: day,
+      name: food.name.trim(),
+      meal: food.meal,
+      calories: food.calories === "" ? null : Number(food.calories),
+      time: nowHM(),
+    });
+    setFood({ name: "", meal: food.meal, calories: "" });
+    load();
+  }
+  async function addExercise() {
+    if (!ex.name.trim()) return;
+    await addLog({
+      kind: "exercise",
+      date: day,
+      name: ex.name.trim(),
+      duration: ex.duration === "" ? null : Number(ex.duration),
+      calories: ex.calories === "" ? null : Number(ex.calories),
+      time: nowHM(),
+    });
+    setEx({ name: "", duration: "", calories: "" });
+    load();
+  }
+  async function remove(id) {
+    await deleteLog(id);
+    load();
+  }
+  async function setWaterGoal() {
+    const v = prompt("每日喝水目標（毫升）", String(data?.water_goal || 2000));
+    if (v == null) return;
+    const n = Number(v);
+    if (n > 0) {
+      await saveHealthSettings({ water_goal: Math.round(n) });
+      load();
+    }
+  }
+  async function setHeight() {
+    const v = prompt("身高（公分，固定值、用來算 BMI；留空清除）", weights.height ? String(weights.height) : "");
+    if (v == null) return;
+    const n = Number(v);
+    if (v.trim() !== "" && !(n > 50 && n < 250)) return;
+    await saveHealthSettings({ height: v.trim() === "" ? 0 : n });
+    load();
+  }
+
+  async function setWeightGoal() {
+    const v = prompt("目標體重（公斤，留空清除）", weights.goal ? String(weights.goal) : "");
+    if (v == null) return;
+    await saveHealthSettings({ weight_goal: v.trim() === "" ? 0 : Number(v) });
+    load();
+  }
+
+  const weightDelta = useMemo(() => {
+    const s = weights.series;
+    if (!s || s.length < 2) return null;
+    return s[s.length - 1].weight - s[s.length - 2].weight;
+  }, [weights]);
+
+  const waterPct = data && data.water_goal ? Math.min(100, Math.round((data.water_total / data.water_goal) * 100)) : 0;
+  const netCal = data ? (data.food_calories || 0) - (data.exercise_calories || 0) : 0;
+
+  const isToday = day === todayStr();
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900">健康</h1>
+          <p className="mt-1 text-sm text-slate-500">記錄體重、飲食、喝水與運動。</p>
+        </div>
+        {/* 日期切換 */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => setDay((d) => addDays(d, -1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">‹</button>
+          <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 outline-none" />
+          <button onClick={() => setDay((d) => addDays(d, 1))} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700">›</button>
+          {!isToday && (
+            <button onClick={() => setDay(todayStr())} className="ml-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-100">今天</button>
+          )}
+        </div>
+      </div>
+
+      {/* 桌機：左月曆、右輸入，一頁看完；手機：上下堆疊 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
+      <div className="lg:sticky lg:top-4">
+        <MonthCalendar
+          month={month}
+          days={monthData.days || {}}
+          waterGoal={monthData.water_goal}
+          selected={day}
+          onPickDay={(iso) => setDay(iso)}
+          onPrev={() => setMonth((mo) => shiftMonth(mo, -1))}
+          onNext={() => setMonth((mo) => shiftMonth(mo, 1))}
+          onToday={() => setMonth(todayStr().slice(0, 7))}
+        />
+      </div>
+
+      {loading && !data ? (
+        <p className="py-16 text-center text-sm text-slate-400">載入中…</p>
+      ) : (
+        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-2">
+          {/* 體重 */}
+          <Card
+            title="體重"
+            emoji="⚖️"
+            right={
+              <span className="flex items-center gap-3">
+                <button onClick={setHeight} className="text-xs text-slate-400 hover:text-indigo-600">
+                  身高 {weights.height ? `${weights.height} cm` : "設定"}
+                </button>
+                <button onClick={setWeightGoal} className="text-xs text-slate-400 hover:text-indigo-600">
+                  目標 {weights.goal ? `${weights.goal} kg` : "設定"}
+                </button>
+              </span>
+            }
+          >
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-black text-slate-900">{data?.weight != null ? data.weight : "—"}</span>
+              <span className="pb-1 text-sm text-slate-400">kg</span>
+              {weightDelta != null && (
+                <span className={`pb-1 text-xs font-bold ${weightDelta > 0 ? "text-rose-500" : weightDelta < 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                  {weightDelta > 0 ? "▲" : weightDelta < 0 ? "▼" : ""}
+                  {Math.abs(weightDelta).toFixed(1)}
+                </span>
+              )}
+              {data?.weight_id && (
+                <button onClick={() => remove(data.weight_id)} className="ml-auto pb-1 text-xs text-slate-300 hover:text-red-500">刪除</button>
+              )}
+            </div>
+            {/* BMI（今天沒量就用最近一次的體重） */}
+            {(() => {
+              const latest = data?.weight ?? weights.series?.[weights.series.length - 1]?.weight;
+              if (!weights.height) {
+                return (
+                  <button onClick={setHeight} className="mt-1 text-xs text-indigo-500 hover:underline">
+                    ＋ 設定身高，顯示 BMI
+                  </button>
+                );
+              }
+              const b = bmiInfo(latest, weights.height);
+              if (!b) return null;
+              const g = bmiInfo(weights.goal, weights.height);
+              return (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  <span className="font-bold text-slate-700">BMI {b.bmi}</span>
+                  <span className={`rounded-full px-2 py-0.5 font-bold ${b.cls}`}>{b.label}</span>
+                  {data?.weight == null && <span className="text-slate-400">（最近一次體重）</span>}
+                  <span className="text-slate-400">健康體重 {b.lo}–{b.hi} kg</span>
+                  {g && <span className="text-slate-400">・目標 BMI {g.bmi}</span>}
+                </div>
+              );
+            })()}
+            <Sparkline series={weights.series} goal={weights.goal} />
+            <div className="mt-3 flex gap-2">
+              <input type="number" inputMode="decimal" step="0.1" value={weightInput} onChange={(e) => setWeightInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && logWeight()} placeholder="輸入今日體重" className={field} />
+              <button onClick={logWeight} disabled={!Number(weightInput)} className="shrink-0 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40">記錄</button>
+            </div>
+          </Card>
+
+          {/* 喝水 */}
+          <Card
+            title="喝水"
+            emoji="💧"
+            right={
+              <button onClick={setWaterGoal} className="text-xs text-slate-400 hover:text-indigo-600">
+                目標 {data?.water_goal} ml
+              </button>
+            }
+          >
+            <div className="flex items-end justify-between">
+              <span className="text-2xl font-black text-sky-600">
+                {data?.water_total || 0}
+                <span className="ml-1 text-sm font-medium text-slate-400">/ {data?.water_goal} ml</span>
+              </span>
+              <span className="text-sm font-bold text-slate-500">{waterPct}%</span>
+            </div>
+            <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${waterPct}%` }} />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[250, 500, 700].map((ml) => (
+                <button key={ml} onClick={() => addWater(ml)} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-bold text-sky-700 hover:bg-sky-100 active:scale-95">
+                  +{ml}
+                </button>
+              ))}
+              <div className="flex gap-1">
+                <input type="number" inputMode="numeric" value={waterInput} onChange={(e) => setWaterInput(e.target.value)} placeholder="自訂 ml" className="w-24 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none focus:border-sky-400 focus:bg-white" />
+                <button onClick={() => { addWater(Number(waterInput)); setWaterInput(""); }} disabled={!Number(waterInput)} className="rounded-xl bg-sky-600 px-3 text-sm font-bold text-white disabled:opacity-40">＋</button>
+              </div>
+            </div>
+            {data?.water_logs?.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {data.water_logs.map((w) => (
+                  <span key={w.id} className="group inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2 py-1 text-xs text-slate-500">
+                    {w.time && <span className="text-slate-400">{w.time}</span>} {w.amount}ml
+                    <button onClick={() => remove(w.id)} className="text-slate-300 hover:text-red-500">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* 飲食 */}
+          <Card title="飲食" emoji="🍽️" right={<span className="text-sm font-bold text-rose-600">攝取 {data?.food_calories || 0} kcal</span>}>
+            <div className="space-y-1.5">
+              {(data?.food ?? []).map((f) => (
+                <div key={f.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">{mealLabel(f.meal)}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{f.name}</span>
+                  {f.calories != null && <span className="shrink-0 text-sm text-slate-500">{f.calories} kcal</span>}
+                  <button onClick={() => remove(f.id)} className="shrink-0 text-slate-300 hover:text-red-500">✕</button>
+                </div>
+              ))}
+              {(!data?.food || data.food.length === 0) && <p className="text-sm text-slate-400">今天還沒記錄飲食。</p>}
+            </div>
+            <div className="mt-3 grid grid-cols-[5.5rem_minmax(0,1fr)_4.5rem_auto] gap-2">
+              <select value={food.meal} onChange={(e) => setFood({ ...food, meal: e.target.value })} className={field}>
+                {MEALS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+              <input value={food.name} onChange={(e) => setFood({ ...food, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addFood()} placeholder="吃了什麼" className={field} />
+              <input type="number" inputMode="numeric" value={food.calories} onChange={(e) => setFood({ ...food, calories: e.target.value })} placeholder="kcal" className={field} />
+              <button onClick={addFood} disabled={!food.name.trim()} className="rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40">＋</button>
+            </div>
+          </Card>
+
+          {/* 運動 */}
+          <Card
+            title="運動"
+            emoji="🏃"
+            right={<span className="text-sm font-bold text-emerald-600">消耗 {data?.exercise_calories || 0} kcal・{data?.exercise_minutes || 0} 分</span>}
+          >
+            <div className="space-y-1.5">
+              {(data?.exercise ?? []).map((e) => (
+                <div key={e.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{e.name}</span>
+                  {e.duration != null && <span className="shrink-0 text-xs text-slate-400">{e.duration} 分</span>}
+                  {e.calories != null && <span className="shrink-0 text-sm text-slate-500">{e.calories} kcal</span>}
+                  <button onClick={() => remove(e.id)} className="shrink-0 text-slate-300 hover:text-red-500">✕</button>
+                </div>
+              ))}
+              {(!data?.exercise || data.exercise.length === 0) && <p className="text-sm text-slate-400">今天還沒記錄運動。</p>}
+            </div>
+            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_4rem_4.5rem_auto] gap-2">
+              <input value={ex.name} onChange={(e) => setEx({ ...ex, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && addExercise()} placeholder="運動項目" className={field} />
+              <input type="number" inputMode="numeric" value={ex.duration} onChange={(e) => setEx({ ...ex, duration: e.target.value })} placeholder="分鐘" className={field} />
+              <input type="number" inputMode="numeric" value={ex.calories} onChange={(e) => setEx({ ...ex, calories: e.target.value })} placeholder="kcal" className={field} />
+              <button onClick={addExercise} disabled={!ex.name.trim()} className="rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40">＋</button>
+            </div>
+          </Card>
+
+          {/* 當日淨熱量小結 */}
+          <div className="xl:col-span-2">
+            <div className="rounded-2xl bg-slate-50 px-5 py-3 text-sm text-slate-600">
+              當日淨熱量：<span className="font-black text-slate-800">{netCal} kcal</span>
+              <span className="ml-2 text-xs text-slate-400">（攝取 {data?.food_calories || 0} − 運動 {data?.exercise_calories || 0}）</span>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
+
+      {/* 拍照估熱量（整寬） */}
+      <PhotoEstimate day={day} onRecorded={load} />
+    </div>
+  );
+}
