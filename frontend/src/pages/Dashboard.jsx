@@ -430,16 +430,17 @@ export default function Dashboard() {
 
   // 逾期未完成：日期在今天之前、且尚未完成的行程（不含待辦）
   const todayStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
-  const overdueEvents = rawEvents
-    .filter((e) => !e.is_task && !e.completed && eventDateStr(e) < todayStr)
+  // 統計卡（逾期/延期/今日/未來）都跟著上方的分類篩選與「顯示 Google 事件」
+  const overdueEvents = visibleRaw
+    .filter((e) => !e.completed && eventDateStr(e) < todayStr)
     .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
   // 延期項目：設了到期日的明細（附主項資訊）
   const eventById = {};
   for (const e of rawEvents) eventById[e.id] = e;
   // 未來事項：明天以後、尚未完成的行程（不含待辦），依時間排序
-  const futureAll = rawEvents
-    .filter((e) => !e.is_task && !e.completed && eventDateStr(e) > todayStr)
+  const futureAll = visibleRaw
+    .filter((e) => !e.completed && eventDateStr(e) > todayStr)
     .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
   const futureLimit = (() => {
     if (!futureDays) return null;
@@ -474,10 +475,11 @@ export default function Dashboard() {
     return `${pad2(s.getHours())}:${pad2(s.getMinutes())}–${pad2(en.getHours())}:${pad2(en.getMinutes())}`;
   };
 
+  const visibleIds = new Set(visibleRaw.map((e) => e.id));
   const postponed = subtasks
     .filter((s) => s.due_date && !s.done) // 已完成的不算延期項目
     .map((s) => ({ ...s, parent: eventById[s.event_id] }))
-    .filter((s) => s.parent)
+    .filter((s) => s.parent && visibleIds.has(s.parent.id))
     .sort((a, b) => a.due_date.localeCompare(b.due_date));
 
   return (
