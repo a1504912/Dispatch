@@ -229,6 +229,7 @@ class Notebook(SQLModel, table=True):
     emoji: str = "📒"
     hidden: bool = False  # 隱藏：平常不列出，要連點標題 5 下才看得到
     pinned: bool = False  # 置頂
+    category: str = ""  # 分類（自由輸入，例：工作、生活）；空＝未分類
     # 加密記事本：內容在瀏覽器用密碼加密後才送來，主機只存亂碼，主機無法解密
     encrypted: bool = False
     enc_salt: str = ""  # PBKDF2 的 salt（base64，非機密）

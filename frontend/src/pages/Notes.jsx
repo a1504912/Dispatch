@@ -318,11 +318,12 @@ async function encryptExisting(nbId, password, onStep) {
 }
 
 /* ---------- 新增 / 設定 記事本 ---------- */
-function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
+function NotebookModal({ initial, showHidden, categories = [], defaultCategory = "", onClose, onSaved, onDeleted }) {
   const isEdit = Boolean(initial?.id);
   const [name, setName] = useState(initial?.name ?? "");
   const [emoji, setEmoji] = useState(initial?.emoji ?? "📒");
   const [pinned, setPinned] = useState(Boolean(initial?.pinned));
+  const [category, setCategory] = useState(initial ? initial.category || "" : defaultCategory);
   const [hidden, setHidden] = useState(Boolean(initial?.hidden));
   const [saving, setSaving] = useState(false);
   // 加密（只能在建立時設定）
@@ -348,7 +349,7 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
     if (!name.trim() || saving || pwProblem) return;
     setSaving(true);
     try {
-      const payload = { name: name.trim(), emoji, pinned, hidden };
+      const payload = { name: name.trim(), emoji, pinned, hidden, category: category.trim() };
       let key = null;
       if (!isEdit && encrypt) {
         const salt = newSalt();
@@ -402,6 +403,33 @@ function NotebookModal({ initial, showHidden, onClose, onSaved, onDeleted }) {
             <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="h-4 w-4 accent-indigo-600" />
             📌 置頂
           </label>
+          {/* 分類：可選現有的或直接打新的 */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-slate-500">分類</label>
+            <input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="例：工作、生活、旅遊（可留空）"
+              maxLength={40}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+            />
+            {categories.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCategory(category === c ? "" : c)}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                      category === c ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {/* 隱藏開關只有在「顯示隱藏」模式下才出現 */}
           {showHidden && (
             <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm text-slate-200">
@@ -695,10 +723,60 @@ export default function Notes() {
     loadNotebooks();
   }
 
+  // 分類：從目前列得出的記事本整理（隱藏的只有解鎖時才會算進來，不會洩漏分類名稱）
+  const [catSel, setCatSel] = useState(() => {
+    try {
+      return localStorage.getItem("dispatch.notesCat") ?? "all";
+    } catch {
+      return "all";
+    }
+  });
+  function pickCat(c) {
+    setCatSel(c);
+    try {
+      localStorage.setItem("dispatch.notesCat", c);
+    } catch {
+      /* 無法存就算了 */
+    }
+  }
+  const categories = useMemo(() => {
+    const latest = {};
+    for (const n of notebooks) {
+      const c = n.category || "";
+      if (!c) continue;
+      const t = new Date(n.updated_at).getTime();
+      if (!(c in latest) || t > latest[c]) latest[c] = t;
+    }
+    return Object.keys(latest).sort((a, b) => latest[b] - latest[a]);
+  }, [notebooks]);
+  const hasUncat = notebooks.some((n) => !n.category);
+  // 選的分類已經不存在（改名或刪光了）就回到全部
+  useEffect(() => {
+    if (catSel !== "all" && catSel !== "" && !categories.includes(catSel)) pickCat("all");
+    if (catSel === "" && !hasUncat && categories.length) pickCat("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories.join("|"), hasUncat]);
+
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
-    return k ? notebooks.filter((n) => n.name.toLowerCase().includes(k) || (n.last || "").toLowerCase().includes(k)) : notebooks;
-  }, [notebooks, q]);
+    return notebooks.filter((n) => {
+      if (catSel !== "all" && (n.category || "") !== catSel) return false;
+      if (!k) return true;
+      return (
+        n.name.toLowerCase().includes(k) ||
+        (n.last || "").toLowerCase().includes(k) ||
+        (n.category || "").toLowerCase().includes(k)
+      );
+    });
+  }, [notebooks, q, catSel]);
+
+  // 「全部」時依分類分組：最近更新的分類在前，未分類放最後
+  const groups = useMemo(() => {
+    if (catSel !== "all" || !categories.length) return [{ key: "_", label: "", items: shown }];
+    const out = categories.map((c) => ({ key: c, label: c, items: shown.filter((n) => n.category === c) }));
+    out.push({ key: "", label: "未分類", items: shown.filter((n) => !n.category) });
+    return out.filter((g) => g.items.length);
+  }, [shown, categories, catSel]);
 
   return (
     <div className="relative flex h-[calc(100dvh-170px)] min-h-[420px] gap-4 md:h-[calc(100dvh-56px)]">
@@ -719,6 +797,21 @@ export default function Notes() {
           placeholder="搜尋記事本"
           className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
         />
+        {categories.length > 0 && (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+            {[["all", `全部 ${notebooks.length}`], ...categories.map((c) => [c, `${c} ${notebooks.filter((n) => n.category === c).length}`]), ...(hasUncat ? [["", `未分類 ${notebooks.filter((n) => !n.category).length}`]] : [])].map(([k, l]) => (
+              <button
+                key={k || "_none"}
+                onClick={() => pickCat(k)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
+                  catSel === k ? "bg-slate-800 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
           {loadingList && <p className="py-10 text-center text-sm text-slate-400">載入中…</p>}
           {!loadingList && shown.length === 0 && (
@@ -726,7 +819,10 @@ export default function Notes() {
               {notebooks.length ? "找不到符合的記事本" : "還沒有記事本，點「＋ 新增」開一本"}
             </div>
           )}
-          {shown.map((n) => (
+          {groups.map((g) => (
+            <Fragment key={g.key}>
+              {g.label && <p className="px-1 pb-0.5 pt-2 text-[11px] font-black uppercase tracking-wide text-slate-400">{g.label}</p>}
+          {g.items.map((n) => (
             <button
               key={n.id}
               onClick={() => setSelId(n.id)}
@@ -746,6 +842,8 @@ export default function Notes() {
                 <span className="block truncate text-xs text-slate-400">{n.last || "（還沒有內容）"}</span>
               </span>
             </button>
+          ))}
+            </Fragment>
           ))}
         </div>
       </aside>
@@ -902,6 +1000,8 @@ export default function Notes() {
         <NotebookModal
           initial={modal.nb}
           showHidden={showHidden}
+          categories={categories}
+          defaultCategory={catSel === "all" ? "" : catSel}
           onClose={() => setModal(null)}
           onSaved={(nb, key) => {
             setModal(null);

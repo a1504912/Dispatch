@@ -83,6 +83,7 @@ def _nb_dict(nb: Notebook, session: Session) -> dict:
         "emoji": nb.emoji,
         "hidden": nb.hidden,
         "pinned": nb.pinned,
+        "category": nb.category,
         "updated_at": nb.updated_at.isoformat() + "Z",
         "count": count,
         "last": _preview_text(last, nb.encrypted),
@@ -112,6 +113,7 @@ class NotebookIn(BaseModel):
     emoji: str = "📒"
     hidden: bool = False
     pinned: bool = False
+    category: str = ""
     # 只在建立時有效；之後不能改（改了舊內容就解不開）
     encrypted: bool = False
     enc_salt: str = ""
@@ -138,6 +140,7 @@ def create_notebook(payload: NotebookIn, session: Session = Depends(get_session)
         emoji=payload.emoji or "📒",
         hidden=payload.hidden,
         pinned=payload.pinned,
+        category=payload.category.strip()[:40],
         encrypted=payload.encrypted,
         enc_salt=payload.enc_salt if payload.encrypted else "",
         enc_check=payload.enc_check if payload.encrypted else "",
@@ -157,6 +160,7 @@ def update_notebook(nb_id: int, payload: NotebookIn, session: Session = Depends(
     nb.emoji = payload.emoji or "📒"
     nb.hidden = payload.hidden
     nb.pinned = payload.pinned
+    nb.category = payload.category.strip()[:40]
     session.add(nb)
     session.commit()
     session.refresh(nb)

@@ -80,6 +80,8 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE notebook ADD COLUMN enc_salt VARCHAR NOT NULL DEFAULT ''"))
                 if "enc_check" not in nb_cols:
                     conn.execute(text("ALTER TABLE notebook ADD COLUMN enc_check VARCHAR NOT NULL DEFAULT ''"))
+                if "category" not in nb_cols:
+                    conn.execute(text("ALTER TABLE notebook ADD COLUMN category VARCHAR NOT NULL DEFAULT ''"))
                 conn.commit()
 
             # 比價候選：補上預覽圖、二手/新品欄位
