@@ -61,6 +61,8 @@ class Event(SQLModel, table=True):
     links: Optional[str] = None
     # 附加檔案（JSON 陣列 [{name,type,data(base64 data URL)}]；列表不回傳，開單筆才載）
     files: Optional[str] = None
+    # 對應的記事本（可空）；記事本刪除時會自動解除
+    notebook_id: Optional[int] = None
 
 
 class Subtask(SQLModel, table=True):

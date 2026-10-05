@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
+import { useSearchParams } from "react-router-dom";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -199,6 +200,17 @@ export default function Dashboard() {
     setViewMode(mode);
     localStorage.setItem("dispatch.viewMode", mode);
   }
+
+  // 從記事本「相關行程」過來（/dashboard?event=ID）：行程載好後直接打開編輯
+  const [params, setParams] = useSearchParams();
+  const wantEvent = params.get("event");
+  useEffect(() => {
+    if (!wantEvent || !rawEvents.length) return;
+    const raw = rawEvents.find((e) => String(e.id) === wantEvent);
+    if (raw) openNewEvent(raw);
+    setParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantEvent, rawEvents]);
 
   // 統計卡點開的清單視窗："overdue" | "postponed" | null
   const [statModal, setStatModal] = useState(null);

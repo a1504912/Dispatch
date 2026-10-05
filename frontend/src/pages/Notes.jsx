@@ -8,6 +8,7 @@ import {
   editItem,
   fetchMediaBytes,
   listItems,
+  listNotebookEvents,
   listNotebooks,
   mediaUrl,
   stageEncryptedBlob,
@@ -15,6 +16,7 @@ import {
   uploadFile,
 } from "../api/notes";
 import { openImage } from "../lightbox";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   cryptoSupported,
   decryptBytes,
@@ -499,6 +501,12 @@ export default function Notes() {
   const [uploads, setUploads] = useState([]); // [{key, name, pct, err}]
   const [modal, setModal] = useState(null); // {nb} | {nb:null}
   const [toast, setToast] = useState("");
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const pendingNb = useRef(params.get("nb") ? Number(params.get("nb")) : null);
+  const [linkedEvents, setLinkedEvents] = useState([]);
+  const [listHidden, setListHidden] = useState(false);
+  const [showLinked, setShowLinked] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   // 已解鎖的加密記事本金鑰（只在記憶體，重新整理就要重輸密碼）
   const [keys, setKeys] = useState({});
@@ -573,6 +581,7 @@ export default function Notes() {
     return listNotebooks(hidden)
       .then((rows) => {
         setNotebooks(rows);
+        setListHidden(hidden); // 這份清單是否含隱藏記事本
         return rows;
       })
       .catch(() => setNotebooks([]))
@@ -585,6 +594,35 @@ export default function Notes() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHidden]);
+
+  // 從行程「開啟 ↗」過來（/notes?nb=ID）：清單載好後打開那本
+  useEffect(() => {
+    if (loadingList || !pendingNb.current) return;
+    const id = pendingNb.current;
+    if (notebooks.some((n) => n.id === id)) {
+      setSelId(id);
+      pendingNb.current = null;
+      setParams({}, { replace: true });
+    } else if (!listHidden) {
+      // 可能是隱藏記事本：先提示，使用者連點標題解鎖後會自動打開
+      if (!showHidden) flash("🔒 這本是隱藏記事本，連點標題「記事本」5 下就會打開");
+    } else {
+      flash("找不到這本記事本（可能已刪除）");
+      pendingNb.current = null;
+      setParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingList, notebooks, listHidden]);
+
+  // 連到這本的行程
+  useEffect(() => {
+    setShowLinked(false);
+    setLinkedEvents([]);
+    if (!selId) return;
+    listNotebookEvents(selId)
+      .then(setLinkedEvents)
+      .catch(() => setLinkedEvents([]));
+  }, [selId]);
 
   // 連點標題 5 下（2 秒內）切換顯示隱藏的記事本
   function tapTitle() {
@@ -878,6 +916,38 @@ export default function Notes() {
                 <button onClick={lockNow} className="rounded-lg px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100" title="鎖上，要重新輸入密碼">
                   🔒 鎖上
                 </button>
+              )}
+              {linkedEvents.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowLinked((v) => !v)}
+                    className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-100"
+                    title="連到這本的行程"
+                  >
+                    📅 {linkedEvents.length}
+                  </button>
+                  {showLinked && (
+                    <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                      <p className="px-2 pb-1 pt-0.5 text-[11px] font-bold text-slate-400">相關行程（點了跳到行程）</p>
+                      {linkedEvents.map((ev) => {
+                        const d = new Date(ev.start_time);
+                        return (
+                          <button
+                            key={ev.id}
+                            onClick={() => navigate(`/dashboard?event=${ev.id}`)}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-slate-50"
+                          >
+                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: ev.color }} />
+                            <span className={`min-w-0 flex-1 truncate ${ev.completed ? "text-slate-400 line-through" : "text-slate-700"}`}>{ev.title}</span>
+                            <span className="shrink-0 text-[11px] text-slate-400">
+                              {d.getMonth() + 1}/{d.getDate()}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
               <span className="text-xs text-slate-400">{selected.count} 則</span>
               <button onClick={() => setModal({ nb: selected })} className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" title="設定">

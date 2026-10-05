@@ -61,6 +61,8 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE event ADD COLUMN links TEXT"))
                 if "files" not in columns:
                     conn.execute(text("ALTER TABLE event ADD COLUMN files TEXT"))
+                if "notebook_id" not in columns:
+                    conn.execute(text("ALTER TABLE event ADD COLUMN notebook_id INTEGER"))
                 conn.commit()
 
             sub_columns = [row[1] for row in conn.execute(text("PRAGMA table_info(subtask)"))]

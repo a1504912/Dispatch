@@ -18,6 +18,8 @@ function safeArr(v) {
 }
 import { compressImageFile } from "../imageCompress";
 import { NO_BACKEND } from "../localMode";
+import { useNavigate } from "react-router-dom";
+import { createNotebook, listNotebooks } from "../api/notes";
 import {
   createSubtask,
   deleteSubtask,
@@ -162,6 +164,10 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [subtasks, setSubtasks] = useState([]);
+  const navigate = useNavigate();
+  // 可對應的記事本（只列不隱藏的；已連到隱藏記事本的會另外保留一個選項）
+  const [notebooks, setNotebooks] = useState([]);
+  const [creatingNb, setCreatingNb] = useState(false);
   const [newSub, setNewSub] = useState("");
   // 新增行程時，明細先暫存本地（還沒有 event_id），存檔時一起建立
   const [pendingSubs, setPendingSubs] = useState([]);
@@ -286,6 +292,11 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
 
   useEffect(() => {
     if (!open) return;
+    if (!NO_BACKEND) {
+      listNotebooks()
+        .then(setNotebooks)
+        .catch(() => setNotebooks([]));
+    }
     const fallback = defaultTimes();
     setForm({
       title: initial?.title ?? "",
@@ -301,6 +312,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       is_task: Boolean(initial?.is_task),
       links: safeArr(initial?.links),
       files: safeArr(initial?.files),
+      notebook_id: initial?.notebook_id != null ? String(initial.notebook_id) : "",
     });
     setNewSub("");
     setSubtasks([]);
@@ -378,10 +390,36 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
 
   if (!open || !form) return null;
 
+  // 先把行程存起來（包含剛選的對應記事本），再跳到記事本
+  async function openNotebook(id) {
+    if (form.title.trim()) {
+      const ok = await handleSubmit({ preventDefault() {} });
+      if (!ok) return;
+    } else {
+      onClose();
+    }
+    navigate(`/notes?nb=${id}`);
+  }
+
+  // 用行程標題直接開一本記事本並連起來
+  async function createLinkedNotebook() {
+    const name = form.title.trim() || "新的記事本";
+    setCreatingNb(true);
+    try {
+      const nb = await createNotebook({ name, emoji: "📒" });
+      setNotebooks((list) => [nb, ...list]);
+      setForm((f) => ({ ...f, notebook_id: String(nb.id) }));
+    } catch (e) {
+      window.alert(`建立記事本失敗：${e?.response?.data?.detail || e.message}`);
+    } finally {
+      setCreatingNb(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.title.trim() || saving) return;
-    if (!form.all_day && form.end_time < form.start_time) return;
+    if (!form.title.trim() || saving) return false;
+    if (!form.all_day && form.end_time < form.start_time) return false;
     setSaving(true);
     const payload = {
       title: form.title.trim(),
@@ -398,6 +436,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       is_task: form.is_task,
       links: form.links?.length ? JSON.stringify(form.links) : null,
       files: form.files?.length ? JSON.stringify(form.files) : null,
+      notebook_id: form.notebook_id ? Number(form.notebook_id) : null,
     };
     // 要一起建立的明細：新增時暫存的 ＋ 明細框裡打了字但還沒按 ＋ 的
     const typed = newSub.trim();
@@ -416,10 +455,12 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       }
       onSaved?.();
       onClose();
+      return true;
     } catch (err) {
       // 不再默默吞掉：存檔失敗就留在視窗、告訴使用者，內容不會不見
       const msg = err?.response?.data?.detail || err?.message || "未知錯誤";
       window.alert(`存檔失敗，請再按一次存檔。\n（${typeof msg === "string" ? msg : JSON.stringify(msg)}）`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -655,6 +696,51 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               ))}
             </select>
           </div>
+
+          {!NO_BACKEND && (
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-slate-500">對應記事本</label>
+              <div className="flex gap-2">
+                <select
+                  className={`${field} min-w-0 flex-1 cursor-pointer`}
+                  value={form.notebook_id}
+                  onChange={(e) => setForm({ ...form, notebook_id: e.target.value })}
+                >
+                  <option value="">不連結</option>
+                  {form.notebook_id && !notebooks.some((n) => String(n.id) === form.notebook_id) && (
+                    <option value={form.notebook_id}>🔒 隱藏的記事本</option>
+                  )}
+                  {notebooks.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.emoji} {n.name}
+                      {n.category ? `（${n.category}）` : ""}
+                      {n.encrypted ? " 🔐" : ""}
+                    </option>
+                  ))}
+                </select>
+                {form.notebook_id ? (
+                  <button
+                    type="button"
+                    onClick={() => openNotebook(form.notebook_id)}
+                    className="shrink-0 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-bold text-indigo-600 hover:bg-indigo-100"
+                    title="開啟這本記事本（未儲存的修改會先放棄）"
+                  >
+                    開啟 ↗
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={createLinkedNotebook}
+                    disabled={creatingNb}
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                    title="用這個行程的標題新建一本記事本並連起來"
+                  >
+                    {creatingNb ? "建立中…" : "＋ 新建"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-xs font-bold text-slate-500">顏色</label>

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import Notebook, NoteItem
+from app.models import Event, Notebook, NoteItem
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 
@@ -175,8 +175,23 @@ def delete_notebook(nb_id: int, session: Session = Depends(get_session)):
     for it in session.exec(select(NoteItem).where(NoteItem.notebook_id == nb_id)).all():
         _remove_file(it)
         session.delete(it)
+    for ev in session.exec(select(Event).where(Event.notebook_id == nb_id)).all():
+        ev.notebook_id = None  # 連到這本的行程解除連結
+        session.add(ev)
     session.delete(nb)
     session.commit()
+
+
+@router.get("/notebooks/{nb_id}/events")
+def notebook_events(nb_id: int, session: Session = Depends(get_session)):
+    """連到這本記事本的行程（記事本那邊顯示「相關行程」用）。"""
+    _get_nb(session, nb_id)
+    rows = session.exec(select(Event).where(Event.notebook_id == nb_id)).all()
+    rows.sort(key=lambda e: e.start_time)
+    return [
+        {"id": e.id, "title": e.title, "start_time": e.start_time.isoformat(), "all_day": e.all_day, "completed": e.completed, "color": e.color}
+        for e in rows
+    ]
 
 
 # ---------- 內容（一則一則） ----------

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { TW_CITIES, weatherIcon } from "../api/weather";
 import { parseImages } from "../images";
 
@@ -28,6 +29,7 @@ export default function WeekBoard({
   onEdit,
   onAdd,
 }) {
+  const navigate = useNavigate();
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState(() => new Set()); // 展開明細，key = `${eventId}:${dayStr}`
   const [weatherDay, setWeatherDay] = useState(null); // 點開逐時天氣的日期字串
@@ -209,6 +211,19 @@ export default function WeekBoard({
                               : ev.all_day
                                 ? "整天"
                                 : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
+                            {!spillover && ev.notebook_id && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/notes?nb=${ev.notebook_id}`);
+                                }}
+                                className="ml-1.5 rounded bg-indigo-50 px-1 font-bold text-indigo-600 hover:bg-indigo-100"
+                                title="開啟對應的記事本"
+                              >
+                                📒 記事本
+                              </button>
+                            )}
                           </p>
                         </div>
                       </div>

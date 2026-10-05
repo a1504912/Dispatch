@@ -106,7 +106,8 @@ def update_event(
     event = session.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    for key, value in payload.model_dump(exclude={"subtasks"}).items():
+    # 只更新請求有帶的欄位：前端用列表資料（沒有原圖/檔案）改日期時，不會把圖片、檔案清掉
+    for key, value in payload.model_dump(exclude={"subtasks"}, exclude_unset=True).items():
         setattr(event, key, value)
     event.thumb = thumbs.thumb_for(event.image, event.images)
     session.add(event)

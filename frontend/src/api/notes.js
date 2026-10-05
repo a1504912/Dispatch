@@ -90,3 +90,9 @@ export async function commitEncryption(notebookId, payload) {
   const { data } = await client.post(`/api/notes/notebooks/${notebookId}/encrypt/commit`, payload);
   return data;
 }
+
+// 連到某本記事本的行程
+export async function listNotebookEvents(notebookId) {
+  const { data } = await client.get(`/api/notes/notebooks/${notebookId}/events`);
+  return data;
+}
