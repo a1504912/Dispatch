@@ -258,7 +258,8 @@ export default function TransactionModal({ open, initial, categories = [], txs =
         subcategory: isTransfer ? "" : form.subcategory || "",
         note: form.note.trim(),
         date: form.date || todayStr(),
-        account: form.account || "",
+        // 名稱一律依帳戶編號帶入（轉帳的「從」選單原本只改編號，名稱會停在預設的「現金」）
+        account: accounts.find((a) => a.id === form.account_id)?.name ?? form.account ?? "",
         account_id: form.account_id ?? null,
         to_account_id: isTransfer ? form.to_account_id ?? null : null,
         event_id: form.event_id ?? null,
@@ -359,7 +360,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
             <div className="flex items-center gap-2">
               <div className="flex-1">
                 <p className="mb-1 text-xs font-bold text-slate-500">從</p>
-                <select value={form.account_id ?? ""} onChange={(e) => setForm({ ...form, account_id: Number(e.target.value) })} className={`${field} w-full`}>
+                <select value={form.account_id ?? ""} onChange={(e) => { const id = Number(e.target.value); setForm({ ...form, account_id: id, account: accounts.find((a) => a.id === id)?.name ?? "" }); }} className={`${field} w-full`}>
                   {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
                 </select>
               </div>

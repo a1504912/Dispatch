@@ -157,6 +157,16 @@ export default function Ledger() {
   }, [accounts, txs]);
 
   // 各帳戶類型（頂層）的餘額，供「總資產」下拉切換
+  // 顯示用帳戶名稱：以帳戶編號為準（舊資料存的名稱可能不對），轉帳顯示「從 → 到」
+  const accNameById = (id) => accounts.find((a) => a.id === id)?.name;
+  const accLabel = (t) => {
+    const from = accNameById(t.account_id) ?? t.account ?? "";
+    if (t.kind === "transfer") {
+      const to = accNameById(t.to_account_id);
+      return to ? `${from || "?"} → ${to}` : from;
+    }
+    return from;
+  };
   const topAccounts = accounts.filter((a) => !a.parent_id);
   const topBalance = (top) => {
     const kids = accounts.filter((a) => a.parent_id === top.id);
@@ -564,10 +574,10 @@ export default function Ledger() {
                             {t.split_bill_id && <span className="ml-1" title="有分帳">🧾</span>}
                             {t.event_id && <span className="ml-0.5" title="連結行程">✈️</span>}
                           </p>
-                          {(t.account || t.note) && (
+                          {(accLabel(t) || t.note) && (
                             <p className="truncate text-xs text-slate-400">
-                              {t.account}
-                              {t.account && t.note && "　·　"}
+                              {accLabel(t)}
+                              {accLabel(t) && t.note && "　·　"}
                               {t.note}
                             </p>
                           )}
@@ -712,7 +722,7 @@ export default function Ledger() {
                         </p>
                         <p className="truncate text-xs text-slate-400">
                           {Number(t.date.slice(5, 7))}/{Number(t.date.slice(8, 10))}
-                          {t.account && `　·　${t.account}`}
+                          {accLabel(t) && `　·　${accLabel(t)}`}
                         </p>
                       </div>
                       <span className={`shrink-0 text-sm font-black tabular-nums ${t.kind === "income" ? "text-emerald-500" : "text-slate-800"}`}>
