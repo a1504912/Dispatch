@@ -96,6 +96,8 @@ export default function Ledger() {
       .then(setTxs)
       .catch(() => setTxs([]))
       .finally(() => setLoading(false));
+    // 記錄有變（新增、編輯時選了對應發票、刪除）→ 發票的「已記帳」狀態也要跟著更新
+    loadInvoices(curYM);
   }
   function loadCats() {
     listLedgerCategories()
@@ -631,10 +633,9 @@ export default function Ledger() {
           if (linkInvoiceId && tx?.id) {
             try {
               await invoiceLink(linkInvoiceId, tx.id);
-            } catch {
-              /* 綁定失敗不擋記帳 */
+            } catch (e) {
+              window.alert(`記錄已存，但發票沒有標成已記帳：${e?.response?.data?.detail || e.message}`);
             }
-            loadInvoices(curYM);
           }
           setLinkInvoiceId(null);
           load();

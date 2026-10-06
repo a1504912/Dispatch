@@ -275,8 +275,9 @@ export default function TransactionModal({ open, initial, categories = [], txs =
         try {
           if (prev && prev.id !== newId) await invoiceLink(prev.id, null); // 解除舊的
           if (newId && (!prev || prev.id !== newId)) await invoiceLink(newId, txId); // 綁新的
-        } catch {
-          /* 綁定失敗不擋記帳 */
+        } catch (e) {
+          // 記錄已經存好了，只是發票沒綁上：要讓使用者知道，不要默默吞掉
+          window.alert(`記錄已存，但對應發票沒有綁定成功，請再編輯一次：${e?.response?.data?.detail || e.message}`);
         }
       }
       onSaved(saved || { id: initial?.id });
