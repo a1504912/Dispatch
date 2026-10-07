@@ -101,6 +101,39 @@ body {
   border-radius: 0.5rem;
   overflow: hidden;
 }
+/* 國定假日 / 補班 */
+.fc .fc-day.tw-holiday:not(.fc-day-today),
+.fc .fc-col-header-cell.tw-holiday {
+  background-color: #fff1f2;
+}
+.fc .fc-day.tw-workday:not(.fc-day-today),
+.fc .fc-col-header-cell.tw-workday {
+  background-color: #fffbeb;
+}
+.fc .tw-holiday .fc-daygrid-day-number,
+.fc .fc-col-header-cell.tw-holiday .fc-col-header-cell-cushion {
+  color: #e11d48;
+}
+.tw-hol-badge {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 0.375rem;
+  padding: 0 0.35rem;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.tw-hol-badge.is-off {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+.tw-hol-badge.is-work {
+  background: #fef3c7;
+  color: #b45309;
+}
+
 /* 已完成的事件：變淡 */
 .fc .event-done {
   opacity: 0.55;

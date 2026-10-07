@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { TW_CITIES, weatherIcon } from "../api/weather";
+import { useHolidays } from "../api/holidays";
 import { parseImages } from "../images";
 
 function startOfWeek(base) {
@@ -50,6 +51,7 @@ export default function WeekBoard({
     return d;
   });
   const isToday = (d) => d.toDateString() === new Date().toDateString();
+  const holidays = useHolidays([days[0].getFullYear(), days[6].getFullYear()]);
 
   const sortedEvents = [...events].sort(
     (a, b) =>
@@ -120,24 +122,41 @@ export default function WeekBoard({
       <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-7 md:gap-1.5">
         {days.map((d) => {
           const cards = cardsOf(d);
+          const hol = holidays[dateStr(d)];
           return (
             <div
               key={d.toISOString()}
               className={`min-w-0 rounded-xl p-1.5 ${
-                isToday(d) ? "bg-indigo-50/70 ring-1 ring-indigo-200" : "bg-slate-50"
+                isToday(d)
+                  ? "bg-indigo-50/70 ring-1 ring-indigo-200"
+                  : hol?.type === "off"
+                    ? "bg-rose-50/80"
+                    : hol?.type === "work"
+                      ? "bg-amber-50/80"
+                      : "bg-slate-50"
               }`}
             >
               <div className="flex items-center justify-between pb-1 pl-1">
                 <span
-                  className={`truncate text-xs font-bold ${
-                    isToday(d) ? "text-indigo-700" : "text-slate-600"
+                  className={`shrink-0 text-xs font-bold ${
+                    isToday(d) ? "text-indigo-700" : hol?.type === "off" ? "text-rose-600" : "text-slate-600"
                   }`}
                 >
                   {fmtDay(d)}
                 </span>
+                {hol && (
+                  <span
+                    className={`ml-1 min-w-0 truncate rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                      hol.type === "off" ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-700"
+                    }`}
+                    title={hol.type === "off" ? `放假：${hol.name}` : `補班：${hol.name}`}
+                  >
+                    {hol.type === "off" ? hol.name : "補班"}
+                  </span>
+                )}
                 <button
                   onClick={() => onAdd(d)}
-                  className="shrink-0 rounded-md px-1 text-slate-400 transition hover:bg-white hover:text-indigo-600"
+                  className="ml-auto shrink-0 rounded-md px-1 text-slate-400 transition hover:bg-white hover:text-indigo-600"
                   title="在這天新增行程"
                 >
                   ＋

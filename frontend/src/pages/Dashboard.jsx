@@ -17,9 +17,12 @@ import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
 import EventSearch from "../components/EventSearch.jsx";
 import { getWeatherLoc, setWeatherLoc, getWeekForecast } from "../api/weather";
+import { useHolidays } from "../api/holidays";
 
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
 const IS_MOBILE = typeof window !== "undefined" && window.innerWidth < 768;
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function StatCard({ emoji, label, value, hint, onClick, accent }) {
   const clickable = Boolean(onClick);
@@ -191,6 +194,24 @@ export default function Dashboard() {
   const [editingEvent, setEditingEvent] = useState(null);
   // 行事曆目前檢視範圍（月/週/日），清單依此過濾
   const [viewRange, setViewRange] = useState(null);
+  // 國定假日 / 補班（月、週、日檢視都標示）
+  const holidays = useHolidays([
+    new Date().getFullYear(),
+    viewRange?.start?.getFullYear(),
+    viewRange?.end && new Date(viewRange.end.getTime() - 1).getFullYear(),
+  ]);
+  const holClass = (date) => {
+    const h = holidays[ymd(date)];
+    return h ? [h.type === "off" ? "tw-holiday" : "tw-workday"] : [];
+  };
+  const holBadge = (h, cls = "") => (
+    <span
+      className={`tw-hol-badge ${h.type === "off" ? "is-off" : "is-work"} ${cls}`}
+      title={h.type === "off" ? `放假：${h.name}` : `補班：${h.name}`}
+    >
+      {h.type === "off" ? h.name : "補班"}
+    </span>
+  );
   // 檢視模式：行事曆 / 週看板（記住偏好）
   const [viewMode, setViewMode] = useState(
     () => localStorage.getItem("dispatch.viewMode") || "calendar"
@@ -688,6 +709,28 @@ export default function Dashboard() {
                 type: arg.view.type,
               })
             }
+            dayCellClassNames={(arg) => holClass(arg.date)}
+            dayHeaderClassNames={(arg) => holClass(arg.date)}
+            dayCellContent={(arg) => {
+              const h = arg.view.type === "dayGridMonth" && holidays[ymd(arg.date)];
+              if (!h) return arg.dayNumberText;
+              return (
+                <span className="flex min-w-0 items-center gap-1">
+                  {holBadge(h, "max-w-[2.6rem] sm:max-w-[8rem]")}
+                  <span>{arg.dayNumberText}</span>
+                </span>
+              );
+            }}
+            dayHeaderContent={(arg) => {
+              const h = arg.view.type !== "dayGridMonth" && holidays[ymd(arg.date)];
+              if (!h) return arg.text;
+              return (
+                <span className="flex flex-col items-center gap-0.5">
+                  <span>{arg.text}</span>
+                  {holBadge(h, "max-w-full")}
+                </span>
+              );
+            }}
             selectable
             selectMirror
             events={events}
