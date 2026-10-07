@@ -697,27 +697,46 @@ export default function Dashboard() {
                 ? { month: "numeric", day: "numeric", weekday: "narrow" }
                 : undefined
             }
-            height={IS_MOBILE ? 560 : 620}
+            views={{
+              // 月檢視：標題顯示「2026年10月」、欄頭只顯示星期（手機的「月/日」格式不適用）
+              dayGridMonth: {
+                titleFormat: { year: "numeric", month: "long" },
+                dayHeaderFormat: { weekday: IS_MOBILE ? "narrow" : "short" },
+              },
+            }}
+            height={IS_MOBILE ? (viewRange?.type === "dayGridMonth" ? "auto" : 560) : 620}
             nowIndicator
             eventDisplay="block"
             dayMaxEventRows={4}
             scrollTime="08:00:00"
-            datesSet={(arg) =>
+            datesSet={(arg) => {
+              // 手機從月檢視（高度 auto）切到週/日時高度會變，捲動位置跑掉 → 拉回早上 8 點
+              if (IS_MOBILE && arg.view.type !== viewRange?.type && arg.view.type.startsWith("timeGrid"))
+                setTimeout(() => arg.view.calendar.scrollToTime("08:00:00"), 50);
               setViewRange({
                 start: arg.view.currentStart,
                 end: arg.view.currentEnd,
                 type: arg.view.type,
-              })
-            }
+              });
+            }}
             dayCellClassNames={(arg) => holClass(arg.date)}
             dayHeaderClassNames={(arg) => holClass(arg.date)}
             dayCellContent={(arg) => {
               const h = arg.view.type === "dayGridMonth" && holidays[ymd(arg.date)];
-              if (!h) return arg.dayNumberText;
+              // 手機月檢視格子很窄：只顯示數字，節日標籤放在數字下方
+              const num = IS_MOBILE ? arg.dayNumberText.replace("日", "") : arg.dayNumberText;
+              if (!h) return num;
+              if (IS_MOBILE)
+                return (
+                  <span className="flex w-full min-w-0 flex-col items-end gap-0.5">
+                    <span>{num}</span>
+                    {holBadge(h, "tw-hol-badge-sm max-w-full")}
+                  </span>
+                );
               return (
                 <span className="flex min-w-0 items-center gap-1">
-                  {holBadge(h, "max-w-[2.6rem] sm:max-w-[8rem]")}
-                  <span>{arg.dayNumberText}</span>
+                  {holBadge(h, "min-w-0 max-w-[6.5rem]")}
+                  <span className="shrink-0 whitespace-nowrap">{arg.dayNumberText}</span>
                 </span>
               );
             }}
@@ -727,7 +746,7 @@ export default function Dashboard() {
               return (
                 <span className="flex flex-col items-center gap-0.5">
                   <span>{arg.text}</span>
-                  {holBadge(h, "max-w-full")}
+                  {holBadge(h, IS_MOBILE ? "tw-hol-badge-sm max-w-full" : "max-w-full")}
                 </span>
               );
             }}
@@ -784,6 +803,19 @@ export default function Dashboard() {
                     >
                       {arg.event.title}
                     </span>
+                  </div>
+                );
+              }
+
+              // 手機月檢視：格子太窄，只留標題（點開可編輯、勾完成）
+              if (IS_MOBILE && arg.view.type === "dayGridMonth") {
+                return (
+                  <div
+                    className={`overflow-hidden whitespace-nowrap px-0.5 text-[10px] leading-snug ${
+                      completed ? "line-through opacity-70" : ""
+                    }`}
+                  >
+                    {arg.event.title}
                   </div>
                 );
               }

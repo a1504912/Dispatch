@@ -169,4 +169,23 @@ body {
   .fc .fc-event {
     font-size: 0.7rem;
   }
+  /* 月檢視：日期數字＋節日標籤直排，佔滿格子寬 */
+  .fc .fc-daygrid-day-top {
+    min-width: 0;
+  }
+  .fc .fc-daygrid-day-number {
+    min-width: 0;
+    max-width: 100%;
+    padding: 2px 3px;
+    white-space: nowrap;
+  }
+  .fc .fc-daygrid-event {
+    margin-left: 1px;
+    margin-right: 1px;
+    padding: 0 1px;
+  }
+  .tw-hol-badge-sm {
+    padding: 0 2px;
+    font-size: 9px;
+  }
 }
