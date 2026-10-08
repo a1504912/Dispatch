@@ -286,6 +286,12 @@ def _check_usage_resets(session: Session, now: datetime) -> None:
     """
     if now.minute % 15 != 0:
         return
+    # 不管有沒有開提醒，都順便替 Codex / Claude 的登入 token 續期（還很新就不會連網）
+    for mod in ("codex_usage", "claude_usage"):
+        try:
+            __import__(f"app.{mod}", fromlist=["x"]).refresh_if_needed()
+        except Exception:  # noqa: BLE001
+            pass
     if push.get_setting(session, "usage_reset_notify", "1") != "1":
         return
     try:

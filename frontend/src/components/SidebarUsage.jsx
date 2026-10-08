@@ -189,6 +189,10 @@ function errText(e) {
     const why = msg.match(/（(.+?)）/)?.[1];
     return why ? `登入過期，自動換新失敗：${why}` : "登入過期：到主機執行一次 claude";
   }
+  if (msg.includes("自動換新也失敗")) {
+    const why = msg.match(/（(.+?)）/)?.[1];
+    return why ? `自動換新失敗：${why}` : "token 過期：主機執行一次 codex login";
+  }
   if (msg.includes("過期")) return "token 過期：主機重新登入一次";
   if (msg.includes("限流")) return "限流中，稍後再試";
   if (!msg) return status ? `錯誤 ${status}` : "查詢失敗";
