@@ -309,6 +309,42 @@ class PriceOption(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class InvestTrade(SQLModel, table=True):
+    """一筆股票買進／賣出。持股、均價、已實現損益都由交易依時間順序算出（平均成本法）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: date
+    code: str = Field(index=True)  # 股票代號，例：2330、0050
+    name: str = ""
+    side: str = "buy"  # buy / sell
+    shares: float = 0  # 股數（1 張 = 1000 股）
+    price: float = 0  # 成交價
+    fee: float = 0  # 手續費
+    tax: float = 0  # 證交稅（賣出才有）
+    cash_account_id: Optional[int] = Field(default=None, foreign_key="account.id")  # 交割帳戶
+    ledger: bool = True  # 是否自動同步到記帳
+    tx_main_id: Optional[int] = None  # 自動產生的轉帳
+    tx_pl_id: Optional[int] = None  # 自動產生的投資收益／損失
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InvestDividend(SQLModel, table=True):
+    """股利：現金股利（記成收入）與股票股利（配股，加股數、成本 0）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: date
+    code: str = Field(index=True)
+    name: str = ""
+    cash: float = 0  # 現金股利（實拿金額）
+    stock_shares: float = 0  # 配股股數
+    cash_account_id: Optional[int] = Field(default=None, foreign_key="account.id")
+    ledger: bool = True
+    tx_id: Optional[int] = None
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Setting(SQLModel, table=True):
     """通用 key-value 設定（存 VAPID 金鑰、通知偏好等）。"""
 

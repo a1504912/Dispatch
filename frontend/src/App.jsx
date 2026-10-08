@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Notes from "./pages/Notes.jsx";
 import Ledger from "./pages/Ledger.jsx";
 import Health from "./pages/Health.jsx";
+import Invest from "./pages/Invest.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import News from "./pages/News.jsx";
 import Games from "./pages/Games.jsx";
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/todos" element={<Navigate to="/notes" replace />} />
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/health" element={<Health />} />
+        <Route path="/invest" element={<Invest />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/news" element={<News />} />
         <Route path="/games" element={<Games />} />

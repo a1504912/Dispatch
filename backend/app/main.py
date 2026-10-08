@@ -23,6 +23,7 @@ from app.routers import (
     google,
     health,
     holidays,
+    invest,
     invoices,
     ledger_categories,
     members,
@@ -148,6 +149,7 @@ app.include_router(claude.router)
 app.include_router(health.router)
 app.include_router(notes.router)
 app.include_router(holidays.router)
+app.include_router(invest.router)
 
 
 @app.get("/api/health")

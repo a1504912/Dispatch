@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { listAccounts, createAccount, updateAccount, deleteAccount } from "../api/accounts";
 import { listTransactions, createTransaction } from "../api/ledger";
+import { getPortfolio } from "../api/invest";
 
 const money = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n)).toLocaleString("en-US");
-const ACC_EMOJIS = ["💵", "🏦", "💳", "📱", "💱", "🪙", "💰", "🏧", "🧧", "💸"];
+const ACC_EMOJIS = ["💵", "🏦", "💳", "📱", "💱", "🪙", "💰", "🏧", "🧧", "💸", "📈"];
 const todayStr = () => {
   const d = new Date();
   const p = (x) => String(x).padStart(2, "0");
@@ -98,6 +99,7 @@ export default function Assets() {
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("💰");
   const [adjustFor, setAdjustFor] = useState(null); // { account, current }
+  const [invest, setInvest] = useState(null); // 投資頁的持股市值（證券帳戶餘額只記成本）
 
   function reload() {
     setLoading(true);
@@ -108,7 +110,20 @@ export default function Assets() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    getPortfolio()
+      .then((p) => setInvest(p.settings?.account_id && p.summary?.cost ? { id: p.settings.account_id, ...p.summary } : null))
+      .catch(() => setInvest(null));
   }
+  const mvNote = (a) =>
+    invest && a.id === invest.id ? (
+      <p className="text-[11px] font-semibold text-slate-400">
+        市值 {money(invest.market_value)}{" "}
+        <span className={invest.unrealized > 0 ? "text-rose-500" : invest.unrealized < 0 ? "text-emerald-600" : ""}>
+          ({invest.unrealized >= 0 ? "+" : ""}{money(invest.unrealized)})
+        </span>
+      </p>
+    ) : null;
+
   useEffect(() => {
     reload();
   }, []);
@@ -121,6 +136,8 @@ export default function Assets() {
   const isExcluded = (a) =>
     a.exclude_from_total ||
     (a.parent_id && accounts.find((p) => p.id === a.parent_id)?.exclude_from_total);
+
+  const investCounted = invest && !accounts.some((a) => a.id === invest.id && isExcluded(a)) && accounts.some((a) => a.id === invest.id);
 
   // 總資產 = 所有末端帳戶餘額，扣掉被標記「不計入」的
   const total = useMemo(() => {
@@ -166,6 +183,12 @@ export default function Assets() {
         <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-emerald-500/20 blur-2xl" />
         <p className="text-xs font-medium text-slate-400">總資產</p>
         <p className={`mt-1 text-4xl font-black tracking-tight ${total >= 0 ? "text-white" : "text-rose-400"}`}>{money(total)}</p>
+        {investCounted && invest.unrealized !== 0 && (
+          <p className="mt-1 text-xs text-slate-400">
+            股票以市值計：<b className="text-white">{money(total + invest.unrealized)}</b>
+            <span className={invest.unrealized > 0 ? "text-rose-400" : "text-emerald-400"}>（未實現 {invest.unrealized > 0 ? "+" : ""}{money(invest.unrealized)}）</span>
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -187,6 +210,7 @@ export default function Assets() {
                   <input defaultValue={top.name} onBlur={(e) => e.target.value.trim() && e.target.value !== top.name && saveField(top, { name: e.target.value.trim() })} className={`${field} min-w-0 flex-1 font-semibold`} />
                   <div className="shrink-0 text-right">
                     <p className={`text-lg font-black ${top.exclude_from_total ? "text-slate-300" : groupBal >= 0 ? "text-slate-800" : "text-red-500"}`}>{money(groupBal)}</p>
+                    {!isGroup && mvNote(top)}
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => saveField(top, { exclude_from_total: !top.exclude_from_total })}
@@ -219,7 +243,7 @@ export default function Assets() {
                         <span className="flex items-center gap-1 text-xs text-slate-400">
                           初始<input type="number" defaultValue={k.initial} onBlur={(e) => Number(e.target.value) !== k.initial && saveField(k, { initial: Number(e.target.value) || 0 })} className="w-20 rounded-md border border-slate-200 px-1.5 py-0.5 text-xs" />
                         </span>
-                        <span className={`w-16 shrink-0 text-right text-sm font-bold ${isExcluded(k) ? "text-slate-300" : bal(k) >= 0 ? "text-slate-700" : "text-red-500"}`}>{money(bal(k))}</span>
+                        <span className={`w-16 shrink-0 text-right text-sm font-bold ${isExcluded(k) ? "text-slate-300" : bal(k) >= 0 ? "text-slate-700" : "text-red-500"}`}>{money(bal(k))}{mvNote(k)}</span>
                         <button
                           onClick={() => saveField(k, { exclude_from_total: !k.exclude_from_total })}
                           className={`shrink-0 text-xs ${k.exclude_from_total ? "font-semibold text-amber-600" : "text-slate-400 hover:text-indigo-600"}`}
