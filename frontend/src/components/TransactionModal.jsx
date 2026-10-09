@@ -81,7 +81,9 @@ export default function TransactionModal({ open, initial, categories = [], txs =
     if (!open) return;
     setForm({
       kind: initial?.kind ?? "expense",
-      amount: initial?.amount != null ? String(initial.amount) : "",
+      amount: initial?.amount != null ? String(Math.abs(initial.amount)) : "",
+      // 退款／沖銷：金額存負數（支出負數＝錢退回帳戶、從支出扣掉）
+      refund: initial?.kind !== "transfer" && Number(initial?.amount) < 0,
       category: initial?.category ?? "",
       subcategory: initial?.subcategory ?? "",
       note: initial?.note ?? "",
@@ -145,7 +147,11 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   const selectedCat = cats.find((c) => c.name === form.category);
   const subCats = selectedCat ? categories.filter((c) => c.parent_id === selectedCat.id) : [];
 
-  const amountNum = evalExpr(form.amount);
+  // 金額一律取正：方向由「支出／收入」決定，打了負號也當一般支出；退款要另外打開「退款」開關
+  const amountNum = Math.abs(evalExpr(form.amount));
+  const typedMinus = /^\s*-/.test(form.amount || "");
+  const refund = !isTransfer && form.refund;
+  const signedAmount = refund ? -amountNum : amountNum;
   const showCalc = hasOperator(form.amount);
   const everyone = ["self", ...members.map((m) => String(m.id))];
   const parts = everyone.filter((w) => checked[w]);
@@ -177,9 +183,8 @@ export default function TransactionModal({ open, initial, categories = [], txs =
     "rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
 
   const transferBad = isTransfer && (!form.account_id || !form.to_account_id || form.account_id === form.to_account_id);
-  // 支出/收入允許負數（沖銷、退款）；轉帳與分帳仍需正數
-  const amountOk = isTransfer ? amountNum > 0 : amountNum !== 0 && Number.isFinite(amountNum);
-  const canSave = amountOk && !exactBad && !transferBad && !saving && (!splitOn || amountNum > 0);
+  const amountOk = amountNum > 0 && Number.isFinite(amountNum);
+  const canSave = amountOk && !exactBad && !transferBad && !saving && (!splitOn || !refund);
 
   // 帳戶：主分類（類型）→ 子帳戶
   const topAccounts = accounts.filter((a) => !a.parent_id);
@@ -197,7 +202,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
     return kids.length ? kids.reduce((s, k) => s + balOf(k), 0) : balOf(top);
   };
   const selBal = selAcc ? balOf(selAcc) : 0;
-  const afterBal = selBal + (form.kind === "income" ? amountNum : -amountNum);
+  const afterBal = selBal + (form.kind === "income" ? signedAmount : -signedAmount);
   const showAfter = !isTransfer && selAcc && Number.isFinite(amountNum) && amountNum !== 0;
 
   // 「不計入總資產」的帳戶不在選單顯示（除非正好是這筆已選的帳戶，才留著能改）
@@ -253,7 +258,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
       }
       const payload = {
         kind: form.kind,
-        amount: amountNum,
+        amount: isTransfer ? amountNum : signedAmount,
         category: isTransfer ? "" : form.category || "其他",
         subcategory: isTransfer ? "" : form.subcategory || "",
         note: form.note.trim(),
@@ -352,6 +357,23 @@ export default function TransactionModal({ open, initial, categories = [], txs =
           </div>
           {/* 計算機按鈕 */}
           <CalcButtons value={form.amount} onChange={(v) => setForm((f) => ({ ...f, amount: v }))} />
+          {!isTransfer && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button type="button" onClick={() => setForm((f) => ({ ...f, refund: !f.refund }))}
+                className={`rounded-full px-3 py-1 font-semibold ring-1 transition ${refund ? "bg-amber-500 text-white ring-amber-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-amber-300"}`}>
+                ↩ {form.kind === "expense" ? "退款／沖銷" : "沖銷（扣回）"}
+              </button>
+              {refund ? (
+                <span className="text-amber-600">
+                  {form.kind === "expense"
+                    ? `錢退回帳戶，從本月支出扣掉 ${money(amountNum || 0)}`
+                    : `從本月收入扣掉 ${money(amountNum || 0)}`}
+                </span>
+              ) : typedMinus ? (
+                <span className="text-slate-400">不用打負號，{form.kind === "expense" ? "支出" : "收入"}已經決定方向</span>
+              ) : null}
+            </div>
+          )}
 
           <input className={`${field} w-full`} placeholder="備註（可留空）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
 
