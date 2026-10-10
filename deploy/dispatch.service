@@ -1,0 +1,24 @@
+## Dispatch systemd 服務（VM 開機自動啟動、當掉自動重啟）
+# 安裝方式：
+#   sudo cp deploy/dispatch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now dispatch
+# 查看狀態 / 日誌：
+#   systemctl status dispatch
+#   journalctl -u dispatch -f
+# ※ 若你的使用者名稱或路徑不同，請修改 User 與路徑。
+
+[Unit]
+Description=Dispatch (FastAPI + frontend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dispatch
+WorkingDirectory=/home/dispatch/Dispatch/backend
+ExecStart=/home/dispatch/Dispatch/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
