@@ -2,6 +2,9 @@ import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },
+  { to: "/content", label: "內容" },
+  { to: "/pillars", label: "主題方向" },
+  { to: "/analytics", label: "數據分析" },
   { to: "/agents", label: "Agents" },
 ];
 
@@ -11,13 +14,13 @@ export default function Layout() {
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
           <span className="text-xl font-bold text-indigo-600">Dispatch</span>
-          <nav className="flex gap-1">
+          <nav className="flex gap-1 overflow-x-auto">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                  `whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition ${
                     isActive
                       ? "bg-indigo-100 text-indigo-700"
                       : "text-gray-600 hover:bg-gray-100"

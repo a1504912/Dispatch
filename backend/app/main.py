@@ -2,10 +2,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
-from app.routers import agents, chat, events, schedule
+from app.routers import agents, analytics, chat, content, events, pillars, posts, schedule
+from app.routers.posts import upload_path
 
 
 @asynccontextmanager
@@ -28,6 +30,13 @@ app.include_router(agents.router)
 app.include_router(chat.router)
 app.include_router(schedule.router)
 app.include_router(events.router)
+app.include_router(pillars.router)
+app.include_router(posts.router)
+app.include_router(analytics.router)
+app.include_router(content.router)
+
+# Uploaded post images, served at /uploads/<filename>.
+app.mount("/uploads", StaticFiles(directory=upload_path()), name="uploads")
 
 
 @app.get("/")

@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./dispatch.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     default_model: str = "qwen3:8b"
+    upload_dir: str = "./uploads"
+    max_upload_mb: int = 10
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -47,6 +47,17 @@ ollama pull qwen2.5-coder:7b   # 工程師（改程式）
 ollama pull qwen3:8b           # 其他所有 agent 與 DEFAULT_MODEL
 ```
 
+## Seed the content studio (自媒體)
+
+Creates four example content pillars. With `--demo`, also adds 24 demo posts
+with metrics so the analytics page has something to show — only when there
+are no posts yet, so it never mixes into real data.
+
+```bash
+python -m app.seed_content          # pillars only
+python -m app.seed_content --demo   # pillars + demo posts
+```
+
 ## Configuration (`.env`)
 
 | Variable        | Description                                  | Default                                          |
@@ -54,7 +65,9 @@ ollama pull qwen3:8b           # 其他所有 agent 與 DEFAULT_MODEL
 | `OLLAMA_URL`    | Base URL of the Ollama server                | `http://localhost:11434`                         |
 | `DATABASE_URL`  | SQLModel/SQLAlchemy database URL             | `sqlite:///./dispatch.db`                         |
 | `CORS_ORIGINS`  | Comma-separated allowed frontend origins     | `http://localhost:5173,http://127.0.0.1:5173`    |
-| `DEFAULT_MODEL` | Fallback Ollama model when an agent has none | `qwen3:8b`                                        |
+| `DEFAULT_MODEL` | Fallback Ollama model when an agent has none; also used by the content AI assist | `qwen3:8b` |
+| `UPLOAD_DIR`    | Where uploaded post images are stored (served at `/uploads`) | `./uploads`              |
+| `MAX_UPLOAD_MB` | Per-image upload size limit                  | `10`                                              |
 
 ## API endpoints
 
@@ -69,6 +82,16 @@ ollama pull qwen3:8b           # 其他所有 agent 與 DEFAULT_MODEL
 | `GET`    | `/api/events`                 | List calendar events                 |
 | `POST`   | `/api/events`                 | Create an event                      |
 | `DELETE` | `/api/events/{id}`            | Delete an event                      |
+| `GET/POST` | `/api/pillars`              | List / create content pillars        |
+| `PATCH/DELETE` | `/api/pillars/{id}`     | Update / delete a pillar             |
+| `GET/POST` | `/api/posts`                | List (filterable) / create posts     |
+| `GET/PATCH/DELETE` | `/api/posts/{id}`   | Read / update / delete a post        |
+| `POST`   | `/api/posts/{id}/images`      | Upload images (multipart `files`)    |
+| `DELETE` | `/api/posts/{id}/images/{image_id}` | Delete an image                |
+| `GET/POST` | `/api/posts/{id}/metrics`   | List / add metric snapshots          |
+| `DELETE` | `/api/posts/{id}/metrics/{metric_id}` | Delete a snapshot            |
+| `GET`    | `/api/analytics/summary`      | Totals, trend, pillar mix, platforms, weekdays, top posts (`?days=`) |
+| `POST`   | `/api/content/assist`         | AI copywriting via Ollama            |
 
 ## Project layout
 
@@ -78,10 +101,12 @@ backend/
 │   ├── main.py          # FastAPI app, CORS, router wiring
 │   ├── config.py        # .env-backed settings
 │   ├── database.py      # engine + session dependency
-│   ├── models.py        # SQLModel tables (Agent, Event)
+│   ├── models.py        # SQLModel tables (Agent, Event, Pillar, Post, PostImage, PostMetric)
 │   ├── schemas.py       # request/response models
 │   ├── ollama_client.py # Ollama bridge
-│   └── routers/         # agents, chat, schedule, events
+│   ├── seed_content.py  # example pillars / demo posts
+│   └── routers/         # agents, chat, schedule, events,
+│                        # pillars, posts, analytics, content
 ├── requirements.txt
 ├── Dockerfile
 └── .env.example
