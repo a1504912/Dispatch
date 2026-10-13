@@ -368,3 +368,56 @@ class SentNotification(SQLModel, table=True):
 
     tag: str = Field(primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------- 自媒體 ----------
+class MediaPillar(SQLModel, table=True):
+    """自媒體主題方向（content pillar）：帳號固定經營的題材。
+
+    target_ratio 是這個主題應佔的發文比例（0-100），數據分析拿來比對實際比例。
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    description: str = ""
+    audience: str = ""
+    tone: str = ""
+    color: str = "#2a78d6"
+    target_ratio: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MediaPost(SQLModel, table=True):
+    """一篇自媒體貼文：從點子、草稿、排程到已發佈。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    body: str = ""
+    # instagram / facebook / threads / youtube / tiktok / x / blog / other
+    platform: str = "instagram"
+    # idea / draft / scheduled / published
+    status: str = Field(default="idea", index=True)
+    pillar_id: Optional[int] = Field(default=None, index=True)
+    tags: str = ""  # 逗號分隔
+    scheduled_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
+    url: str = ""
+    # 圖片（JSON 陣列 data URL；列表不回傳，開單篇才載）與列表用小縮圖
+    images: Optional[str] = None
+    thumb: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MediaMetric(SQLModel, table=True):
+    """貼文成效的一次記錄。數字是從平台後台抄的累計值，最新一筆＝目前總數。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    post_id: int = Field(index=True)
+    recorded_at: datetime = Field(default_factory=datetime.utcnow)
+    views: int = 0
+    likes: int = 0
+    comments: int = 0
+    shares: int = 0
+    saves: int = 0
+    followers_gained: int = 0
