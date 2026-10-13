@@ -442,6 +442,9 @@ export default function Dashboard() {
         color: e.color,
         spillover: true,
         parentId: e.id,
+        // 延到這天的明細全部勾完 → 這張分身卡也算完成（今日行程的完成數才會對）
+        completed: subs.every((st) => st.done),
+        classNames: subs.every((st) => st.done) ? ["event-done"] : [],
       });
     }
   }
