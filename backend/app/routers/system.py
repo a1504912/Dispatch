@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import sys
@@ -5,7 +6,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.config import settings
 
@@ -31,14 +32,68 @@ def update_status():
 
 def _git(args, timeout=10):
     try:
+        # 一律用 UTF-8 讀 git 輸出（Windows 預設 cp950 會把中文的 commit 訊息讀成亂碼）
         r = subprocess.run(
-            ["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=timeout
+            ["git", "-c", "i18n.logOutputEncoding=utf-8", "-c", "core.quotepath=false", *args],
+            cwd=str(REPO), capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout,
         )
         if r.returncode != 0:
             return None
         return r.stdout.strip()
     except Exception:  # noqa: BLE001
         return None
+
+
+_F, _R = "\x1f", "\x1e"
+_TRAILER = re.compile(r"^(Co-Authored-By|Claude-Session|Signed-off-by|Change-Id):", re.I)
+
+
+def _points(body: str) -> list[str]:
+    """把 commit 內文整理成條列：「- 」開頭是一點，續行接在上一點後面，空行分段；簽名行略過。"""
+    pts: list[str] = []
+    new_para = True
+    for raw in (body or "").splitlines():
+        txt = raw.strip()
+        if not txt:
+            new_para = True
+            continue
+        if _TRAILER.match(txt):
+            continue
+        if txt[:2] in ("- ", "* ") or txt.startswith(("・", "•")):
+            pts.append(txt.lstrip("-*・• ").strip())
+        elif pts and not new_para:
+            glue = "" if (pts[-1][-1:] > "\x7f" or txt[:1] > "\x7f") else " "
+            pts[-1] += glue + txt
+        else:
+            pts.append(txt)
+        new_para = False
+    return pts[:12]
+
+
+def _commits(rev_range: str, limit: int = 30) -> list[dict]:
+    out = _git(["log", f"--max-count={limit}", "--no-merges",
+                f"--pretty=%h{_F}%s{_F}%b{_F}%cd{_R}", "--date=format:%Y-%m-%d %H:%M", rev_range], timeout=15)
+    commits = []
+    for rec in (out or "").split(_R):
+        parts = rec.strip("\n").split(_F)
+        if len(parts) < 4 or not parts[0].strip():
+            continue
+        h, subject, body, date = (p.strip() for p in parts[:4])
+        commits.append({"hash": h, "subject": subject, "points": _points(body), "date": date})
+    return commits
+
+
+@router.get("/changelog")
+def changelog(since: str = Query(..., min_length=4, max_length=40)):
+    """從某個版本（since）到目前主機版本之間的更新內容。"""
+    if not re.fullmatch(r"[0-9a-fA-F]{4,40}", since):
+        raise HTTPException(400, "版本代號格式不對")
+    if _git(["cat-file", "-e", f"{since}^{{commit}}"]) is None:
+        return {"ok": False, "commits": []}  # 舊版本不在這台主機的歷史裡（例如換過分支）
+    if _git(["merge-base", "--is-ancestor", since, "HEAD"]) is None:
+        return {"ok": False, "commits": []}
+    return {"ok": True, "commits": _commits(f"{since}..HEAD", 40)}
 
 
 @router.get("/version")
@@ -65,7 +120,8 @@ def check_updates():
         n = int(behind or "0")
     except ValueError:
         n = 0
-    return {"ok": True, "behind": n, "latest_subject": latest}
+    commits = _commits(f"HEAD..origin/{branch}", 30) if n > 0 else []
+    return {"ok": True, "behind": n, "latest_subject": latest, "commits": commits}
 
 
 @router.get("/update-available")

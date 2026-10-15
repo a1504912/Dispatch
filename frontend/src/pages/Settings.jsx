@@ -7,6 +7,7 @@ import {
 } from "../api/categories";
 import { TW_CITIES, getWeatherLoc, setWeatherLoc } from "../api/weather";
 import { getUpdateAvailable, runUpdate, getVersion, checkUpdates, getUpdateStatus } from "../api/system";
+import ChangeList from "../components/ChangeList.jsx";
 import { getInvoiceSettings, saveInvoiceSettings } from "../api/invoices";
 import { NO_BACKEND } from "../localMode";
 import {
@@ -484,6 +485,14 @@ function SystemSettings() {
             <span className="text-sm text-slate-500">已是最新版 ✅</span>
           ))}
       </div>
+      {check?.commits?.length > 0 && (
+        <div className="rounded-2xl bg-emerald-50/60 p-3 ring-1 ring-emerald-100">
+          <p className="mb-2 text-xs font-bold text-emerald-700">這次更新會包含：</p>
+          <div className="max-h-80 overflow-y-auto">
+            <ChangeList commits={check.commits} />
+          </div>
+        </div>
+      )}
 
       {supported ? (
         <>
