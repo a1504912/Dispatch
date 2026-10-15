@@ -723,6 +723,8 @@ export default function Notes() {
         const onPct = (pct) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, pct } : x)));
         let it;
         if (cryptoKeyForUpload) {
+          // 加密要把整個檔案讀進瀏覽器記憶體，太大的檔案手機／瀏覽器會撐不住
+          if (f.size > 1024 * 1024 * 1024) throw new Error("加密記事本單檔上限 1GB（太大的檔案瀏覽器加密不動），請放到一般記事本");
           // 在瀏覽器先加密內容和檔名/類型，主機只收到亂碼
           const blob = await encryptBytes(cryptoKeyForUpload, await f.arrayBuffer());
           const encMeta = await encryptText(cryptoKeyForUpload, JSON.stringify({ name: fname, type: f.type || "application/octet-stream", size: f.size }));

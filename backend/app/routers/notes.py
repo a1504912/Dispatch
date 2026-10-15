@@ -7,6 +7,7 @@
 """
 
 import json
+import os
 import re
 import shutil
 import uuid
@@ -25,7 +26,10 @@ from app.models import Event, Notebook, NoteItem
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "notes"
-MAX_UPLOAD = 200 * 1024 * 1024  # 單檔上限 200MB（走 Cloudflare 臨時網址時上限約 100MB）
+MAX_UPLOAD = 200 * 1024 * 1024  # 一次傳完的上限；更大的檔案前端會改用分段上傳
+MAX_CHUNKED = 20 * 1024 * 1024 * 1024  # 分段上傳單檔上限 20GB（另外會檢查主機硬碟空間）
+MAX_CHUNK = 64 * 1024 * 1024  # 每段上限（Cloudflare 每個請求限 100MB，前端每段送 20MB）
+UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
 
 
@@ -240,16 +244,8 @@ def upload(
     session: Session = Depends(get_session),
 ):
     nb = _get_nb(session, nb_id)
-    ctype = (file.content_type or "application/octet-stream").lower()
-    kind = "image" if ctype.startswith("image/") else "video" if ctype.startswith("video/") else "file"
-    suffix = Path(file.filename or "").suffix.lower()
-    if not re.fullmatch(r"\.[a-z0-9]{1,8}", suffix or ""):
-        suffix = ""
-    if nb.encrypted:
-        # 主機看不到內容，也不知道是照片還是影片；檔名、類型都在 enc_meta 裡（加密）
-        if not enc_meta:
-            raise HTTPException(status_code=400, detail="加密記事本的檔案缺少加密資訊")
-        kind, ctype, suffix = "enc", "application/octet-stream", ".bin"
+    # 加密記事本：主機看不到內容，也不知道是照片還是影片；檔名、類型都在 enc_meta 裡（加密）
+    kind, ctype, suffix = _classify(nb, file.filename, file.content_type, enc_meta)
     name = f"{uuid.uuid4().hex}{suffix}"
     dest = _media_dir() / name
     size = 0
@@ -262,14 +258,31 @@ def upload(
             if size > MAX_UPLOAD:
                 out.close()
                 dest.unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail="檔案太大（單檔上限 200MB）")
+                raise HTTPException(status_code=413, detail="檔案太大，請更新網頁後重試（大檔會自動分段上傳）")
             out.write(chunk)
+    return _new_media_item(session, nb, name, file.filename, ctype, kind, size, caption, enc_meta)
+
+
+def _classify(nb: Notebook, filename: str | None, content_type: str | None, enc_meta: str):
+    ctype = (content_type or "application/octet-stream").lower()
+    kind = "image" if ctype.startswith("image/") else "video" if ctype.startswith("video/") else "file"
+    suffix = Path(filename or "").suffix.lower()
+    if not re.fullmatch(r"\.[a-z0-9]{1,8}", suffix or ""):
+        suffix = ""
+    if nb.encrypted:
+        if not enc_meta:
+            raise HTTPException(status_code=400, detail="加密記事本的檔案缺少加密資訊")
+        kind, ctype, suffix = "enc", "application/octet-stream", ".bin"
+    return kind, ctype, suffix
+
+
+def _new_media_item(session, nb, name, filename, ctype, kind, size, caption, enc_meta):
     it = NoteItem(
-        notebook_id=nb_id,
+        notebook_id=nb.id,
         kind=kind,
         text=caption.strip(),
         media_path=name,
-        media_name="encrypted.bin" if nb.encrypted else (file.filename or name)[:200],
+        media_name="encrypted.bin" if nb.encrypted else (filename or name)[:200],
         media_type=ctype,
         media_size=size,
         meta=json.dumps({"enc": enc_meta}) if nb.encrypted else None,
@@ -279,6 +292,91 @@ def upload(
     session.commit()
     session.refresh(it)
     return _item_dict(it)
+
+
+# ---------- 大檔分段上傳 ----------
+# 走 Cloudflare 網址時每個請求最多 100MB，所以大檔切成一段段傳：
+#   upload-chunk（依序 offset 寫進暫存檔，同一段重送會覆蓋，不會重複）→ upload-finish（搬進去、建立這則）
+
+
+def _part_path(upload_id: str) -> Path:
+    if not UPLOAD_ID_RE.match(upload_id or ""):
+        raise HTTPException(status_code=400, detail="上傳代號格式不對")
+    d = _media_dir() / "_uploads"
+    d.mkdir(exist_ok=True)
+    return d / f"{upload_id}.part"
+
+
+def _cleanup_stale_parts(max_age_s: int = 24 * 3600) -> None:
+    import time
+
+    now = time.time()
+    for p in (_media_dir() / "_uploads").glob("*.part") if (_media_dir() / "_uploads").exists() else []:
+        try:
+            if now - p.stat().st_mtime > max_age_s:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+@router.post("/notebooks/{nb_id}/upload-chunk")
+def upload_chunk(
+    nb_id: int,
+    upload_id: str = Form(...),
+    offset: int = Form(...),
+    total: int = Form(...),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    _get_nb(session, nb_id)
+    part = _part_path(upload_id)
+    if total <= 0 or total > MAX_CHUNKED:
+        raise HTTPException(status_code=413, detail=f"檔案太大（單檔上限 {MAX_CHUNKED // 1024 ** 3}GB）")
+    if offset == 0:
+        _cleanup_stale_parts()
+        free = shutil.disk_usage(_media_dir()).free
+        if free < total + 1024 ** 3:  # 至少留 1GB 給系統
+            raise HTTPException(status_code=507, detail=f"主機硬碟空間不夠（剩 {free / 1024 ** 3:.1f}GB）")
+        part.write_bytes(b"")
+    elif not part.exists():
+        raise HTTPException(status_code=409, detail="上傳中斷太久，請重新上傳")
+    have = part.stat().st_size
+    if offset > have:
+        raise HTTPException(status_code=409, detail="上傳順序錯亂，請重新上傳")
+    written = 0
+    with open(part, "r+b") as out:
+        out.seek(offset)
+        out.truncate()  # 同一段重送：從這裡覆蓋
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > MAX_CHUNK or offset + written > total:
+                raise HTTPException(status_code=413, detail="這一段的大小不對")
+            out.write(chunk)
+    return {"received": offset + written}
+
+
+@router.post("/notebooks/{nb_id}/upload-finish", status_code=201)
+def upload_finish(
+    nb_id: int,
+    upload_id: str = Form(...),
+    total: int = Form(...),
+    filename: str = Form(""),
+    content_type: str = Form(""),
+    caption: str = Form(""),
+    enc_meta: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    nb = _get_nb(session, nb_id)
+    part = _part_path(upload_id)
+    if not part.exists() or part.stat().st_size != total:
+        raise HTTPException(status_code=409, detail="檔案沒有完整傳到，請重新上傳")
+    kind, ctype, suffix = _classify(nb, filename, content_type, enc_meta)
+    name = f"{uuid.uuid4().hex}{suffix}"
+    os.replace(part, _media_dir() / name)
+    return _new_media_item(session, nb, name, filename, ctype, kind, total, caption, enc_meta)
 
 
 @router.put("/items/{item_id}")
@@ -346,6 +444,21 @@ def _cleanup_stale_staged(max_age_s: int = 24 * 3600) -> None:
                 p.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+@router.post("/notebooks/{nb_id}/encrypt/blob-finish", status_code=201)
+def encrypt_stage_finish(nb_id: int, upload_id: str = Form(...), total: int = Form(...), session: Session = Depends(get_session)):
+    """大檔加密：密文先用 upload-chunk 分段傳，再在這裡變成暫存檔（staged-xxx.bin）。"""
+    nb = _get_nb(session, nb_id)
+    if nb.encrypted:
+        raise HTTPException(status_code=400, detail="這本已經是加密記事本")
+    part = _part_path(upload_id)
+    if not part.exists() or part.stat().st_size != total:
+        raise HTTPException(status_code=409, detail="檔案沒有完整傳到，請重新加密一次")
+    _cleanup_stale_staged()
+    name = f"staged-{uuid.uuid4().hex}.bin"
+    os.replace(part, _media_dir() / name)
+    return {"blob": name, "size": total}
 
 
 @router.post("/notebooks/{nb_id}/encrypt/blob", status_code=201)
