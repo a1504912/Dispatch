@@ -375,6 +375,193 @@ function ImportModal({ caseObj, tables, onClose, onDone }) {
   );
 }
 
+/* ---------- 資料呈現：清單＋詳細（預設）或表格 ---------- */
+const AVATAR = ["bg-indigo-100 text-indigo-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700", "bg-rose-100 text-rose-700", "bg-sky-100 text-sky-700", "bg-violet-100 text-violet-700", "bg-teal-100 text-teal-700"];
+const avatarCls = (name) => AVATAR[[...(name || "?")].reduce((s, ch) => s + ch.codePointAt(0), 0) % AVATAR.length];
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // http 網址沒有 clipboard API：用舊方法
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }
+}
+
+function Field({ col, value }) {
+  const [copied, setCopied] = useState(false);
+  const long = value.length > 36 || value.includes("\n");
+  return (
+    <div className={`group relative rounded-xl bg-slate-50/80 px-3.5 py-2.5 ring-1 ring-slate-100 ${long ? "sm:col-span-2" : ""}`}>
+      <p className="text-[11px] font-semibold tracking-wide text-slate-400">
+        {col.label} {col.masked && <span className="text-amber-500">🔒</span>}
+      </p>
+      <div className="mt-0.5 pr-8 text-sm leading-relaxed text-slate-800">
+        {col.masked ? <Masked value={value} /> : <span className="whitespace-pre-line break-words">{value}</span>}
+      </div>
+      <button
+        onClick={async () => {
+          if (await copyText(value)) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          }
+        }}
+        className="absolute right-2 top-2 rounded-lg px-1.5 py-1 text-xs text-slate-400 opacity-0 transition hover:bg-white hover:text-indigo-600 group-hover:opacity-100 max-md:opacity-100"
+        title="複製"
+      >
+        {copied ? "✓" : "⧉"}
+      </button>
+    </div>
+  );
+}
+
+function RecordDetail({ table, row, onEdit }) {
+  const [first, ...rest] = table.columns;
+  const filled = rest.filter((c) => (row.data[c.key] || "").trim());
+  const empty = rest.length - filled.length;
+  const name = row.data[first?.key] || "（未命名）";
+  return (
+    <div>
+      <div className="flex items-start gap-3">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-black ${avatarCls(name)}`}>{[...name][0]}</div>
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words text-xl font-black leading-tight text-slate-900">{name}</h3>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {table.emoji} {table.name}・{filled.length} 個欄位有資料{empty > 0 && `・${empty} 個空白`}
+          </p>
+        </div>
+        <button onClick={() => onEdit(row)} className={`${btn} shrink-0 bg-indigo-600 text-white shadow hover:bg-indigo-700`}>✏️ 編輯</button>
+      </div>
+      {filled.length ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {filled.map((c) => <Field key={c.key} col={c} value={row.data[c.key]} />)}
+        </div>
+      ) : (
+        <p className="mt-6 rounded-xl bg-slate-50 py-8 text-center text-sm text-slate-400">只有名稱，其他欄位都還沒填。按「編輯」補資料。</p>
+      )}
+    </div>
+  );
+}
+
+function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, onAdd, onSettings }) {
+  const [view, setView] = useState(() => store.get("dispatch.workView") || "list");
+  const [selId, setSelId] = useState(null);
+  const [sheet, setSheet] = useState(null); // 手機：點開的那筆
+  const [first, ...rest] = table.columns;
+  useEffect(() => store.set("dispatch.workView", view), [view]);
+  useEffect(() => {
+    if (!rows.some((r) => r.id === selId)) setSelId(rows[0]?.id ?? null);
+  }, [rows, selId]);
+  const sel = rows.find((r) => r.id === selId);
+  const subtitle = (r) =>
+    rest
+      .filter((c) => !c.masked && (r.data[c.key] || "").trim())
+      .slice(0, 2)
+      .map((c) => r.data[c.key].split("\n")[0])
+      .join("・");
+  // 表格模式：目前這些資料裡全空的欄位就不顯示
+  const usedCols = table.columns.filter((c, i) => i === 0 || rows.some((r) => (r.data[c.key] || "").trim()));
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`在「${table.name}」裡篩選`} className={field} />
+          {filter && <button onClick={() => setFilter("")} className="absolute right-2 top-1/2 -translate-y-1/2 px-1 text-slate-400">✕</button>}
+        </div>
+        <span className="text-xs text-slate-400">{rows.length === total ? `${total} 筆` : `${rows.length} / ${total} 筆`}</span>
+        <div className="flex-1" />
+        <div className="hidden rounded-xl bg-slate-100 p-0.5 text-xs font-semibold md:flex">
+          {[["list", "☰ 清單"], ["table", "▦ 表格"]].map(([k, label]) => (
+            <button key={k} onClick={() => setView(k)} className={`rounded-lg px-3 py-1.5 transition ${view === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>{label}</button>
+          ))}
+        </div>
+        <button onClick={onSettings} className={`${btn} bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50`}>⚙ 欄位</button>
+        <button onClick={onAdd} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700`}>＋ 新增</button>
+      </div>
+
+      {loading ? (
+        <p className="py-10 text-center text-sm text-slate-400">載入中…</p>
+      ) : rows.length === 0 ? (
+        <p className="py-10 text-center text-sm text-slate-400">{total ? "沒有符合的資料" : "這個分類還沒有資料"}</p>
+      ) : view === "table" ? (
+        <div className="hidden max-h-[calc(100vh-330px)] min-h-[300px] overflow-auto rounded-xl ring-1 ring-slate-200 md:block">
+          <table className="w-max text-[13px]">
+            <thead className="sticky top-0 z-10 bg-slate-100/95 text-left text-xs text-slate-500 backdrop-blur">
+              <tr>
+                {usedCols.map((c, i) => (
+                  <th key={c.key} className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 0 ? "sticky left-0 z-20 bg-slate-100" : ""}`}>
+                    {c.label}{c.masked && " 🔒"}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={r.id} onClick={() => onEdit(r)} className={`group cursor-pointer ${ri % 2 ? "bg-slate-50/60" : "bg-white"} hover:bg-indigo-50`}>
+                  {usedCols.map((c, i) => (
+                    <td key={c.key} title={c.masked ? "" : r.data[c.key] || ""}
+                      className={`max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 ${i === 0 ? `sticky left-0 font-bold text-slate-800 ${ri % 2 ? "bg-slate-50" : "bg-white"} group-hover:bg-indigo-50` : "text-slate-600"}`}>
+                      {c.masked ? (r.data[c.key] ? "••••" : "") : (r.data[c.key] || "").replace(/\n/g, "  ")}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {!loading && rows.length > 0 && (
+        <div className={`gap-4 ${view === "table" ? "md:hidden" : "lg:grid lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]"}`}>
+          {/* 清單 */}
+          <div className="space-y-1 p-px lg:max-h-[calc(100vh-330px)] lg:min-h-[300px] lg:overflow-y-auto lg:pr-1">
+            {rows.map((r) => {
+              const name = r.data[first?.key] || "（未命名）";
+              const on = r.id === selId;
+              return (
+                <button key={r.id}
+                  onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? setSelId(r.id) : setSheet(r))}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${on ? "lg:bg-indigo-50 lg:ring-1 lg:ring-indigo-200" : ""} hover:bg-slate-50`}>
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black ${avatarCls(name)}`}>{[...name][0]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-sm font-bold ${on ? "text-indigo-700" : "text-slate-800"}`}>{name}</span>
+                    <span className="block truncate text-xs text-slate-400">{subtitle(r) || "—"}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* 詳細（桌面） */}
+          <div className="hidden p-px lg:block lg:max-h-[calc(100vh-330px)] lg:overflow-y-auto">
+            {sel && (
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+                <RecordDetail table={table} row={sel} onEdit={onEdit} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 詳細（手機：底部彈出） */}
+      {sheet && (
+        <Modal title={`${table.emoji} ${table.name}`} onClose={() => setSheet(null)}>
+          <RecordDetail table={table} row={rows.find((r) => r.id === sheet.id) || sheet} onEdit={(r) => { setSheet(null); onEdit(r); }} />
+        </Modal>
+      )}
+    </>
+  );
+}
+
 /* ---------- 主頁 ---------- */
 export default function WorkVendors() {
   const [cases, setCases] = useState(null);
@@ -469,7 +656,7 @@ export default function WorkVendors() {
   if (cases === null) return <p className="py-16 text-center text-sm text-slate-400">載入中…</p>;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
+    <div className="mx-auto max-w-[1600px] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black text-slate-900">🏢 廠商紀錄</h1>
@@ -566,69 +753,17 @@ export default function WorkVendors() {
                     </div>
                   ) : table && (
                     <>
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`在「${table.name}」裡篩選`} className={`${field} sm:w-64`} />
-                        <span className="text-xs text-slate-400">{shownRows.length} / {rows.length} 筆</span>
-                        <div className="flex-1" />
-                        <button onClick={() => setModal({ type: "table", initial: table })} className={`${btn} bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50`}>⚙ 欄位</button>
-                        <button onClick={() => setModal({ type: "row", table, initial: null })} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700`}>＋ 新增一筆</button>
-                      </div>
-
-                      {loadingRows ? (
-                        <p className="py-10 text-center text-sm text-slate-400">載入中…</p>
-                      ) : shownRows.length === 0 ? (
-                        <p className="py-10 text-center text-sm text-slate-400">{rows.length ? "沒有符合的資料" : "這個分類還沒有資料"}</p>
-                      ) : (
-                        <>
-                          {/* 桌面：表格（可左右捲，第一欄固定） */}
-                          <div className="hidden max-h-[70vh] overflow-auto rounded-xl ring-1 ring-slate-100 md:block">
-                            <table className="min-w-full text-sm">
-                              <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
-                                <tr>
-                                  {table.columns.map((c, i) => (
-                                    <th key={c.key} className={`whitespace-nowrap px-3 py-2 font-semibold ${i === 0 ? "sticky left-0 z-20 bg-slate-50" : ""}`}>
-                                      {c.label}{c.masked && " 🔒"}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {shownRows.map((r) => (
-                                  <tr key={r.id} onClick={() => setModal({ type: "row", table, initial: r })} className="group cursor-pointer border-t border-slate-50 align-top hover:bg-indigo-50/50">
-                                    {table.columns.map((c, i) => (
-                                      <td key={c.key} className={`max-w-[280px] px-3 py-2 ${i === 0 ? "sticky left-0 min-w-[8rem] bg-white font-bold text-slate-800 group-hover:bg-indigo-50" : "min-w-[6rem] text-slate-600"}`}>
-                                        {c.masked ? <Masked value={r.data[c.key]} /> : <span className="line-clamp-4 whitespace-pre-line break-words">{r.data[c.key]}</span>}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* 手機：卡片 */}
-                          <div className="space-y-2 md:hidden">
-                            {shownRows.map((r) => {
-                              const [first, ...rest] = table.columns;
-                              return (
-                                <div key={r.id} onClick={() => setModal({ type: "row", table, initial: r })} className="rounded-xl bg-slate-50 p-3 active:bg-indigo-50">
-                                  <p className="font-bold text-slate-800">{r.data[first?.key] || "（未命名）"}</p>
-                                  <div className="mt-1 space-y-0.5">
-                                    {rest.filter((c) => r.data[c.key]).map((c) => (
-                                      <p key={c.key} className="flex gap-2 text-xs">
-                                        <span className="w-20 shrink-0 text-slate-400">{c.label}</span>
-                                        <span className="min-w-0 flex-1 whitespace-pre-line break-words text-slate-700">
-                                          {c.masked ? <Masked value={r.data[c.key]} /> : r.data[c.key]}
-                                        </span>
-                                      </p>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
+                      <RecordsView
+                        table={table}
+                        rows={shownRows}
+                        total={rows.length}
+                        loading={loadingRows}
+                        filter={filter}
+                        setFilter={setFilter}
+                        onEdit={(r) => setModal({ type: "row", table, initial: r })}
+                        onAdd={() => setModal({ type: "row", table, initial: null })}
+                        onSettings={() => setModal({ type: "table", initial: table })}
+                      />
                     </>
                   )}
                 </>
