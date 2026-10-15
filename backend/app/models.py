@@ -421,3 +421,39 @@ class MediaMetric(SQLModel, table=True):
     shares: int = 0
     saves: int = 0
     followers_gained: int = 0
+
+
+class WorkCase(SQLModel, table=True):
+    """廠商紀錄的「案子」：一間公司（工作）一個案子，換工作就開新案子，舊的可封存。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    emoji: str = "🏢"
+    note: str = ""
+    archived: bool = False
+    sort: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkTable(SQLModel, table=True):
+    """案子底下的分類（例：客戶聯繫單、PU客戶、版本更新），欄位可自訂。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    case_id: int = Field(foreign_key="workcase.id", index=True)
+    name: str
+    emoji: str = "📋"
+    # 欄位定義 JSON：[{"key": "c1", "label": "名稱", "masked": false}]（masked＝畫面先遮住，例如密碼）
+    columns: str = "[]"
+    sort: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkRow(SQLModel, table=True):
+    """分類裡的一筆資料，內容是 JSON {欄位 key: 文字}。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    table_id: int = Field(foreign_key="worktable.id", index=True)
+    data: str = "{}"
+    sort: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

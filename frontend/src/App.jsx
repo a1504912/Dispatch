@@ -8,6 +8,7 @@ import Invest from "./pages/Invest.jsx";
 import MediaPosts from "./pages/MediaPosts.jsx";
 import MediaPillars from "./pages/MediaPillars.jsx";
 import MediaAnalytics from "./pages/MediaAnalytics.jsx";
+import WorkVendors from "./pages/WorkVendors.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import News from "./pages/News.jsx";
 import Games from "./pages/Games.jsx";
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/media/posts" element={<MediaPosts />} />
         <Route path="/media/pillars" element={<MediaPillars />} />
         <Route path="/media/analytics" element={<MediaAnalytics />} />
+        <Route path="/work/vendors" element={<WorkVendors />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/news" element={<News />} />
         <Route path="/games" element={<Games />} />

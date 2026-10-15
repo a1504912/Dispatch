@@ -27,6 +27,7 @@ from app.routers import (
     invoices,
     ledger_categories,
     media,
+    work,
     members,
     models,
     news,
@@ -152,6 +153,7 @@ app.include_router(notes.router)
 app.include_router(holidays.router)
 app.include_router(invest.router)
 app.include_router(media.router)
+app.include_router(work.router)
 
 
 @app.get("/api/health")

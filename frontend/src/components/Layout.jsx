@@ -182,6 +182,30 @@ function GearIcon({ className }) {
   );
 }
 
+function BriefcaseIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0M12 12.75h.008v.008H12v-.008Z"
+      />
+    </svg>
+  );
+}
+
+function BuildingIcon({ className }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"
+      />
+    </svg>
+  );
+}
+
 function MegaphoneIcon({ className }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor">
@@ -244,13 +268,17 @@ const navItems = [
   ...(NO_BACKEND
     ? []
     : [
+        // 工作：自媒體（內容／主題方向／數據分析）＋ 廠商紀錄
         {
-          label: "自媒體",
-          icon: MegaphoneIcon,
+          label: "工作",
+          icon: BriefcaseIcon,
           children: [
+            { section: "自媒體", icon: MegaphoneIcon },
             { to: "/media/posts", label: "內容", icon: PencilIcon },
             { to: "/media/pillars", label: "主題方向", icon: CompassIcon },
             { to: "/media/analytics", label: "數據分析", icon: BarsIcon },
+            { section: "客戶 / 廠商", icon: BuildingIcon },
+            { to: "/work/vendors", label: "廠商紀錄", icon: BuildingIcon },
           ],
         },
         {
@@ -291,10 +319,17 @@ function NavLeaf({ to, label, icon: Icon, variant }) {
   );
 }
 
+// 群組裡的小標題（例：工作 → 自媒體 / 客戶 / 廠商）
+function NavSection({ section }) {
+  return (
+    <p className="px-3 pb-0.5 pt-2 text-[11px] font-bold tracking-wider text-slate-500 first:pt-0.5">{section}</p>
+  );
+}
+
 // 可展開的分類（桌面往下展開、手機底部跳出上浮小選單）
 function NavGroup({ label, icon: Icon, children, variant }) {
   const location = useLocation();
-  const childActive = children.some((c) => location.pathname.startsWith(c.to));
+  const childActive = children.some((c) => c.to && location.pathname.startsWith(c.to));
   const isSide = variant === "side";
   const [open, setOpen] = useState(isSide ? childActive : false);
   const ref = useRef(null);
@@ -331,9 +366,7 @@ function NavGroup({ label, icon: Icon, children, variant }) {
         </button>
         {open && (
           <div className="absolute bottom-full left-1/2 z-40 mb-2 flex min-w-[10rem] -translate-x-1/2 flex-col gap-1 rounded-2xl bg-slate-800 p-1.5 shadow-2xl ring-1 ring-white/10">
-            {children.map((c) => (
-              <NavLeaf key={c.to} {...c} variant="side" />
-            ))}
+            {children.map((c) => (c.section ? <NavSection key={c.section} {...c} /> : <NavLeaf key={c.to} {...c} variant="side" />))}
           </div>
         )}
       </div>
@@ -352,9 +385,7 @@ function NavGroup({ label, icon: Icon, children, variant }) {
       </button>
       {open && (
         <div className="mt-1 flex flex-col gap-1 pl-4">
-          {children.map((c) => (
-            <NavLeaf key={c.to} {...c} variant="side" />
-          ))}
+          {children.map((c) => (c.section ? <NavSection key={c.section} {...c} /> : <NavLeaf key={c.to} {...c} variant="side" />))}
         </div>
       )}
     </div>
