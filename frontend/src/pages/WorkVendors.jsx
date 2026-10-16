@@ -607,6 +607,7 @@ function RecordDetail({ table, row, onEdit, onSaveValue, onToggleCol, onAddCol, 
           <h3 className="break-words text-xl font-black leading-tight text-slate-900">{name}</h3>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
             <span>{table.emoji} {table.name}・{filled.length} 個欄位有資料</span>
+            {row.updated_at && <span title="最後編輯時間">🕒 {fmtEdited(row.updated_at)}</span>}
             {emptyCount > 0 && (
               <button onClick={() => setShowEmpty((v) => !v)} className={`rounded-full px-2 py-0.5 font-semibold ring-1 ${showEmpty ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "ring-slate-200 hover:text-indigo-600"}`}>
                 {showEmpty ? "隱藏" : "顯示"} {emptyCount} 個空白欄位
@@ -632,7 +633,64 @@ function RecordDetail({ table, row, onEdit, onSaveValue, onToggleCol, onAddCol, 
   );
 }
 
+// 最後編輯時間：主機存的是 UTC（沒帶時區）
+function fmtEdited(ts) {
+  if (!ts) return "";
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? ts : `${ts}Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const day = `${d.getMonth() + 1}/${d.getDate()}`;
+  const time = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  if (d.toDateString() === now.toDateString()) return `今天 ${time}`;
+  return d.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${d.getFullYear()}/${day} ${time}`;
+}
+
+/* 表格裡直接改一格：Enter 存、Shift+Enter 換行、Esc 取消、點別處也會存 */
+function EditCell({ value, onSave, onCancel }) {
+  const [v, setV] = useState(value);
+  const [busy, setBusy] = useState(false);
+  const done = useRef(false);
+  async function save() {
+    if (done.current) return;
+    done.current = true;
+    if (v === value) return onCancel();
+    setBusy(true);
+    try {
+      await onSave(v);
+    } catch {
+      done.current = false;
+      setBusy(false);
+      alert("儲存失敗，請再試一次");
+    }
+  }
+  return (
+    <textarea
+      autoFocus
+      value={v}
+      disabled={busy}
+      rows={Math.min(6, Math.max(1, v.split("\n").length))}
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          done.current = true;
+          onCancel();
+        } else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          save();
+        }
+      }}
+      className="block w-full min-w-[160px] resize rounded-md border border-indigo-400 bg-white px-2 py-1 text-[13px] text-slate-800 shadow-sm outline-none ring-2 ring-indigo-100 disabled:opacity-60"
+    />
+  );
+}
+
 function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, onAdd, onSettings, onSaveValue, onToggleCol, onAddCol }) {
+  const [cell, setCell] = useState(null); // 表格裡正在改的那格 {rowId, key}
+  const [allCols, setAllCols] = useState(() => store.get("dispatch.workTableAllCols") === "1");
+  useEffect(() => store.set("dispatch.workTableAllCols", allCols ? "1" : "0"), [allCols]);
   const [view, setView] = useState(() => store.get("dispatch.workView") || "list");
   const [selId, setSelId] = useState(null);
   const [sheetId, setSheetId] = useState(null); // 手機：點開的那筆
@@ -658,7 +716,7 @@ function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, o
       .join("・");
   };
   // 表格模式：隱藏的欄位、目前這些資料裡全空的欄位都不顯示
-  const usedCols = table.columns.filter((c, i) => i === 0 || (!c.hidden && rows.some((r) => (r.data[c.key] || "").trim())));
+  const usedCols = table.columns.filter((c, i) => i === 0 || (!c.hidden && (allCols || rows.some((r) => (r.data[c.key] || "").trim()))));
   const detailProps = { table, onEdit, onSaveValue, onToggleCol, onAddCol, onSettings };
 
   return (
@@ -684,7 +742,15 @@ function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, o
       ) : rows.length === 0 ? (
         <p className="py-10 text-center text-sm text-slate-400">{total ? "沒有符合的資料" : "這個分類還沒有資料"}</p>
       ) : view === "table" ? (
-        <div className="hidden max-h-[calc(100vh-330px)] min-h-[300px] overflow-auto rounded-xl ring-1 ring-slate-200 md:block">
+        <div className="hidden md:block">
+        <div className="mb-1.5 flex items-center gap-3 text-[11px] text-slate-400">
+          <span>點格子直接修改（Enter 儲存、Shift+Enter 換行、Esc 取消）</span>
+          <label className="flex cursor-pointer items-center gap-1">
+            <input type="checkbox" checked={allCols} onChange={(e) => setAllCols(e.target.checked)} className="h-3 w-3 accent-indigo-600" />
+            顯示空白欄位
+          </label>
+        </div>
+        <div className="max-h-[calc(100vh-350px)] min-h-[300px] overflow-auto rounded-xl ring-1 ring-slate-200">
           <table className="w-max text-[13px]">
             <thead className="sticky top-0 z-10 bg-slate-100/95 text-left text-xs text-slate-500 backdrop-blur">
               <tr>
@@ -692,22 +758,43 @@ function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, o
                   <th key={c.key} className={`whitespace-nowrap px-3 py-2.5 font-semibold ${i === 0 ? "sticky left-0 z-20 bg-slate-100" : ""}`}>
                     {c.label}{c.masked && " 🔒"}
                   </th>
-                ))}
+                )).flatMap((th, i) => (i === 0 ? [th, <th key="_edited" className="whitespace-nowrap px-3 py-2.5 font-semibold">🕒 最後編輯</th>] : [th]))}
+                <th className="w-8" />
               </tr>
             </thead>
             <tbody>
               {rows.map((r, ri) => (
-                <tr key={r.id} onClick={() => onEdit(r)} className={`group cursor-pointer ${ri % 2 ? "bg-slate-50/60" : "bg-white"} hover:bg-indigo-50`}>
-                  {usedCols.map((c, i) => (
-                    <td key={c.key} title={c.masked ? "" : r.data[c.key] || ""}
-                      className={`max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 ${i === 0 ? `sticky left-0 font-bold text-slate-800 ${ri % 2 ? "bg-slate-50" : "bg-white"} group-hover:bg-indigo-50` : "text-slate-600"}`}>
-                      {c.masked ? (r.data[c.key] ? "••••" : "") : (r.data[c.key] || "").replace(/\n/g, "  ")}
-                    </td>
-                  ))}
+                <tr key={r.id} className={`group align-top ${ri % 2 ? "bg-slate-50/60" : "bg-white"} hover:bg-indigo-50/60`}>
+                  {usedCols.flatMap((c, i) => {
+                    const editing = cell?.rowId === r.id && cell.key === c.key;
+                    const v = r.data[c.key] || "";
+                    const td = (
+                      <td key={c.key} title={editing || c.masked ? "" : v}
+                        onClick={() => !editing && setCell({ rowId: r.id, key: c.key })}
+                        className={`cursor-text px-3 py-2 ${editing ? "relative z-[5] min-w-[180px] p-1" : "max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap hover:bg-white hover:ring-1 hover:ring-inset hover:ring-indigo-200"} ${i === 0 ? `sticky left-0 z-[4] font-bold text-slate-800 ${ri % 2 ? "bg-slate-50" : "bg-white"}` : "text-slate-600"}`}>
+                        {editing ? (
+                          <EditCell
+                            value={v}
+                            onCancel={() => setCell(null)}
+                            onSave={async (nv) => {
+                              await onSaveValue(r, c.key, nv);
+                              setCell(null);
+                            }}
+                          />
+                        ) : c.masked ? (v ? "••••" : "") : v ? v.replace(/\n/g, "  ") : <span className="text-slate-200">—</span>}
+                      </td>
+                    );
+                    const edited = <td key="_edited" className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">{fmtEdited(r.updated_at)}</td>;
+                    return i === 0 ? [td, edited] : [td];
+                  })}
+                  <td className="px-1 py-1.5">
+                    <button onClick={() => onEdit(r)} className="rounded-md px-1.5 py-0.5 text-xs text-slate-300 opacity-0 transition hover:bg-white hover:text-indigo-600 group-hover:opacity-100" title="整筆編輯／刪除">✏️</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       ) : null}
 
