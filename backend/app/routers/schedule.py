@@ -1,10 +1,13 @@
 import base64
 import json
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 from sqlmodel import Session
 
 from app import ollama_client
@@ -61,10 +64,25 @@ def _build_prompt() -> str:
     )
 
 
-def _parse_events(content: str) -> list[EventCreate]:
+def _loads_loose(content: str):
+    """AI 有時會包 ```json 或前後多講幾句話：先直接解析，不行就抓第一個 { 到最後一個 }。"""
     try:
-        data = json.loads(content)
+        return json.loads(content)
     except (json.JSONDecodeError, TypeError):
+        pass
+    text = re.sub(r"```(?:json)?", "", str(content or ""))
+    a, b = text.find("{"), text.rfind("}")
+    if a != -1 and b > a:
+        try:
+            return json.loads(text[a : b + 1])
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _parse_events(content: str) -> list[EventCreate]:
+    data = _loads_loose(content)
+    if data is None:
         return []
 
     items = data.get("events") if isinstance(data, dict) else data
@@ -107,20 +125,94 @@ def _parse_events(content: str) -> list[EventCreate]:
     return events
 
 
+PROVIDERS = ("ollama", "gpt", "claude")
+
+
+async def _ask_cli(provider: str, prompt: str, image: bytes | None = None, ext: str = "png") -> str:
+    """走主機上已登入的 Codex（GPT）／Claude Code CLI，不用另外付 API 費用。"""
+    from app import ai_advise
+
+    try:
+        if image is not None:
+            return await run_in_threadpool(ai_advise.ask_with_image, provider, prompt, image, ext)
+        return await run_in_threadpool(ai_advise.ask, provider, prompt)
+    except (RuntimeError, ValueError) as exc:
+        name = "GPT" if provider == "gpt" else "Claude"
+        raise HTTPException(status_code=424, detail=f"{name} 解析失敗：{exc}") from exc
+
+
+def _cli_prompt(task: str) -> str:
+    return (
+        _build_prompt()
+        + "\n\n"
+        + task
+        + "\n\n只輸出一個 JSON 物件，不要任何說明文字、不要加 ``` 標記。"
+    )
+
+
+class TextScheduleIn(BaseModel):
+    text: str
+    provider: str = "gpt"
+    model: Optional[str] = None
+
+
+@router.post("/from-text", response_model=ScheduleResponse)
+async def schedule_from_text(payload: TextScheduleIn):
+    """打字描述（例：「明天下午三點跟客戶開會兩小時、週五整天去台中」）→ 建議的行程（還沒存）。"""
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="請輸入要安排的內容")
+    if len(text) > 4000:
+        raise HTTPException(status_code=400, detail="內容太長（上限 4000 字）")
+    if payload.provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="provider 必須是 ollama、gpt 或 claude")
+    task = f"使用者的描述如下，請拆成一筆筆行程：\n{text}"
+    if payload.provider == "ollama":
+        messages = [{"role": "system", "content": _build_prompt()}, {"role": "user", "content": task}]
+        try:
+            content = await ollama_client.chat(
+                payload.model or settings.default_model, messages, format="json", timeout=600.0
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=424, detail=f"本地模型失敗：{exc!r}") from exc
+    else:
+        content = await _ask_cli(payload.provider, _cli_prompt(task))
+    events = _parse_events(content)
+    if not events and _loads_loose(content) is None:
+        raise HTTPException(status_code=424, detail=f"AI 回覆看不懂：{str(content)[:200]}")
+    return ScheduleResponse(events=events)
+
+
 @router.post("/from-image", response_model=ScheduleResponse)
 async def schedule_from_image(
     file: UploadFile = File(...),
     model: Optional[str] = Form(None),
     hint: Optional[str] = Form(None),
+    provider: str = Form("ollama"),
 ):
     """Read a screenshot with a vision model and propose calendar events.
 
     The proposed events are returned (not saved) so the user can review them
     before adding to the calendar.
+    provider：ollama（本地視覺模型）/ gpt / claude（主機上的 CLI）。
     """
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="空的圖片檔")
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="provider 必須是 ollama、gpt 或 claude")
+
+    if provider != "ollama":
+        task = "請解析這張截圖中的所有行程／活動。"
+        if hint and hint.strip():
+            task += f"\n使用者補充說明（判斷日期與安排時以此為準）：{hint.strip()}"
+        ctype = (file.content_type or "").lower()
+        ext = "jpg" if "jpeg" in ctype or "jpg" in ctype else "webp" if "webp" in ctype else "gif" if "gif" in ctype else "png"
+        content = await _ask_cli(provider, _cli_prompt(task), raw, ext)
+        events = _parse_events(content)
+        if not events and _loads_loose(content) is None:
+            raise HTTPException(status_code=424, detail=f"AI 回覆看不懂：{str(content)[:200]}")
+        return ScheduleResponse(events=events)
 
     image_b64 = base64.b64encode(raw).decode()
     user_content = "請解析這張截圖中的所有行程／活動，只輸出 JSON。"

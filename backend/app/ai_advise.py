@@ -84,7 +84,7 @@ def _ask_claude(prompt: str) -> str:
 
 
 def _save_image(tmp: str, image_bytes: bytes, ext: str) -> str:
-    path = os.path.join(tmp, f"food.{ext}")
+    path = os.path.join(tmp, f"image.{ext}")
     with open(path, "wb") as f:
         f.write(image_bytes)
     return path

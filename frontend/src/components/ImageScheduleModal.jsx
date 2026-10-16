@@ -1,10 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { scheduleFromImage } from "../api/schedule";
+import { scheduleFromImage, scheduleFromText } from "../api/schedule";
 import { createEvent } from "../api/events";
 import { listModels } from "../api/models";
 
 const VISION_HINT = /vl|llava|vision|minicpm|moondream|bakllava|gemma3/i;
 const pad = (n) => String(n).padStart(2, "0");
+const PROVIDERS = [
+  ["gpt", "🤖 GPT"],
+  ["claude", "✳️ Claude"],
+  ["ollama", "🖥 本地模型"],
+];
+const lsGet = (k, d) => {
+  try {
+    return localStorage.getItem(k) || d;
+  } catch {
+    return d;
+  }
+};
+const lsSet = (k, v) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* 無痕模式 */
+  }
+};
+const errOf = (e) => {
+  const st = e?.response?.status;
+  if (st === 524 || st === 504) return "AI 想太久，連線逾時了，請再試一次或少放幾張";
+  const d = e?.response?.data?.detail;
+  return (typeof d === "string" && d) || e?.message || "失敗";
+};
 
 function formatRange(start, end) {
   const s = new Date(start);
@@ -31,6 +56,9 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
   const [proposals, setProposals] = useState(null);
   const [editingIdx, setEditingIdx] = useState(null);
   const [hint, setHint] = useState("");
+  const [provider, setProvider] = useState(() => lsGet("dispatch.scheduleAI", "gpt"));
+  const [mode, setMode] = useState("image"); // image（截圖）/ text（打字描述）
+  const [text, setText] = useState("");
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
 
@@ -39,6 +67,8 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setProposals(null);
     setEditingIdx(null);
     setHint("");
+    setText("");
+    setMode(initialFile ? "image" : lsGet("dispatch.scheduleMode", "image"));
     setError("");
     setProgress(null);
     setImages(initialFile ? [{ file: initialFile, url: URL.createObjectURL(initialFile) }] : []);
@@ -78,25 +108,57 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setImages((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // 逐張分析、彙整結果
+  function pickProvider(p) {
+    setProvider(p);
+    lsSet("dispatch.scheduleAI", p);
+  }
+  function pickMode(m) {
+    setMode(m);
+    lsSet("dispatch.scheduleMode", m);
+    setError("");
+  }
+
+  // 打字描述：一次問完
+  async function handleText() {
+    if (!text.trim()) return;
+    setError("");
+    setProgress({ done: 0, total: 1 });
+    try {
+      const data = await scheduleFromText(text.trim(), provider, model || undefined);
+      setProposals((data.events ?? []).map((ev) => ({ ...ev, include: true, category_id: "" })));
+    } catch (e) {
+      setError(errOf(e));
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  // 截圖：逐張分析、彙整結果
   async function handleParse() {
+    if (mode === "text") return handleText();
     if (images.length === 0) return;
     setError("");
     setProgress({ done: 0, total: images.length });
     const all = [];
     let failed = 0;
+    let lastErr = "";
     for (let i = 0; i < images.length; i++) {
       try {
-        const data = await scheduleFromImage(images[i].file, model || undefined, hint.trim() || undefined);
+        const data = await scheduleFromImage(images[i].file, model || undefined, hint.trim() || undefined, provider);
         for (const ev of data.events ?? []) all.push({ ...ev, include: true, category_id: "" });
-      } catch {
+      } catch (e) {
         failed += 1;
+        lastErr = errOf(e);
       }
       setProgress({ done: i + 1, total: images.length });
     }
     setProgress(null);
+    if (failed === images.length) {
+      setError(lastErr || "分析失敗");
+      return;
+    }
     setProposals(all);
-    if (failed > 0) setError(`有 ${failed} 張圖分析失敗（其餘已完成）。`);
+    if (failed > 0) setError(`有 ${failed} 張圖分析失敗（其餘已完成）：${lastErr}`);
   }
 
   async function handleSave() {
@@ -149,26 +211,73 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="text-lg font-black text-slate-900">📷 截圖排程</h2>
-          <p className="mt-0.5 text-sm text-slate-400">貼上或選擇多張截圖，AI 逐張分析，彙整後由你挑選、編輯、分類。</p>
+          <h2 className="text-lg font-black text-slate-900">✨ AI 排程</h2>
+          <p className="mt-0.5 text-sm text-slate-400">丟截圖或打字描述，AI 幫你整理成行程，確認後再加入行事曆。</p>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-          {/* 模型 */}
-          {models.length > 0 && !proposals && (
+          {!proposals && (
+            <div className="space-y-3">
+              {/* 用哪個 AI */}
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-500">用哪個 AI</label>
+                <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+                  {PROVIDERS.map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => pickProvider(k)}
+                      className={`rounded-lg py-1.5 text-sm font-semibold transition ${provider === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {provider !== "ollama" && (
+                  <p className="mt-1 text-[11px] text-slate-400">走主機上已登入的 {provider === "gpt" ? "Codex（GPT）" : "Claude Code"}，用你的訂閱額度，不另外收費；比本地模型準，一張約 20–60 秒。</p>
+                )}
+              </div>
+              {/* 截圖 / 打字 */}
+              <div className="flex gap-1 border-b border-slate-100">
+                {[["image", "📷 截圖"], ["text", "✍️ 打字描述"]].map(([k, label]) => (
+                  <button key={k} type="button" onClick={() => pickMode(k)}
+                    className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-semibold transition ${mode === k ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 本地模型 */}
+          {provider === "ollama" && models.length > 0 && !proposals && (
             <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-500">視覺模型</label>
+              <label className="mb-1.5 block text-xs font-bold text-slate-500">本地模型{mode === "image" ? "（要選視覺模型）" : ""}</label>
               <select value={model} onChange={(e) => setModel(e.target.value)} className={`${inputCls} cursor-pointer`}>
                 {models.map((m) => (
                   <option key={m} value={m}>{m}{VISION_HINT.test(m) ? "  👁 視覺" : ""}</option>
                 ))}
               </select>
-              {visionWarning && <p className="mt-1.5 text-xs text-amber-600">⚠️ 沒偵測到視覺模型，建議先 <code>ollama pull qwen2.5vl:7b</code>。</p>}
+              {visionWarning && mode === "image" && <p className="mt-1.5 text-xs text-amber-600">⚠️ 沒偵測到視覺模型，建議先 <code>ollama pull qwen2.5vl:7b</code>。</p>}
+            </div>
+          )}
+
+          {/* 打字描述 */}
+          {!proposals && mode === "text" && (
+            <div>
+              <textarea
+                rows={6}
+                autoFocus
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleText();
+                }}
+                placeholder={"直接打要安排的事，例如：\n明天下午 3 點跟富旺開會 2 小時\n週五整天去台中出差\n下週一到週三每天早上 9 點晨會 30 分鐘"}
+                className={`${inputCls} resize-y leading-relaxed`}
+              />
+              <p className="mt-1 text-[11px] text-slate-400">相對日期（明天、下週三）會用今天推算；Ctrl+Enter 送出</p>
             </div>
           )}
 
           {/* 圖片區（結果出來後收起） */}
-          {!proposals && (
+          {!proposals && mode === "image" && (
             <>
               {images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
@@ -201,7 +310,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
 
           {analyzing && (
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-700">
-              AI 逐張分析中… {progress.done}/{progress.total}
+              {mode === "text" ? "AI 整理中…（約 20–60 秒）" : `AI 逐張分析中… ${progress.done}/${progress.total}`}
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-indigo-100">
                 <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
               </div>
@@ -218,7 +327,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
                 <button onClick={addBlankProposal} className="rounded-lg px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50">＋ 手動新增</button>
               </div>
               {proposals.length === 0 ? (
-                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">沒讀到行程，換清楚一點的截圖，或按「＋ 手動新增」。</p>
+                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">沒讀到行程，換清楚一點的截圖／描述，或按「＋ 手動新增」。</p>
               ) : (
                 <ul className="space-y-2">
                   {proposals.map((ev, i) => {
@@ -270,8 +379,10 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
         <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
           <button onClick={onClose} className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100">關閉</button>
           {!proposals ? (
-            <button onClick={handleParse} disabled={images.length === 0 || analyzing} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none">
-              {analyzing ? `分析中… ${progress.done}/${progress.total}` : `✨ 開始解析（${images.length} 張）`}
+            <button onClick={handleParse} disabled={(mode === "text" ? !text.trim() : images.length === 0) || analyzing} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none">
+              {analyzing
+                ? mode === "text" ? "整理中…" : `分析中… ${progress.done}/${progress.total}`
+                : mode === "text" ? "✨ 產生行程" : `✨ 開始解析（${images.length} 張）`}
             </button>
           ) : (
             <button onClick={handleSave} disabled={includedCount === 0 || saving} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none">
