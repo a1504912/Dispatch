@@ -273,12 +273,20 @@ const navItems = [
           label: "工作",
           icon: BriefcaseIcon,
           children: [
-            { section: "自媒體", icon: MegaphoneIcon },
-            { to: "/media/posts", label: "內容", icon: PencilIcon },
-            { to: "/media/pillars", label: "主題方向", icon: CompassIcon },
-            { to: "/media/analytics", label: "數據分析", icon: BarsIcon },
-            { section: "客戶 / 廠商", icon: BuildingIcon },
-            { to: "/work/vendors", label: "廠商紀錄", icon: BuildingIcon },
+            {
+              section: "自媒體",
+              icon: MegaphoneIcon,
+              items: [
+                { to: "/media/posts", label: "內容", icon: PencilIcon },
+                { to: "/media/pillars", label: "主題方向", icon: CompassIcon },
+                { to: "/media/analytics", label: "數據分析", icon: BarsIcon },
+              ],
+            },
+            {
+              section: "客戶 / 廠商",
+              icon: BuildingIcon,
+              items: [{ to: "/work/vendors", label: "廠商紀錄", icon: BuildingIcon }],
+            },
           ],
         },
         {
@@ -319,17 +327,62 @@ function NavLeaf({ to, label, icon: Icon, variant }) {
   );
 }
 
-// 群組裡的小標題（例：工作 → 自媒體 / 客戶 / 廠商）
-function NavSection({ section }) {
+// 群組裡可收合的小分類（例：工作 → 自媒體 / 客戶 / 廠商）；開合狀態記在這台瀏覽器
+const SECTION_KEY = (name) => `dispatch.navSection.${name}`;
+function NavSection({ section, icon: Icon, items }) {
+  const location = useLocation();
+  const active = items.some((c) => location.pathname.startsWith(c.to));
+  const [open, setOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(SECTION_KEY(section));
+      return v === null ? active : v === "1";
+    } catch {
+      return active;
+    }
+  });
+  // 進到這個小分類裡的頁面時自動展開
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
+  function toggle() {
+    setOpen((v) => {
+      try {
+        localStorage.setItem(SECTION_KEY(section), v ? "0" : "1");
+      } catch {
+        /* 無痕模式 */
+      }
+      return !v;
+    });
+  }
   return (
-    <p className="px-3 pb-0.5 pt-2 text-[11px] font-bold tracking-wider text-slate-500 first:pt-0.5">{section}</p>
+    <div>
+      <button
+        type="button"
+        onClick={toggle}
+        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold tracking-wider transition hover:bg-white/5 ${
+          active && !open ? "text-indigo-300" : "text-slate-500 hover:text-slate-300"
+        }`}
+      >
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+        {section}
+        <ChevronIcon className={`ml-auto h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <div className="mt-0.5 flex flex-col gap-1 pl-2">
+          {items.map((c) => (
+            <NavLeaf key={c.to} {...c} variant="side" />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
+const leafPaths = (children) => children.flatMap((c) => (c.items ? c.items : [c]));
 
 // 可展開的分類（桌面往下展開、手機底部跳出上浮小選單）
 function NavGroup({ label, icon: Icon, children, variant }) {
   const location = useLocation();
-  const childActive = children.some((c) => c.to && location.pathname.startsWith(c.to));
+  const childActive = leafPaths(children).some((c) => c.to && location.pathname.startsWith(c.to));
   const isSide = variant === "side";
   const [open, setOpen] = useState(isSide ? childActive : false);
   const ref = useRef(null);
