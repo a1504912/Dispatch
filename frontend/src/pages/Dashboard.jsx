@@ -289,6 +289,13 @@ export default function Dashboard() {
   }
 
   function openNewEvent(initial = null) {
+    // 新增（不是編輯）時，分類篩選只選了一個分類 → 預設帶這個分類
+    const isNew = !initial?.id;
+    const onlyCat = catFilter.length === 1 && catFilter[0] !== "none" ? Number(catFilter[0]) : null;
+    if (isNew && onlyCat != null && initial?.category_id == null) {
+      const cat = categories.find((c) => c.id === onlyCat);
+      initial = { ...(initial || {}), category_id: onlyCat, ...(cat?.color && !initial?.color ? { color: cat.color } : {}) };
+    }
     setEditingEvent(initial);
     setEventModalOpen(true);
   }
