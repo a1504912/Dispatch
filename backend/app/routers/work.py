@@ -9,8 +9,10 @@ import io
 import json
 import re
 from datetime import date, datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
@@ -408,3 +410,79 @@ def import_commit(case_id: int, payload: ImportIn, session: Session = Depends(ge
         summary.append({"name": name, "created": created, "rows": added})
     session.commit()
     return {"tables": summary}
+
+
+# ---------- 匯出 Excel ----------
+
+
+def _sheet_title(name: str, used: set) -> str:
+    """Excel 工作表名稱：最多 31 字、不能有 []:*?/\\，也不能重複。"""
+    base = re.sub(r"[\[\]:*?/\\]", "_", name).strip() or "工作表"
+    base = base[:31]
+    title, n = base, 2
+    while title.lower() in used:
+        suffix = f" ({n})"
+        title = base[: 31 - len(suffix)] + suffix
+        n += 1
+    used.add(title.lower())
+    return title
+
+
+@router.get("/cases/{case_id}/export")
+def export_xlsx(case_id: int, table_id: int | None = None, include_hidden: bool = False,
+                session: Session = Depends(get_session)):
+    """匯出 Excel：整個案子（每個分類一個工作表），或只匯出某個分類。"""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(424, "主機還沒裝 openpyxl：重新執行一次更新（win-restart.bat）就會自動安裝")
+    case = _get(session, WorkCase, case_id, "案子")
+    q = select(WorkTable).where(WorkTable.case_id == case_id).order_by(WorkTable.sort, WorkTable.id)
+    tables = [t for t in session.exec(q).all() if table_id is None or t.id == table_id]
+    if not tables:
+        raise HTTPException(404, "沒有可以匯出的分類")
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    used: set = set()
+    head_font = Font(bold=True, color="FFFFFF")
+    head_fill = PatternFill("solid", fgColor="4F46E5")
+    wrap = Alignment(wrap_text=True, vertical="top")
+    for t in tables:
+        ws = wb.create_sheet(_sheet_title(t.name, used))
+        all_cols = _cols(t)
+        cols = [c for i, c in enumerate(all_cols) if include_hidden or i == 0 or not c.get("hidden")]
+        ws.append([c["label"] for c in cols])
+        for cell in ws[1]:
+            cell.font, cell.fill = head_font, head_fill
+            cell.alignment = Alignment(vertical="center")
+        widths = [max(6, len(c["label"]) * 2 + 2) for c in cols]
+        rows = session.exec(select(WorkRow).where(WorkRow.table_id == t.id).order_by(WorkRow.sort, WorkRow.id)).all()
+        for r in rows:
+            d = _data(r)
+            vals = [d.get(c["key"], "") for c in cols]
+            ws.append(vals)
+            for j, v in enumerate(vals):
+                # 中文字約佔兩格寬；最寬 60，多行內容自動換行
+                longest = max((sum(2 if ord(ch) > 0x2E80 else 1 for ch in line) for line in str(v).split("\n")), default=0)
+                widths[j] = min(60, max(widths[j], longest + 2))
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.alignment = wrap
+        for j, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(j)].width = w
+        ws.freeze_panes = "B2"  # 凍結標題列和第一欄
+        if cols:
+            ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{max(1, len(rows) + 1)}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    part = f"-{tables[0].name}" if table_id is not None else ""
+    fname = f"{case.name}{part}-{date.today():%Y%m%d}.xlsx"
+    return Response(
+        buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"export.xlsx\"; filename*=UTF-8''{quote(fname)}"},
+    )

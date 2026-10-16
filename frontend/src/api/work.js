@@ -25,3 +25,25 @@ export async function previewImport(file) {
 }
 export const commitImport = async (caseId, tables) =>
   (await client.post(`/api/work/cases/${caseId}/import`, { tables })).data;
+
+// 匯出 Excel：tableId 不給＝整個案子（每個分類一個工作表）
+export async function exportXlsx(caseId, { tableId, includeHidden } = {}) {
+  const params = {};
+  if (tableId) params.table_id = tableId;
+  if (includeHidden) params.include_hidden = true;
+  const res = await client.get(`/api/work/cases/${caseId}/export`, { params, responseType: "blob" });
+  const cd = res.headers?.["content-disposition"] || "";
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
+  const name = m ? decodeURIComponent(m[1]) : "廠商紀錄.xlsx";
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 5000);
+  return name;
+}

@@ -7,6 +7,7 @@ import {
   deleteCase,
   deleteRow,
   deleteTable,
+  exportXlsx,
   listCases,
   listRows,
   listTables,
@@ -374,6 +375,70 @@ function ImportModal({ caseObj, tables, onClose, onDone }) {
           ))}
         </div>
       )}
+      {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
+    </Modal>
+  );
+}
+
+/* ---------- 匯出 Excel ---------- */
+function ExportModal({ caseObj, tables, table, onClose, onDone }) {
+  const [scope, setScope] = useState("case");
+  const [includeHidden, setIncludeHidden] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const targets = scope === "case" ? tables : tables.filter((t) => t.id === table?.id);
+  const rowCount = targets.reduce((s, t) => s + (t.row_count || 0), 0);
+  const hasHidden = targets.some((t) => t.columns.some((c) => c.hidden));
+  const hasMasked = targets.some((t) => t.columns.some((c) => c.masked));
+  async function run() {
+    setBusy(true);
+    setErr("");
+    try {
+      const name = await exportXlsx(caseObj.id, { tableId: scope === "table" ? table?.id : null, includeHidden });
+      onDone(name);
+    } catch (e) {
+      let msg = e?.message || "匯出失敗";
+      try {
+        msg = JSON.parse(await e.response.data.text()).detail || msg; // blob 回應裡的錯誤訊息
+      } catch {
+        /* 保留原訊息 */
+      }
+      setErr(msg);
+      setBusy(false);
+    }
+  }
+  const opt = (k, title, sub) => (
+    <label className={`flex cursor-pointer items-start gap-3 rounded-xl p-3 ring-1 transition ${scope === k ? "bg-indigo-50 ring-indigo-300" : "bg-white ring-slate-200 hover:ring-indigo-200"}`}>
+      <input type="radio" checked={scope === k} onChange={() => setScope(k)} className="mt-1 accent-indigo-600" />
+      <span>
+        <span className="block text-sm font-bold text-slate-800">{title}</span>
+        <span className="block text-xs text-slate-500">{sub}</span>
+      </span>
+    </label>
+  );
+  return (
+    <Modal
+      title={`匯出 Excel・${caseObj.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="text-xs text-slate-400">{targets.length} 個工作表・{rowCount} 筆</span>
+          <div className="flex-1" />
+          <button onClick={onClose} className={`${btn} text-slate-500 hover:bg-slate-100`}>取消</button>
+          <button disabled={busy || !targets.length} onClick={run} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700 disabled:opacity-40`}>{busy ? "匯出中…" : "📤 下載 .xlsx"}</button>
+        </>
+      }
+    >
+      {opt("case", "整個案子", `每個分類一個工作表：${tables.map((t) => t.name).join("、")}`)}
+      {table && opt("table", `只匯出「${table.name}」`, `${table.row_count} 筆`)}
+      {hasHidden && (
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={includeHidden} onChange={(e) => setIncludeHidden(e.target.checked)} className="h-4 w-4 accent-indigo-600" />
+          包含 🙈 隱藏的欄位
+        </label>
+      )}
+      {hasMasked && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">🔒 遮住的欄位（密碼等）在 Excel 裡會是明文，檔案請小心保管。</p>}
+      <p className="text-xs text-slate-400">標題列會凍結並加上篩選，長內容自動換行；之後也可以用「📥 匯入 Excel」再匯回來。</p>
       {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
     </Modal>
   );
@@ -820,6 +885,9 @@ export default function WorkVendors() {
         {caseObj && (
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal({ type: "import" })} className={`${btn} bg-white text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50`}>📥 匯入 Excel</button>
+            {tables.length > 0 && (
+              <button onClick={() => setModal({ type: "export" })} className={`${btn} bg-white text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50`}>📤 匯出 Excel</button>
+            )}
             <button onClick={() => setModal({ type: "case" })} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700`}>＋ 案子</button>
           </div>
         )}
@@ -966,6 +1034,18 @@ export default function WorkVendors() {
             loadTables(tableId);
             loadCases(caseId);
             if (q.trim()) searchCase(caseId, q).then(setResults).catch(() => {});
+          }}
+        />
+      )}
+      {modal?.type === "export" && caseObj && (
+        <ExportModal
+          caseObj={caseObj}
+          tables={tables}
+          table={table}
+          onClose={() => setModal(null)}
+          onDone={(name) => {
+            setModal(null);
+            flash(`已下載 ${name}`);
           }}
         />
       )}
