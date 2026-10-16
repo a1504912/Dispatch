@@ -32,6 +32,7 @@ from app.routers import (
     models,
     news,
     notes,
+    prefs,
     pricing,
     splitbills,
     push,
@@ -154,6 +155,7 @@ app.include_router(holidays.router)
 app.include_router(invest.router)
 app.include_router(media.router)
 app.include_router(work.router)
+app.include_router(prefs.router)
 
 
 @app.get("/api/health")

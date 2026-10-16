@@ -18,6 +18,7 @@ function safeArr(v) {
 }
 import { compressImageFile } from "../imageCompress";
 import { NO_BACKEND } from "../localMode";
+import TimePresets from "./TimePresets.jsx";
 import { useNavigate } from "react-router-dom";
 import { createNotebook, listNotebooks } from "../api/notes";
 import {
@@ -588,6 +589,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               />
             </label>
           </div>
+
+          <TimePresets form={form} setForm={setForm} />
 
           {form.all_day ? (
             <div className="grid grid-cols-2 gap-3">
