@@ -181,7 +181,9 @@ function TableModal({ caseId, initial, onClose, onSaved }) {
         <input autoFocus={!isEdit} value={name} onChange={(e) => setName(e.target.value)} placeholder="分類名稱，例：客戶聯繫單" className={field} />
       </div>
       <div>
-        <p className="mb-1.5 text-xs font-semibold text-slate-500">欄位（🔒 = 畫面上先遮住，適合密碼、遠端連線資訊）</p>
+        <p className="mb-1.5 text-xs leading-relaxed text-slate-500">
+          欄位　<b>📌</b> 顯示在清單　<b>🙈</b> 隱藏（資料保留）　<b>🔒</b> 先遮住（密碼、遠端連線）
+        </p>
         <div className="space-y-1.5">
           {cols.map((c, i) => (
             <div key={c.key || `n${i}`} className="flex items-center gap-1.5">
@@ -190,7 +192,9 @@ function TableModal({ caseId, initial, onClose, onSaved }) {
                 <button onClick={() => move(i, 1)} className="px-1 text-[10px] leading-none text-slate-400 hover:text-indigo-600">▼</button>
               </div>
               <input value={c.label} onChange={(e) => setCol(i, { label: e.target.value })} className={field} />
-              <button onClick={() => setCol(i, { masked: !c.masked })} title="遮住這個欄位" className={`shrink-0 rounded-lg px-2 py-1.5 text-sm ${c.masked ? "bg-amber-100" : "bg-slate-50 opacity-50 hover:opacity-100"}`}>🔒</button>
+              <button onClick={() => setCol(i, { pinned: !c.pinned })} title="顯示在左邊清單" className={`shrink-0 rounded-lg px-2 py-1.5 text-sm ${c.pinned ? "bg-indigo-100" : "bg-slate-50 opacity-40 hover:opacity-100"}`}>📌</button>
+              <button onClick={() => setCol(i, { hidden: !c.hidden })} title="隱藏這個欄位" className={`shrink-0 rounded-lg px-2 py-1.5 text-sm ${c.hidden ? "bg-slate-200" : "bg-slate-50 opacity-40 hover:opacity-100"}`}>🙈</button>
+              <button onClick={() => setCol(i, { masked: !c.masked })} title="遮住這個欄位" className={`shrink-0 rounded-lg px-2 py-1.5 text-sm ${c.masked ? "bg-amber-100" : "bg-slate-50 opacity-40 hover:opacity-100"}`}>🔒</button>
               <button
                 onClick={() => (!isEdit || !c.key || confirm(`刪除欄位「${c.label}」？這個欄位的資料會看不到。`)) && setCols((cs) => cs.filter((_, j) => j !== i))}
                 className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-slate-300 hover:bg-rose-50 hover:text-rose-500"
@@ -397,37 +401,138 @@ async function copyText(text) {
   }
 }
 
-function Field({ col, value }) {
+/* 一個欄位：點內容直接改；📌 顯示在清單；⧉ 複製；🙈 隱藏 */
+function Field({ col, value, onSave, onToggle, isFirst }) {
   const [copied, setCopied] = useState(false);
-  const long = value.length > 36 || value.includes("\n");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+  const empty = !value.trim();
+  const long = value.length > 36 || value.includes("\n") || editing;
+  async function commit() {
+    if (draft === value) return setEditing(false);
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+  const tool = "rounded-lg px-1.5 py-1 text-xs transition hover:bg-white";
   return (
-    <div className={`group relative rounded-xl bg-slate-50/80 px-3.5 py-2.5 ring-1 ring-slate-100 ${long ? "sm:col-span-2" : ""}`}>
-      <p className="text-[11px] font-semibold tracking-wide text-slate-400">
-        {col.label} {col.masked && <span className="text-amber-500">🔒</span>}
+    <div className={`group relative rounded-xl px-3.5 py-2.5 ring-1 ${empty && !editing ? "border border-dashed border-slate-200 bg-white ring-0" : "bg-slate-50/80 ring-slate-100"} ${long ? "sm:col-span-2" : ""}`}>
+      <p className="flex items-center gap-1 text-[11px] font-semibold tracking-wide text-slate-400">
+        {col.label}
+        {col.pinned && <span title="顯示在清單">📌</span>}
+        {col.masked && <span className="text-amber-500">🔒</span>}
       </p>
-      <div className="mt-0.5 pr-8 text-sm leading-relaxed text-slate-800">
-        {col.masked ? <Masked value={value} /> : <span className="whitespace-pre-line break-words">{value}</span>}
-      </div>
-      <button
-        onClick={async () => {
-          if (await copyText(value)) {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          }
-        }}
-        className="absolute right-2 top-2 rounded-lg px-1.5 py-1 text-xs text-slate-400 opacity-0 transition hover:bg-white hover:text-indigo-600 group-hover:opacity-100 max-md:opacity-100"
-        title="複製"
-      >
-        {copied ? "✓" : "⧉"}
-      </button>
+      {editing ? (
+        <div className="mt-1">
+          <textarea
+            autoFocus
+            rows={Math.min(8, Math.max(2, draft.split("\n").length))}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { setDraft(value); setEditing(false); }
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) commit();
+            }}
+            className={`${field} resize-y bg-white`}
+          />
+          <div className="mt-1.5 flex items-center gap-2">
+            <button disabled={saving} onClick={commit} className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40">{saving ? "儲存中…" : "儲存"}</button>
+            <button onClick={() => { setDraft(value); setEditing(false); }} className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">取消</button>
+            <span className="text-[10px] text-slate-400">Ctrl+Enter 儲存・Esc 取消</span>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setEditing(true)} className="mt-0.5 block w-full pr-16 text-left text-sm leading-relaxed text-slate-800" title="點一下修改">
+          {empty ? (
+            <span className="text-xs text-slate-300">＋ 填寫</span>
+          ) : col.masked ? (
+            <Masked value={value} />
+          ) : (
+            <span className="whitespace-pre-line break-words">{value}</span>
+          )}
+        </button>
+      )}
+      {!editing && (
+        <div className="absolute right-1.5 top-1.5 flex opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
+          {!isFirst && (
+            <button onClick={() => onToggle({ pinned: !col.pinned })} className={`${tool} ${col.pinned ? "" : "grayscale"}`} title={col.pinned ? "不要顯示在清單" : "顯示在左邊清單"}>📌</button>
+          )}
+          {!empty && (
+            <button
+              onClick={async () => {
+                if (await copyText(value)) {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1200);
+                }
+              }}
+              className={`${tool} text-slate-400 hover:text-indigo-600`}
+              title="複製"
+            >
+              {copied ? "✓" : "⧉"}
+            </button>
+          )}
+          {!isFirst && (
+            <button onClick={() => onToggle({ hidden: true })} className={`${tool} grayscale`} title="隱藏這個欄位（所有資料都不顯示，可在 ⚙ 欄位 打開）">🙈</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function RecordDetail({ table, row, onEdit }) {
+function AddField({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!open)
+    return (
+      <button onClick={() => setOpen(true)} className="rounded-xl border border-dashed border-slate-300 px-3.5 py-2.5 text-left text-sm font-semibold text-slate-400 transition hover:border-indigo-300 hover:text-indigo-600">
+        ＋ 新增欄位
+      </button>
+    );
+  async function save() {
+    if (!label.trim()) return;
+    setBusy(true);
+    try {
+      await onAdd(label.trim(), value);
+      setLabel("");
+      setValue("");
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-2 rounded-xl bg-indigo-50/60 p-3 ring-1 ring-indigo-100 sm:col-span-2">
+      <p className="text-xs font-semibold text-indigo-700">新增欄位（這個分類的每一筆都會多這個欄位）</p>
+      <input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder="欄位名稱，例：Email、地址、統編" className={`${field} bg-white`} />
+      <textarea value={value} onChange={(e) => setValue(e.target.value)} rows={2} placeholder="這一筆的內容（可留空）" className={`${field} bg-white`} />
+      <div className="flex gap-2">
+        <button disabled={busy || !label.trim()} onClick={save} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40">{busy ? "新增中…" : "新增"}</button>
+        <button onClick={() => setOpen(false)} className="rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-white">取消</button>
+      </div>
+    </div>
+  );
+}
+
+function RecordDetail({ table, row, onEdit, onSaveValue, onToggleCol, onAddCol, onSettings }) {
+  const [showEmpty, setShowEmpty] = useState(() => store.get("dispatch.workShowEmpty") === "1");
+  useEffect(() => store.set("dispatch.workShowEmpty", showEmpty ? "1" : "0"), [showEmpty]);
   const [first, ...rest] = table.columns;
-  const filled = rest.filter((c) => (row.data[c.key] || "").trim());
-  const empty = rest.length - filled.length;
+  const visible = rest.filter((c) => !c.hidden);
+  const filled = visible.filter((c) => (row.data[c.key] || "").trim());
+  const shown = showEmpty ? visible : filled;
+  const emptyCount = visible.length - filled.length;
+  const hiddenCount = rest.length - visible.length;
   const name = row.data[first?.key] || "（未命名）";
   return (
     <div>
@@ -435,41 +540,61 @@ function RecordDetail({ table, row, onEdit }) {
         <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-black ${avatarCls(name)}`}>{[...name][0]}</div>
         <div className="min-w-0 flex-1">
           <h3 className="break-words text-xl font-black leading-tight text-slate-900">{name}</h3>
-          <p className="mt-0.5 text-xs text-slate-400">
-            {table.emoji} {table.name}・{filled.length} 個欄位有資料{empty > 0 && `・${empty} 個空白`}
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400">
+            <span>{table.emoji} {table.name}・{filled.length} 個欄位有資料</span>
+            {emptyCount > 0 && (
+              <button onClick={() => setShowEmpty((v) => !v)} className={`rounded-full px-2 py-0.5 font-semibold ring-1 ${showEmpty ? "bg-indigo-50 text-indigo-600 ring-indigo-200" : "ring-slate-200 hover:text-indigo-600"}`}>
+                {showEmpty ? "隱藏" : "顯示"} {emptyCount} 個空白欄位
+              </button>
+            )}
+            {hiddenCount > 0 && (
+              <button onClick={onSettings} className="rounded-full px-2 py-0.5 ring-1 ring-slate-200 hover:text-indigo-600">🙈 {hiddenCount} 個隱藏欄位</button>
+            )}
           </p>
         </div>
-        <button onClick={() => onEdit(row)} className={`${btn} shrink-0 bg-indigo-600 text-white shadow hover:bg-indigo-700`}>✏️ 編輯</button>
+        <button onClick={() => onEdit(row)} className={`${btn} shrink-0 bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50`} title="整筆編輯">✏️</button>
       </div>
-      {filled.length ? (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          {filled.map((c) => <Field key={c.key} col={c} value={row.data[c.key]} />)}
-        </div>
-      ) : (
-        <p className="mt-6 rounded-xl bg-slate-50 py-8 text-center text-sm text-slate-400">只有名稱，其他欄位都還沒填。按「編輯」補資料。</p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {shown.map((c) => (
+          <Field key={c.key} col={c} value={row.data[c.key] || ""} onSave={(v) => onSaveValue(row, c.key, v)} onToggle={(patch) => onToggleCol(c.key, patch)} />
+        ))}
+        <AddField onAdd={(label, value) => onAddCol(row, label, value)} />
+      </div>
+      {!shown.length && (
+        <p className="mt-3 text-center text-xs text-slate-400">其他欄位都還沒填，點「顯示空白欄位」直接填，或新增欄位。</p>
       )}
     </div>
   );
 }
 
-function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, onAdd, onSettings }) {
+function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, onAdd, onSettings, onSaveValue, onToggleCol, onAddCol }) {
   const [view, setView] = useState(() => store.get("dispatch.workView") || "list");
   const [selId, setSelId] = useState(null);
-  const [sheet, setSheet] = useState(null); // 手機：點開的那筆
+  const [sheetId, setSheetId] = useState(null); // 手機：點開的那筆
   const [first, ...rest] = table.columns;
   useEffect(() => store.set("dispatch.workView", view), [view]);
   useEffect(() => {
     if (!rows.some((r) => r.id === selId)) setSelId(rows[0]?.id ?? null);
   }, [rows, selId]);
   const sel = rows.find((r) => r.id === selId);
-  const subtitle = (r) =>
-    rest
-      .filter((c) => !c.masked && (r.data[c.key] || "").trim())
+  const sheet = rows.find((r) => r.id === sheetId);
+  const pinned = rest.filter((c) => c.pinned && !c.hidden);
+  // 清單副標：有 📌 的欄位（帶欄位名）；沒設定就自動帶前兩個有資料的欄位
+  const subtitle = (r) => {
+    if (pinned.length)
+      return pinned
+        .filter((c) => (r.data[c.key] || "").trim())
+        .map((c) => `${c.label} ${c.masked ? "••••" : r.data[c.key].split("\n")[0]}`)
+        .join("・");
+    return rest
+      .filter((c) => !c.masked && !c.hidden && (r.data[c.key] || "").trim())
       .slice(0, 2)
       .map((c) => r.data[c.key].split("\n")[0])
       .join("・");
-  // 表格模式：目前這些資料裡全空的欄位就不顯示
-  const usedCols = table.columns.filter((c, i) => i === 0 || rows.some((r) => (r.data[c.key] || "").trim()));
+  };
+  // 表格模式：隱藏的欄位、目前這些資料裡全空的欄位都不顯示
+  const usedCols = table.columns.filter((c, i) => i === 0 || (!c.hidden && rows.some((r) => (r.data[c.key] || "").trim())));
+  const detailProps = { table, onEdit, onSaveValue, onToggleCol, onAddCol, onSettings };
 
   return (
     <>
@@ -525,12 +650,15 @@ function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, o
         <div className={`gap-4 ${view === "table" ? "md:hidden" : "lg:grid lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]"}`}>
           {/* 清單 */}
           <div className="space-y-1 p-px lg:max-h-[calc(100vh-330px)] lg:min-h-[300px] lg:overflow-y-auto lg:pr-1">
+            {pinned.length > 0 && (
+              <p className="px-3 pb-1 text-[11px] text-slate-400">📌 清單顯示：{pinned.map((c) => c.label).join("、")}</p>
+            )}
             {rows.map((r) => {
               const name = r.data[first?.key] || "（未命名）";
               const on = r.id === selId;
               return (
                 <button key={r.id}
-                  onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? setSelId(r.id) : setSheet(r))}
+                  onClick={() => (window.matchMedia("(min-width: 1024px)").matches ? setSelId(r.id) : setSheetId(r.id))}
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${on ? "lg:bg-indigo-50 lg:ring-1 lg:ring-indigo-200" : ""} hover:bg-slate-50`}>
                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-black ${avatarCls(name)}`}>{[...name][0]}</span>
                   <span className="min-w-0 flex-1">
@@ -545,7 +673,7 @@ function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, o
           <div className="hidden p-px lg:block lg:max-h-[calc(100vh-330px)] lg:overflow-y-auto">
             {sel && (
               <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-                <RecordDetail table={table} row={sel} onEdit={onEdit} />
+                <RecordDetail key={sel.id} row={sel} {...detailProps} />
               </div>
             )}
           </div>
@@ -554,8 +682,8 @@ function RecordsView({ table, rows, total, loading, filter, setFilter, onEdit, o
 
       {/* 詳細（手機：底部彈出） */}
       {sheet && (
-        <Modal title={`${table.emoji} ${table.name}`} onClose={() => setSheet(null)}>
-          <RecordDetail table={table} row={rows.find((r) => r.id === sheet.id) || sheet} onEdit={(r) => { setSheet(null); onEdit(r); }} />
+        <Modal title={`${table.emoji} ${table.name}`} onClose={() => setSheetId(null)}>
+          <RecordDetail key={sheet.id} row={sheet} {...detailProps} onEdit={(r) => { setSheetId(null); onEdit(r); }} />
         </Modal>
       )}
     </>
@@ -644,6 +772,33 @@ export default function WorkVendors() {
       return words.every((w) => text.includes(w));
     });
   }, [rows, filter, table]);
+
+  // 詳細資料裡直接改一格
+  async function saveValue(row, key, value) {
+    const saved = await updateRow(row.id, { ...row.data, [key]: value });
+    setRows((rs) => rs.map((r) => (r.id === saved.id ? saved : r)));
+  }
+  async function saveColumns(columns) {
+    const t = await updateTable(table.id, { name: table.name, emoji: table.emoji, columns });
+    setTables((ts) => ts.map((x) => (x.id === t.id ? t : x)));
+    return t;
+  }
+  // 📌 顯示在清單 / 🙈 隱藏
+  function toggleCol(key, patch) {
+    return saveColumns(table.columns.map((c) => (c.key === key ? { ...c, ...patch } : c)));
+  }
+  // 新增欄位（整個分類都會多這欄），順便填這一筆的值
+  async function addCol(row, label, value) {
+    const existing = table.columns.find((c) => c.label === label);
+    let key = existing?.key;
+    if (!existing) {
+      const t = await saveColumns([...table.columns, { key: "", label }]);
+      key = t.columns.find((c) => c.label === label)?.key;
+    } else if (existing.hidden) {
+      await toggleCol(existing.key, { hidden: false });
+    }
+    if (key && value.trim()) await saveValue(row, key, value);
+  }
 
   function flash(msg) {
     setToast(msg);
@@ -763,6 +918,9 @@ export default function WorkVendors() {
                         onEdit={(r) => setModal({ type: "row", table, initial: r })}
                         onAdd={() => setModal({ type: "row", table, initial: null })}
                         onSettings={() => setModal({ type: "table", initial: table })}
+                        onSaveValue={saveValue}
+                        onToggleCol={toggleCol}
+                        onAddCol={addCol}
                       />
                     </>
                   )}

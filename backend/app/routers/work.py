@@ -62,7 +62,9 @@ def _clean_columns(raw) -> list[dict]:
         if not key or key in seen:
             key = _next_key([{"key": k} for k in reserved | seen])
         seen.add(key)
-        out.append({"key": key, "label": label[:60], "masked": bool(c.get("masked"))})
+        out.append({"key": key, "label": label[:60], "masked": bool(c.get("masked")),
+                    # pinned＝顯示在清單的副標；hidden＝不想看的欄位（資料保留，只是不顯示）
+                    "pinned": bool(c.get("pinned")), "hidden": bool(c.get("hidden"))})
     return out
 
 

@@ -442,7 +442,8 @@ class WorkTable(SQLModel, table=True):
     case_id: int = Field(foreign_key="workcase.id", index=True)
     name: str
     emoji: str = "📋"
-    # 欄位定義 JSON：[{"key": "c1", "label": "名稱", "masked": false}]（masked＝畫面先遮住，例如密碼）
+    # 欄位定義 JSON：[{"key": "c1", "label": "名稱", "masked": false, "pinned": false, "hidden": false}]
+    # masked＝畫面先遮住（例如密碼）；pinned＝顯示在清單；hidden＝不顯示
     columns: str = "[]"
     sort: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
