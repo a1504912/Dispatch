@@ -86,6 +86,13 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE notebook ADD COLUMN category VARCHAR NOT NULL DEFAULT ''"))
                 conn.commit()
 
+            # 記事本內容：事件（topic）底下的子內容用 parent_id 掛在事件上
+            ni_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(noteitem)"))]
+            if ni_cols and "parent_id" not in ni_cols:
+                conn.execute(text("ALTER TABLE noteitem ADD COLUMN parent_id INTEGER"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_noteitem_parent_id ON noteitem (parent_id)"))
+                conn.commit()
+
             # 比價候選：補上預覽圖、二手/新品欄位
             po_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(priceoption)"))]
             if po_cols:

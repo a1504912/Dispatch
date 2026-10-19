@@ -19,15 +19,23 @@ export async function deleteNotebook(id) {
   await client.delete(`/api/notes/notebooks/${id}`);
 }
 
-export async function listItems(notebookId, before = null, limit = 60) {
-  const { data } = await client.get(`/api/notes/notebooks/${notebookId}/items`, {
-    params: before ? { before, limit } : { limit },
-  });
+// opts.parent：列某個事件底下的內容；opts.all：全部（含事件底下的）
+export async function listItems(notebookId, before = null, limit = 60, opts = {}) {
+  const params = { limit };
+  if (before) params.before = before;
+  if (opts.parent) params.parent = opts.parent;
+  if (opts.all) params.all = 1;
+  const { data } = await client.get(`/api/notes/notebooks/${notebookId}/items`, { params });
   return data;
 }
 
-export async function addText(notebookId, text) {
-  const { data } = await client.post(`/api/notes/notebooks/${notebookId}/items`, { text });
+// opts.kind = "topic" 建事件（第一行標題、其餘說明）；opts.parentId：加到某個事件底下
+export async function addText(notebookId, text, opts = {}) {
+  const { data } = await client.post(`/api/notes/notebooks/${notebookId}/items`, {
+    text,
+    kind: opts.kind || "text",
+    parent_id: opts.parentId || null,
+  });
   return data;
 }
 
@@ -71,7 +79,7 @@ async function sendChunks(notebookId, blob, onProgress) {
 }
 
 // 上傳照片/影片/檔案；onProgress(0~100)
-export async function uploadFile(notebookId, file, caption = "", onProgress, encMeta = "") {
+export async function uploadFile(notebookId, file, caption = "", onProgress, encMeta = "", parentId = null) {
   if (file.size > CHUNK) {
     const { uploadId, total } = await sendChunks(notebookId, file, (r) => onProgress?.(Math.min(99, Math.round(r * 100))));
     const fd = new FormData();
@@ -81,6 +89,7 @@ export async function uploadFile(notebookId, file, caption = "", onProgress, enc
     fd.append("content_type", file.type || "application/octet-stream");
     fd.append("caption", caption);
     if (encMeta) fd.append("enc_meta", encMeta);
+    if (parentId) fd.append("parent_id", String(parentId));
     const { data } = await client.post(`/api/notes/notebooks/${notebookId}/upload-finish`, fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -91,6 +100,7 @@ export async function uploadFile(notebookId, file, caption = "", onProgress, enc
   fd.append("file", file, file.name || "file");
   fd.append("caption", caption);
   if (encMeta) fd.append("enc_meta", encMeta);
+  if (parentId) fd.append("parent_id", String(parentId));
   const { data } = await client.post(`/api/notes/notebooks/${notebookId}/upload`, fd, {
     headers: { "Content-Type": "multipart/form-data" },
     onUploadProgress: (e) => {

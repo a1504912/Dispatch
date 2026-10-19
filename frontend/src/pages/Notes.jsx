@@ -276,6 +276,307 @@ function Bubble({ item, cryptoKey, onDelete, onSaveEdit }) {
   );
 }
 
+/* ---------- 事件（記事本裡的一張卡片：標題、說明，底下可放照片、連結、檔案、文字） ---------- */
+function splitTopic(text) {
+  const [title, ...rest] = (text || "").split("\n");
+  return { title: title.trim() || "（未命名事件）", desc: rest.join("\n").trim() };
+}
+
+// 上傳一個檔案（加密記事本先在瀏覽器加密），回傳可直接顯示的那則
+async function uploadNoteFile(nbId, f, cryptoKey, onPct, parentId = null) {
+  const fname = f.name || "image.png";
+  if (cryptoKey) {
+    if (f.size > 1024 * 1024 * 1024) throw new Error("加密記事本單檔上限 1GB（太大的檔案瀏覽器加密不動），請放到一般記事本");
+    const blob = await encryptBytes(cryptoKey, await f.arrayBuffer());
+    const encMeta = await encryptText(cryptoKey, JSON.stringify({ name: fname, type: f.type || "application/octet-stream", size: f.size }));
+    const saved = await uploadFile(nbId, new File([blob], "data.bin", { type: "application/octet-stream" }), "", onPct, encMeta, parentId);
+    return decryptItem(cryptoKey, saved);
+  }
+  return uploadFile(nbId, f, "", onPct, "", parentId);
+}
+
+function TopicCard({ item, onOpen, onDelete }) {
+  const { title, desc } = splitTopic(item.text);
+  const ch = item.children || {};
+  const stats = [
+    ch.images ? `🖼 ${ch.images}` : "",
+    ch.videos ? `🎬 ${ch.videos}` : "",
+    ch.links ? `🔗 ${ch.links}` : "",
+    ch.files ? `📎 ${ch.files}` : "",
+  ].filter(Boolean);
+  return (
+    <div className="group flex justify-end gap-2">
+      <div className="flex shrink-0 flex-col justify-end gap-1 pb-4 opacity-40 transition group-hover:opacity-100">
+        <button title="刪除事件（連同裡面的內容）" onClick={() => onDelete(item)} className="rounded px-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-500">✕</button>
+      </div>
+      <div className="flex w-full max-w-[80%] flex-col items-end sm:max-w-md">
+        <button onClick={() => onOpen(item)} className="w-full overflow-hidden rounded-2xl rounded-tr-md bg-white text-left shadow-sm ring-1 ring-indigo-100 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-indigo-300">
+          <div className="border-l-4 border-indigo-500 px-3.5 py-2.5">
+            <p className="text-[11px] font-bold tracking-wide text-indigo-500">📌 事件</p>
+            <p className="mt-0.5 break-words font-black text-slate-900">{title}</p>
+            {desc && <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm text-slate-600">{desc}</p>}
+          </div>
+          {ch.thumbs?.length > 0 && (
+            <div className="grid grid-cols-4 gap-0.5 px-0.5">
+              {ch.thumbs.map((u) => (
+                <img key={u} src={mediaUrl(u)} alt="" loading="lazy" className="aspect-square w-full object-cover" />
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3.5 py-1.5 text-xs text-slate-500">
+            <span>{ch.count ? `${ch.count} 則內容` : "還沒有內容"}</span>
+            {stats.length > 0 && <span className="text-slate-400">{stats.join("　")}</span>}
+            <span className="ml-auto font-semibold text-indigo-600">打開 ›</span>
+          </div>
+        </button>
+        <span className="mt-0.5 text-[10px] text-slate-400">{fmtTime(item.created_at)}</span>
+      </div>
+    </div>
+  );
+}
+
+/* 新增／編輯事件：標題、說明；新增時可以順便放照片／檔案和連結 */
+function TopicModal({ nbId, cryptoKey, initial, onClose, onDone }) {
+  const isEdit = Boolean(initial?.id);
+  const init = isEdit ? splitTopic(initial.text) : { title: "", desc: "" };
+  const [title, setTitle] = useState(isEdit ? init.title : "");
+  const [desc, setDesc] = useState(init.desc);
+  const [links, setLinks] = useState("");
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+  const enc = async (t) => (cryptoKey ? encryptText(cryptoKey, t) : t);
+
+  async function save() {
+    const t = title.trim();
+    if (!t) return;
+    setErr("");
+    const body = desc.trim() ? `${t}\n${desc.trim()}` : t;
+    try {
+      if (isEdit) {
+        setBusy("儲存中…");
+        await editItem(initial.id, await enc(body));
+        onDone({ ...initial, text: body });
+        return;
+      }
+      setBusy("建立事件…");
+      const topic = await addText(nbId, await enc(body), { kind: "topic" });
+      const lines = links.split("\n").map((x) => x.trim()).filter(Boolean);
+      for (let i = 0; i < lines.length; i++) {
+        setBusy(`加入連結 ${i + 1}/${lines.length}…`);
+        await addText(nbId, await enc(lines[i]), { parentId: topic.id });
+      }
+      for (let i = 0; i < files.length; i++) {
+        setBusy(`上傳 ${i + 1}/${files.length}：${files[i].name}`);
+        await uploadNoteFile(nbId, files[i], cryptoKey, (p) => setBusy(`上傳 ${i + 1}/${files.length}：${files[i].name}（${p}%）`), topic.id);
+      }
+      onDone(topic);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "失敗");
+      setBusy("");
+    }
+  }
+  const field = "w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100";
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={busy ? undefined : onClose}>
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="text-lg font-black text-slate-900">📌 {isEdit ? "編輯事件" : "新增事件"}</h2>
+          <button onClick={onClose} disabled={Boolean(busy)} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {!isEdit && <p className="text-xs text-slate-400">一個事件一張卡片（例：某個 BUG、某次會議、某個客戶問題），之後點開可以一直往裡面加說明、照片、連結。</p>}
+          <input autoFocus value={title} onChange={(e) => setTitle(e.target.value.replace(/\n/g, " "))} placeholder="事件標題，例：三井 Excel 匯出當掉" className={`${field} font-bold`} />
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={5} placeholder="說明（可留空）：發生什麼事、怎麼處理…" className={`${field} resize-y`} />
+          {!isEdit && (
+            <>
+              <textarea value={links} onChange={(e) => setLinks(e.target.value)} rows={2} placeholder="連結（一行一個，可留空）" className={`${field} resize-y`} />
+              <div>
+                <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-dashed border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-500 hover:border-indigo-300 hover:text-indigo-600">
+                  ＋ 照片／影片／檔案
+                </button>
+                <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const picked = [...e.target.files]; setFiles((f) => [...f, ...picked]); e.target.value = ""; }} />
+                {files.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {files.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
+                        <span className="min-w-0 flex-1 truncate">📎 {f.name}</span>
+                        <span className="text-slate-400">{fmtSize(f.size)}</span>
+                        <button onClick={() => setFiles((x) => x.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-500">✕</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+          {busy && <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700">{busy}</p>}
+          {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{err}</p>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
+          <button onClick={onClose} disabled={Boolean(busy)} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100">取消</button>
+          <button onClick={save} disabled={!title.trim() || Boolean(busy)} className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow hover:bg-indigo-700 disabled:opacity-40">
+            {isEdit ? "儲存" : "建立事件"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* 打開的事件：說明＋底下的內容，可以繼續加文字、照片、連結、檔案 */
+function TopicPanel({ nbId, topic, cryptoKey, onClose, onChanged, onDeleteTopic }) {
+  const [kids, setKids] = useState(null);
+  const [text, setText] = useState("");
+  const [uploads, setUploads] = useState([]);
+  const [editTopic, setEditTopic] = useState(false);
+  const fileRef = useRef(null);
+  const endRef = useRef(null);
+  const { title, desc } = splitTopic(topic.text);
+
+  useEffect(() => {
+    let alive = true;
+    listItems(nbId, null, 500, { parent: topic.id })
+      .then(async (rows) => {
+        const out = cryptoKey ? await decryptAll(cryptoKey, rows) : rows;
+        if (alive) setKids(out);
+      })
+      .catch(() => alive && setKids([]));
+    return () => {
+      alive = false;
+    };
+  }, [nbId, topic.id, cryptoKey]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [kids, uploads]);
+
+  async function send() {
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    try {
+      const saved = await addText(nbId, cryptoKey ? await encryptText(cryptoKey, t) : t, { parentId: topic.id });
+      setKids((k) => [...(k || []), cryptoKey ? { ...saved, text: t, kind: "text" } : saved]);
+      onChanged();
+    } catch (e) {
+      setText(t);
+      window.alert(`送出失敗：${e?.response?.data?.detail || e.message}`);
+    }
+  }
+  async function sendFiles(list) {
+    for (const f of [...(list || [])]) {
+      const key = `${Date.now()}-${Math.random()}`;
+      setUploads((u) => [...u, { key, name: f.name || "image.png", pct: 0 }]);
+      try {
+        const it = await uploadNoteFile(nbId, f, cryptoKey, (pct) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, pct } : x))), topic.id);
+        setKids((k) => [...(k || []), it]);
+        setUploads((u) => u.filter((x) => x.key !== key));
+      } catch (e) {
+        const msg = e?.response?.data?.detail || e.message;
+        setUploads((u) => u.map((x) => (x.key === key ? { ...x, err: msg } : x)));
+      }
+    }
+    onChanged();
+  }
+  async function delKid(item) {
+    if (!window.confirm("刪除這則？")) return;
+    await deleteItem(item.id);
+    setKids((k) => k.filter((x) => x.id !== item.id));
+    onChanged();
+  }
+  async function editKid(item, draft) {
+    let it;
+    if (cryptoKey) {
+      const plain = draft.trim();
+      await editItem(item.id, plain ? await encryptText(cryptoKey, plain) : "");
+      it = { ...item, text: plain };
+    } else {
+      it = await editItem(item.id, draft);
+    }
+    setKids((k) => k.map((x) => (x.id === it.id ? it : x)));
+    onChanged();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose}>
+      <div className="flex h-full w-full max-w-xl flex-col bg-[#e8eef5] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-slate-200 bg-white px-4 py-3">
+          <div className="flex items-start gap-2">
+            <button onClick={onClose} className="mt-0.5 rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100" title="關閉">‹</button>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold text-indigo-500">📌 事件</p>
+              <h3 className="break-words text-lg font-black leading-tight text-slate-900">{title}</h3>
+            </div>
+            <button onClick={() => setEditTopic(true)} className="rounded-lg px-2 py-1 text-sm text-slate-400 hover:bg-slate-100 hover:text-indigo-600" title="編輯標題／說明">✎</button>
+            <button onClick={() => onDeleteTopic(topic)} className="rounded-lg px-2 py-1 text-sm text-slate-400 hover:bg-red-50 hover:text-red-500" title="刪除事件">🗑</button>
+          </div>
+          {desc && (
+            <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-indigo-50/60 px-3 py-2 text-sm text-slate-700">
+              <Linkified text={desc} />
+            </p>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); if (e.dataTransfer?.files?.length) sendFiles(e.dataTransfer.files); }}>
+          {kids === null && <p className="py-10 text-center text-sm text-slate-400">載入中…</p>}
+          {kids?.length === 0 && <p className="py-10 text-center text-sm text-slate-400">在下面加說明、貼網址或丟照片／檔案進來。</p>}
+          {kids?.map((it) => (
+            <Bubble key={it.id} item={it} cryptoKey={cryptoKey} onDelete={delKid} onSaveEdit={editKid} />
+          ))}
+          {uploads.map((u) => (
+            <div key={u.key} className="flex justify-end">
+              <div className={`w-56 rounded-2xl px-3.5 py-2 text-xs shadow-sm ${u.err ? "bg-red-50 text-red-600" : "bg-white text-slate-600"}`}>
+                <p className="truncate">{u.err ? `✕ ${u.name}：${u.err}` : `上傳中 ${u.pct}%：${u.name}`}</p>
+                {u.err && <button onClick={() => setUploads((x) => x.filter((y) => y.key !== u.key))} className="mt-1 underline">關閉</button>}
+              </div>
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+        <div className="flex items-end gap-2 border-t border-slate-200 bg-white px-2.5 py-2">
+          <button onClick={() => fileRef.current?.click()} title="照片 / 影片 / 檔案" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100">＋</button>
+          <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { sendFiles(e.target.files); e.target.value = ""; }} />
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            onPaste={(e) => {
+              const files = [...(e.clipboardData?.files || [])];
+              if (files.length) {
+                e.preventDefault();
+                sendFiles(files);
+              }
+            }}
+            rows={Math.min(5, Math.max(1, text.split("\n").length))}
+            placeholder="在這個事件裡加說明、貼網址或圖片…"
+            className="max-h-36 min-h-[40px] flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+          />
+          <button onClick={send} disabled={!text.trim()} className="h-10 shrink-0 rounded-full bg-indigo-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 disabled:opacity-40">送出</button>
+        </div>
+      </div>
+      {editTopic && (
+        <TopicModal
+          nbId={nbId}
+          cryptoKey={cryptoKey}
+          initial={topic}
+          onClose={() => setEditTopic(false)}
+          onDone={(t) => {
+            setEditTopic(false);
+            onChanged(t);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ---------- 既有記事本改成加密（全部在瀏覽器加密） ---------- */
 async function encryptExisting(nbId, password, onStep) {
   const salt = newSalt();
@@ -286,7 +587,7 @@ async function encryptExisting(nbId, password, onStep) {
   let all = [];
   let before = null;
   for (;;) {
-    const rows = await listItems(nbId, before, 200);
+    const rows = await listItems(nbId, before, 200, { all: true }); // 含事件底下的內容
     all = [...rows, ...all];
     if (rows.length < 200) break;
     before = rows[0].id;
@@ -500,6 +801,8 @@ export default function Notes() {
   const [sending, setSending] = useState(0); // 送出中的則數
   const [uploads, setUploads] = useState([]); // [{key, name, pct, err}]
   const [modal, setModal] = useState(null); // {nb} | {nb:null}
+  const [topicModal, setTopicModal] = useState(false); // 新增事件
+  const [openTopicId, setOpenTopicId] = useState(null); // 打開中的事件
   const [toast, setToast] = useState("");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -687,6 +990,21 @@ export default function Notes() {
     requestAnimationFrame(() => {
       if (el) el.scrollTop = el.scrollHeight - prevH;
     });
+  }
+
+  // 重新抓最新一頁（事件卡片的則數、縮圖跟著更新）
+  async function reloadItems() {
+    if (!selId) return;
+    const rows = await listItems(selId, null, Math.max(PAGE, items.length));
+    const out = curKey ? await decryptAll(curKey, rows) : rows;
+    setItems(out);
+  }
+  async function onDeleteTopic(item) {
+    if (!window.confirm(`刪除事件「${splitTopic(item.text).title}」？裡面的內容（照片、檔案、說明）會一起刪掉。`)) return;
+    await deleteItem(item.id);
+    setItems((cur) => cur.filter((x) => x.id !== item.id));
+    setOpenTopicId(null);
+    loadNotebooks();
   }
 
   async function send() {
@@ -1002,7 +1320,11 @@ export default function Notes() {
                       <span className="rounded-full bg-slate-500/20 px-3 py-0.5 text-[11px] font-medium text-slate-600">{dayLabel(it.created_at)}</span>
                     </div>
                   )}
-                  <Bubble item={it} cryptoKey={curKey} onDelete={onDelete} onSaveEdit={onSaveEdit} />
+                  {it.kind === "topic" ? (
+                    <TopicCard item={it} onOpen={(t) => setOpenTopicId(t.id)} onDelete={onDeleteTopic} />
+                  ) : (
+                    <Bubble item={it} cryptoKey={curKey} onDelete={onDelete} onSaveEdit={onSaveEdit} />
+                  )}
                 </Fragment>
               ))}
               {uploads.map((u) => (
@@ -1030,6 +1352,9 @@ export default function Notes() {
                 ＋
               </button>
               <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { sendFiles(e.target.files); e.target.value = ""; }} />
+              <button onClick={() => setTopicModal(true)} title="新增事件（一張卡片，裡面可以放說明、照片、連結）" className="flex h-10 shrink-0 items-center gap-1 rounded-full px-2.5 text-sm font-semibold text-indigo-600 hover:bg-indigo-50">
+                📌<span className="hidden sm:inline">事件</span>
+              </button>
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -1094,6 +1419,37 @@ export default function Notes() {
             if (selId === id) setSelId(null);
             loadNotebooks();
           }}
+        />
+      )}
+
+      {topicModal && selId && (
+        <TopicModal
+          nbId={selId}
+          cryptoKey={curKey}
+          onClose={() => setTopicModal(false)}
+          onDone={async (t) => {
+            setTopicModal(false);
+            stickBottom.current = true;
+            await reloadItems();
+            loadNotebooks();
+            setOpenTopicId(t.id);
+          }}
+        />
+      )}
+      {openTopicId && selId && !locked && items.find((x) => x.id === openTopicId) && (
+        <TopicPanel
+          key={openTopicId}
+          nbId={selId}
+          topic={items.find((x) => x.id === openTopicId)}
+          cryptoKey={curKey}
+          onClose={() => setOpenTopicId(null)}
+          onChanged={(t) => {
+            stickBottom.current = false; // 只是更新卡片上的數字，不要把列表捲走
+            if (t) setItems((cur) => cur.map((x) => (x.id === t.id ? { ...x, text: t.text } : x)));
+            reloadItems();
+            loadNotebooks();
+          }}
+          onDeleteTopic={onDeleteTopic}
         />
       )}
 

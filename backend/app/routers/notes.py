@@ -58,8 +58,36 @@ def _item_dict(it: NoteItem) -> dict:
         "media_type": it.media_type,
         "media_size": it.media_size,
         "meta": meta,
+        "parent_id": it.parent_id,
         "created_at": it.created_at.isoformat() + "Z",
     }
+
+
+def _topic_stats(session: Session, items: list[dict]) -> list[dict]:
+    """事件卡片要顯示的摘要：底下幾則、幾張照片（前 4 張縮圖）、幾個連結／檔案、最後更新。"""
+    ids = [d["id"] for d in items if d["kind"] == "topic"]
+    if not ids:
+        return items
+    kids = session.exec(
+        select(NoteItem).where(NoteItem.parent_id.in_(ids)).order_by(NoteItem.id)
+    ).all()
+    by: dict[int, list[NoteItem]] = {}
+    for k in kids:
+        by.setdefault(k.parent_id, []).append(k)
+    for d in items:
+        if d["kind"] != "topic":
+            continue
+        ch = by.get(d["id"], [])
+        d["children"] = {
+            "count": len(ch),
+            "images": len([k for k in ch if k.kind == "image"]),
+            "videos": len([k for k in ch if k.kind == "video"]),
+            "links": len([k for k in ch if k.kind == "link"]),
+            "files": len([k for k in ch if k.kind in ("file", "enc")]),
+            "thumbs": [f"/api/notes/media/{k.id}" for k in ch if k.kind == "image"][:4],
+            "last_at": (ch[-1].created_at.isoformat() + "Z") if ch else None,
+        }
+    return items
 
 
 def _preview_text(it: NoteItem | None, encrypted: bool = False) -> str:
@@ -73,12 +101,17 @@ def _preview_text(it: NoteItem | None, encrypted: bool = False) -> str:
         return "🎬 影片" + (f"：{it.text}" if it.text else "")
     if it.kind == "file":
         return f"📎 {it.media_name}"
+    if it.kind == "topic":
+        return "📌 " + it.text.split("\n")[0][:58]
     return it.text.replace("\n", " ")[:60]
 
 
 def _nb_dict(nb: Notebook, session: Session) -> dict:
     last = session.exec(
-        select(NoteItem).where(NoteItem.notebook_id == nb.id).order_by(NoteItem.id.desc()).limit(1)
+        select(NoteItem)
+        .where(NoteItem.notebook_id == nb.id, NoteItem.parent_id == None)  # noqa: E711
+        .order_by(NoteItem.id.desc())
+        .limit(1)
     ).first()
     count = len(session.exec(select(NoteItem.id).where(NoteItem.notebook_id == nb.id)).all())
     return {
@@ -202,19 +235,42 @@ def notebook_events(nb_id: int, session: Session = Depends(get_session)):
 
 
 @router.get("/notebooks/{nb_id}/items")
-def list_items(nb_id: int, before: int | None = None, limit: int = 60, session: Session = Depends(get_session)):
-    """新的在後；用 before=<最舊那則的 id> 往前載更多。"""
+def list_items(
+    nb_id: int,
+    before: int | None = None,
+    limit: int = 60,
+    parent: int | None = None,
+    all: int = 0,
+    session: Session = Depends(get_session),
+):
+    """新的在後；用 before=<最舊那則的 id> 往前載更多。
+    預設只列記事本本身的內容；parent=<事件 id> 列那個事件底下的內容；all=1 全部（加密轉換用）。"""
     _get_nb(session, nb_id)
     q = select(NoteItem).where(NoteItem.notebook_id == nb_id)
+    if parent:
+        q = q.where(NoteItem.parent_id == parent)
+    elif not all:
+        q = q.where(NoteItem.parent_id == None)  # noqa: E711
     if before:
         q = q.where(NoteItem.id < before)
-    rows = session.exec(q.order_by(NoteItem.id.desc()).limit(max(1, min(limit, 200)))).all()
+    rows = session.exec(q.order_by(NoteItem.id.desc()).limit(max(1, min(limit, 500)))).all()
     rows.reverse()
-    return [_item_dict(r) for r in rows]
+    return _topic_stats(session, [_item_dict(r) for r in rows])
+
+
+def _check_parent(session: Session, nb: Notebook, parent_id: int | None) -> int | None:
+    if not parent_id:
+        return None
+    p = session.get(NoteItem, parent_id)
+    if not p or p.notebook_id != nb.id or p.kind != "topic":
+        raise HTTPException(status_code=400, detail="找不到這個事件")
+    return p.id
 
 
 class TextIn(BaseModel):
     text: str
+    kind: str = "text"  # text / topic（事件：第一行標題、其餘說明）
+    parent_id: int | None = None
 
 
 @router.post("/notebooks/{nb_id}/items", status_code=201)
@@ -223,7 +279,17 @@ def add_text(nb_id: int, payload: TextIn, session: Session = Depends(get_session
     text = payload.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="內容是空的")
-    it = NoteItem(notebook_id=nb_id, kind="text", text=text)
+    parent_id = _check_parent(session, nb, payload.parent_id)
+    if payload.kind == "topic":
+        if parent_id:
+            raise HTTPException(status_code=400, detail="事件裡不能再建事件")
+        it = NoteItem(notebook_id=nb_id, kind="topic", text=text)
+        session.add(it)
+        _touch(session, nb)
+        session.commit()
+        session.refresh(it)
+        return _topic_stats(session, [_item_dict(it)])[0]
+    it = NoteItem(notebook_id=nb_id, kind="text", text=text, parent_id=parent_id)
     m = None if nb.encrypted else URL_RE.search(text)  # 加密內容是亂碼，不抓預覽
     if m:  # 有網址 → 當連結，順便抓標題/預覽圖
         it.kind = "link"
@@ -241,9 +307,11 @@ def upload(
     file: UploadFile = File(...),
     caption: str = Form(""),
     enc_meta: str = Form(""),  # 加密記事本：加密過的 {name,type,size}
+    parent_id: int | None = Form(None),
     session: Session = Depends(get_session),
 ):
     nb = _get_nb(session, nb_id)
+    parent_id = _check_parent(session, nb, parent_id)
     # 加密記事本：主機看不到內容，也不知道是照片還是影片；檔名、類型都在 enc_meta 裡（加密）
     kind, ctype, suffix = _classify(nb, file.filename, file.content_type, enc_meta)
     name = f"{uuid.uuid4().hex}{suffix}"
@@ -260,7 +328,7 @@ def upload(
                 dest.unlink(missing_ok=True)
                 raise HTTPException(status_code=413, detail="檔案太大，請更新網頁後重試（大檔會自動分段上傳）")
             out.write(chunk)
-    return _new_media_item(session, nb, name, file.filename, ctype, kind, size, caption, enc_meta)
+    return _new_media_item(session, nb, name, file.filename, ctype, kind, size, caption, enc_meta, parent_id)
 
 
 def _classify(nb: Notebook, filename: str | None, content_type: str | None, enc_meta: str):
@@ -276,9 +344,10 @@ def _classify(nb: Notebook, filename: str | None, content_type: str | None, enc_
     return kind, ctype, suffix
 
 
-def _new_media_item(session, nb, name, filename, ctype, kind, size, caption, enc_meta):
+def _new_media_item(session, nb, name, filename, ctype, kind, size, caption, enc_meta, parent_id=None):
     it = NoteItem(
         notebook_id=nb.id,
+        parent_id=parent_id,
         kind=kind,
         text=caption.strip(),
         media_path=name,
@@ -367,16 +436,18 @@ def upload_finish(
     content_type: str = Form(""),
     caption: str = Form(""),
     enc_meta: str = Form(""),
+    parent_id: int | None = Form(None),
     session: Session = Depends(get_session),
 ):
     nb = _get_nb(session, nb_id)
+    parent_id = _check_parent(session, nb, parent_id)
     part = _part_path(upload_id)
     if not part.exists() or part.stat().st_size != total:
         raise HTTPException(status_code=409, detail="檔案沒有完整傳到，請重新上傳")
     kind, ctype, suffix = _classify(nb, filename, content_type, enc_meta)
     name = f"{uuid.uuid4().hex}{suffix}"
     os.replace(part, _media_dir() / name)
-    return _new_media_item(session, nb, name, filename, ctype, kind, total, caption, enc_meta)
+    return _new_media_item(session, nb, name, filename, ctype, kind, total, caption, enc_meta, parent_id)
 
 
 @router.put("/items/{item_id}")
@@ -400,13 +471,17 @@ def edit_item(item_id: int, payload: TextIn, session: Session = Depends(get_sess
     session.add(it)
     session.commit()
     session.refresh(it)
-    return _item_dict(it)
+    return _topic_stats(session, [_item_dict(it)])[0]
 
 
 @router.delete("/items/{item_id}", status_code=204)
 def delete_item(item_id: int, session: Session = Depends(get_session)):
     it = session.get(NoteItem, item_id)
     if it:
+        if it.kind == "topic":  # 事件連同底下的內容（照片、檔案）一起刪
+            for k in session.exec(select(NoteItem).where(NoteItem.parent_id == it.id)).all():
+                _remove_file(k)
+                session.delete(k)
         _remove_file(it)
         session.delete(it)
         session.commit()
@@ -547,6 +622,8 @@ def encrypt_commit(nb_id: int, payload: EncryptCommitIn, session: Session = Depe
                 r.media_type = "application/octet-stream"
                 r.media_size = (_media_dir() / final).stat().st_size
                 r.meta = json.dumps({"enc": i.enc_meta})
+            elif r.kind == "topic":
+                r.meta = None  # 事件：標題和說明都在 text 裡，已經加密
             else:
                 r.kind, r.meta = "text", None  # 連結預覽（標題、網址）是明文，一併拿掉
             session.add(r)

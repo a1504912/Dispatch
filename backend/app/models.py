@@ -245,8 +245,10 @@ class NoteItem(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     notebook_id: int = Field(foreign_key="notebook.id", index=True)
-    kind: str = "text"  # text / image / video / file / link
-    text: str = ""  # 文字內容，或照片/影片的說明
+    kind: str = "text"  # text / image / video / file / link / topic（事件）/ enc
+    text: str = ""  # 文字內容，或照片/影片的說明；事件：第一行標題、其餘是說明
+    # 事件底下的內容（照片、連結、說明…）指向那則事件；一般內容是 None
+    parent_id: Optional[int] = Field(default=None, index=True)
     media_path: Optional[str] = None  # backend/data/notes/ 底下的檔名
     media_name: str = ""  # 原始檔名
     media_type: str = ""  # MIME
