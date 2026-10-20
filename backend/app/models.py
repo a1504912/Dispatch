@@ -460,3 +460,39 @@ class WorkRow(SQLModel, table=True):
     sort: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PropertyItem(SQLModel, table=True):
+    """身家財產：保險、汽機車、貴重物品、3C 家電、房產…
+
+    各類別專屬欄位（保險公司、車牌、序號…）放 fields JSON；自訂欄位放 extra；
+    重要日期（保固到期、繳費、牌照稅、驗車…）放 dates JSON，排程會照提前天數推播提醒。
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = "other"  # insurance / car / motorcycle / valuable / electronics / house / other
+    name: str
+    status: str = "active"  # active（使用中）/ sold / cancelled / scrapped / ended
+    purchase_date: Optional[date] = None  # 購買日；保險＝生效日
+    purchase_price: Optional[float] = None
+    current_value: Optional[float] = None  # 目前估值（不填就用購買價估）
+    fields: str = "{}"  # {欄位 key: 值}
+    extra: str = "[]"  # [{"label": "...", "value": "..."}]
+    # [{"id","label","date":"YYYY-MM-DD","repeat":"none|monthly|quarterly|halfyear|yearly|2years",
+    #   "remind_days":30,"done":false,"note":"","history":[{"date","done_at"}]}]
+    dates: str = "[]"
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PropertyFile(SQLModel, table=True):
+    """財產的附件：照片、保單 PDF、發票、保固卡…（檔案存硬碟 data/property/）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    item_id: int = Field(foreign_key="propertyitem.id", index=True)
+    path: str
+    name: str = ""
+    mime: str = ""
+    size: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -5,6 +5,7 @@ import Notes from "./pages/Notes.jsx";
 import Ledger from "./pages/Ledger.jsx";
 import Health from "./pages/Health.jsx";
 import Invest from "./pages/Invest.jsx";
+import Property from "./pages/Property.jsx";
 import MediaPosts from "./pages/MediaPosts.jsx";
 import MediaPillars from "./pages/MediaPillars.jsx";
 import MediaAnalytics from "./pages/MediaAnalytics.jsx";
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/health" element={<Health />} />
         <Route path="/invest" element={<Invest />} />
+        <Route path="/property" element={<Property />} />
         <Route path="/media" element={<Navigate to="/media/posts" replace />} />
         <Route path="/media/posts" element={<MediaPosts />} />
         <Route path="/media/pillars" element={<MediaPillars />} />

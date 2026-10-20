@@ -34,6 +34,7 @@ from app.routers import (
     notes,
     prefs,
     pricing,
+    possessions,
     splitbills,
     push,
     schedule,
@@ -156,6 +157,7 @@ app.include_router(invest.router)
 app.include_router(media.router)
 app.include_router(work.router)
 app.include_router(prefs.router)
+app.include_router(possessions.router)
 
 
 @app.get("/api/health")

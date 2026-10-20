@@ -354,6 +354,67 @@ def _check_usage_resets(session: Session, now: datetime) -> None:
         push.set_setting(session, skey, f"{reset_val}|{round(float(used), 1)}")
 
 
+def _check_property_reminders(session: Session, now: datetime) -> None:
+    """身家財產的重要日期（保固到期、保費、牌照稅、驗車…）：照提前天數、前 7／3／1 天、當天推播；
+    會重複的事項逾期沒處理，每 7 天再提醒一次。每天設定的時間之後送，同一件同一天只送一次。"""
+    import json
+
+    from app.models import PropertyItem
+    from app.routers.possessions import date_state, remind_settings
+
+    cfg = remind_settings(session)
+    if not cfg["enabled"]:
+        return
+    try:
+        hh, mm = (int(x) for x in cfg["time"].split(":"))
+    except ValueError:
+        hh, mm = 9, 0
+    if now.time() < dtime(hour=hh, minute=mm):
+        return
+    today = now.date()
+    due: list[tuple[str, str, str]] = []  # (tag, 一行說明, 標題用 emoji)
+    emoji = {"insurance": "🛡️", "car": "🚗", "motorcycle": "🛵", "valuable": "💎",
+             "electronics": "📱", "house": "🏠", "other": "📦"}
+    for it in session.exec(select(PropertyItem).where(PropertyItem.status == "active")).all():
+        try:
+            dates = json.loads(it.dates or "[]")
+        except ValueError:
+            continue
+        for d in dates if isinstance(dates, list) else []:
+            if not isinstance(d, dict):
+                continue
+            remind = d.get("remind_days", 30)
+            if not isinstance(remind, int) or remind < 0:
+                continue
+            st = date_state(d, today)
+            left = st["days_left"]
+            if left is None:
+                continue
+            repeat = d.get("repeat", "none") != "none"
+            hit = left in {remind, 7, 3, 1, 0} and left <= remind
+            if left < 0 and repeat and (-left) % 7 == 0:
+                hit = True  # 逾期沒處理（例如保費），每週再提醒
+            if not hit:
+                continue
+            tag = f"prop:{it.id}:{d.get('id')}:{d.get('date')}:{left}"
+            if _already_sent(session, tag):
+                continue
+            when = "今天到期" if left == 0 else (f"已逾期 {-left} 天" if left < 0 else f"還有 {left} 天")
+            dt = d.get("date", "")
+            md = f"{int(dt[5:7])}/{int(dt[8:10])}" if len(dt) >= 10 else dt
+            due.append((tag, f"{emoji.get(it.kind, '📦')} {it.name}｜{d.get('label')} {when}（{md}）", emoji.get(it.kind, "📦")))
+    if not due:
+        return
+    for tag, _, _ in due:
+        _mark_sent(session, tag)
+    if len(due) == 1:
+        title, body = "⏰ 財產提醒", due[0][1]
+    else:
+        title = f"⏰ {len(due)} 件財產／保險事項要注意"
+        body = "\n".join(x[1] for x in due[:4]) + (f"\n…還有 {len(due) - 4} 件" if len(due) > 4 else "")
+    push.send_to_all(session, {"title": title, "body": body, "url": "/property", "tag": f"prop-day:{today.isoformat()}"})
+
+
 def _tick() -> None:
     now = _now_local()
     with Session(engine) as session:
@@ -364,6 +425,7 @@ def _tick() -> None:
             _check_subscriptions(session, now)
             _check_new_free_games(session, now)
             _check_usage_resets(session, now)
+            _check_property_reminders(session, now)
             if now.minute == 0:  # 每小時整點清一次舊標記
                 _prune(session)
         except Exception as exc:  # noqa: BLE001
