@@ -434,6 +434,54 @@ function TopicPanel({ nbId, topic, cryptoKey, onClose, onChanged, onDeleteTopic 
   const fileRef = useRef(null);
   const endRef = useRef(null);
   const { title, desc } = splitTopic(topic.text);
+  // 說明框高度、面板寬度：可以拖拉調整，記在這台瀏覽器
+  const lsNum = (k, d) => {
+    try {
+      return Number(localStorage.getItem(k)) || d;
+    } catch {
+      return d;
+    }
+  };
+  const [descH, setDescH] = useState(() => lsNum("dispatch.topicDescH", 160));
+  const [panelW, setPanelW] = useState(() => lsNum("dispatch.topicPanelW", 576));
+  function dragResize(e, onMove, key) {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture?.(e.pointerId);
+    let last = null;
+    const move = (ev) => (last = onMove(ev));
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      if (last != null) {
+        try {
+          localStorage.setItem(key, String(Math.round(last)));
+        } catch {
+          /* 無痕模式 */
+        }
+      }
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  }
+  const startDescDrag = (e) => {
+    const y0 = e.clientY;
+    const h0 = descH;
+    dragResize(e, (ev) => {
+      const h = Math.max(60, Math.min(window.innerHeight - 220, h0 + ev.clientY - y0));
+      setDescH(h);
+      return h;
+    }, "dispatch.topicDescH");
+  };
+  const startWidthDrag = (e) => {
+    dragResize(e, (ev) => {
+      const w = Math.max(360, Math.min(window.innerWidth - 40, window.innerWidth - ev.clientX));
+      setPanelW(w);
+      return w;
+    }, "dispatch.topicPanelW");
+  };
 
   useEffect(() => {
     let alive = true;
@@ -500,7 +548,14 @@ function TopicPanel({ nbId, topic, cryptoKey, onClose, onChanged, onDeleteTopic 
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose}>
-      <div className="flex h-full w-full max-w-xl flex-col bg-[#e8eef5] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative flex h-full w-full flex-col bg-[#e8eef5] shadow-2xl md:w-[var(--pw)]" style={{ "--pw": `${panelW}px` }} onClick={(e) => e.stopPropagation()}>
+        {/* 左邊緣：拖拉調整面板寬度（電腦） */}
+        <div
+          onPointerDown={startWidthDrag}
+          onDoubleClick={() => { setPanelW(576); try { localStorage.removeItem("dispatch.topicPanelW"); } catch { /* */ } }}
+          className="absolute inset-y-0 left-0 z-10 hidden w-2 -translate-x-1 cursor-ew-resize touch-none hover:bg-indigo-300/50 md:block"
+          title="拖拉調整寬度（雙擊還原）"
+        />
         <div className="border-b border-slate-200 bg-white px-4 py-3">
           <div className="flex items-start gap-2">
             <button onClick={onClose} className="mt-0.5 rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100" title="關閉">‹</button>
@@ -512,9 +567,20 @@ function TopicPanel({ nbId, topic, cryptoKey, onClose, onChanged, onDeleteTopic 
             <button onClick={() => onDeleteTopic(topic)} className="rounded-lg px-2 py-1 text-sm text-slate-400 hover:bg-red-50 hover:text-red-500" title="刪除事件">🗑</button>
           </div>
           {desc && (
-            <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-indigo-50/60 px-3 py-2 text-sm text-slate-700">
-              <Linkified text={desc} />
-            </p>
+            <>
+              <p style={{ maxHeight: descH }} className="mt-2 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-indigo-50/60 px-3 py-2 text-sm text-slate-700">
+                <Linkified text={desc} />
+              </p>
+              {/* 拖拉調整說明框高度（手機也能用手指拖） */}
+              <div
+                onPointerDown={startDescDrag}
+                onDoubleClick={() => setDescH((h) => (h < window.innerHeight - 260 ? window.innerHeight - 220 : 160))}
+                className="group -mb-2 flex cursor-ns-resize touch-none justify-center py-1.5"
+                title="上下拖拉調整說明框高度（雙擊展開／收合）"
+              >
+                <span className="h-1.5 w-12 rounded-full bg-slate-200 transition group-hover:bg-indigo-400" />
+              </div>
+            </>
           )}
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3"
