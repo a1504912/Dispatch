@@ -230,6 +230,9 @@ export default function WeekBoard({
                               : ev.all_day
                                 ? "整天"
                                 : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
+                            {!spillover && ev.reminders && ev.reminders !== "[]" && (
+                              <span className="ml-1" title="有自訂提醒">🔔</span>
+                            )}
                             {!spillover && ev.notebook_id && (
                               <button
                                 type="button"

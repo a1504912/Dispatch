@@ -63,6 +63,9 @@ class Event(SQLModel, table=True):
     files: Optional[str] = None
     # 對應的記事本（可空）；記事本刪除時會自動解除
     notebook_id: Optional[int] = None
+    # 自訂提醒（JSON 陣列）：[{"id","mode":"before|at","minutes":60,"at":"YYYY-MM-DDTHH:MM","text":"提醒文字"}]
+    # before＝開始前幾分鐘（整天行程以當天 09:00 為基準）；at＝指定時間；text 空白就用標題
+    reminders: Optional[str] = None
 
 
 class Subtask(SQLModel, table=True):

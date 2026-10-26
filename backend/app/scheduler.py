@@ -172,6 +172,55 @@ def _check_event_reminders(session: Session, now: datetime) -> None:
         _mark_sent(session, tag)
 
 
+def custom_reminder_times(ev: Event) -> list[tuple[dict, datetime]]:
+    """行程的自訂提醒 → [(提醒, 觸發時間)]。整天行程的「提前」以當天 09:00 為基準。"""
+    import json
+
+    try:
+        items = json.loads(ev.reminders or "[]")
+    except ValueError:
+        return []
+    out = []
+    base = ev.start_time.replace(hour=9, minute=0) if ev.all_day else ev.start_time
+    for r in items if isinstance(items, list) else []:
+        if not isinstance(r, dict):
+            continue
+        try:
+            if r.get("mode") == "at":
+                at = datetime.fromisoformat(str(r.get("at", ""))[:16])
+            else:
+                at = base - timedelta(minutes=int(r.get("minutes", 0)))
+        except (ValueError, TypeError):
+            continue
+        out.append((r, at))
+    return out
+
+
+def _check_custom_reminders(session: Session, now: datetime) -> None:
+    """行程裡自己設的提醒：到了時間推播（文字自訂，沒填就用標題）。"""
+    events = session.exec(
+        select(Event).where(Event.completed == False, Event.reminders != None)  # noqa: E711, E712
+    ).all()
+    for ev in events:
+        if ev.start_time is None:
+            continue
+        for r, at in custom_reminder_times(ev):
+            # 視窗 15 分鐘：主機剛開機不會補發很久以前的提醒
+            if not (at <= now < at + timedelta(minutes=15)):
+                continue
+            tag = f"evr:{ev.id}:{r.get('id', '')}:{at.isoformat()}"
+            if _already_sent(session, tag):
+                continue
+            text = str(r.get("text") or "").strip()
+            when = "整天" if ev.all_day else f"{ev.start_time.month}/{ev.start_time.day} {_fmt_time(ev.start_time)}"
+            if text:
+                title, body = f"🔔 {text}", f"{ev.title}・{when}"
+            else:
+                title, body = f"🔔 {ev.title}", when
+            push.send_to_all(session, {"title": title, "body": body, "url": f"/dashboard?event={ev.id}", "tag": tag})
+            _mark_sent(session, tag)
+
+
 def _check_daily_summary(session: Session, now: datetime) -> None:
     raw = push.get_setting(session, "daily_summary_time", "08:00").strip()
     if not raw:
@@ -420,6 +469,7 @@ def _tick() -> None:
     with Session(engine) as session:
         try:
             _check_event_reminders(session, now)
+            _check_custom_reminders(session, now)
             _check_daily_summary(session, now)
             _check_budget_overspend(session, now)
             _check_subscriptions(session, now)

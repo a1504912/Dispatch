@@ -19,6 +19,7 @@ function safeArr(v) {
 import { compressImageFile } from "../imageCompress";
 import { NO_BACKEND } from "../localMode";
 import TimePresets from "./TimePresets.jsx";
+import EventReminders from "./EventReminders.jsx";
 import { useNavigate } from "react-router-dom";
 import { createNotebook, listNotebooks } from "../api/notes";
 import {
@@ -314,6 +315,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       links: safeArr(initial?.links),
       files: safeArr(initial?.files),
       notebook_id: initial?.notebook_id != null ? String(initial.notebook_id) : "",
+      reminders: safeArr(initial?.reminders),
     });
     setNewSub("");
     setSubtasks([]);
@@ -438,6 +440,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
       links: form.links?.length ? JSON.stringify(form.links) : null,
       files: form.files?.length ? JSON.stringify(form.files) : null,
       notebook_id: form.notebook_id ? Number(form.notebook_id) : null,
+      reminders: form.reminders?.length ? JSON.stringify(form.reminders) : null,
     };
     // 要一起建立的明細：新增時暫存的 ＋ 明細框裡打了字但還沒按 ＋ 的
     const typed = newSub.trim();
@@ -1143,6 +1146,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </div>
+
+          {!NO_BACKEND && !form.is_task && <EventReminders form={form} setForm={setForm} />}
 
           </div>
           </div>
