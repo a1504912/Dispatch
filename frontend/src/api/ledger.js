@@ -41,3 +41,20 @@ export async function deleteTransaction(id) {
   }
   await client.delete(`/api/transactions/${id}`);
 }
+
+// AI 記帳：截圖或打字 → 建議的記錄（還沒存）；provider：gpt / claude
+export async function ledgerFromImage(file, provider = "gpt", hint = "") {
+  const fd = new FormData();
+  fd.append("file", file, file.name || "image.png");
+  fd.append("provider", provider);
+  if (hint) fd.append("hint", hint);
+  const { data } = await client.post("/api/ledger-ai/from-image", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 600000,
+  });
+  return data.items || [];
+}
+export async function ledgerFromText(text, provider = "gpt") {
+  const { data } = await client.post("/api/ledger-ai/from-text", { text, provider }, { timeout: 600000 });
+  return data.items || [];
+}

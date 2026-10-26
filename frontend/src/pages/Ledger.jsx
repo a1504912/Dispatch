@@ -13,6 +13,7 @@ import SplitBills from "../components/SplitBills.jsx";
 import Assets from "../components/Assets.jsx";
 import Subscriptions from "../components/Subscriptions.jsx";
 import TransactionModal from "../components/TransactionModal.jsx";
+import LedgerAIModal from "../components/LedgerAIModal.jsx";
 
 const emojiFrom = (cats, kind, name) =>
   cats.find((c) => c.kind === kind && c.name === name)?.emoji ||
@@ -89,6 +90,8 @@ export default function Ledger() {
   const [linkInvoiceId, setLinkInvoiceId] = useState(null); // 記成支出後要綁定的發票
   const [accounts, setAccounts] = useState([]); // 算總資產用
   const [assetView, setAssetView] = useState("all"); // 總資產卡片：all 或某個帳戶類型 id
+  const [aiOpen, setAiOpen] = useState(false); // AI 記帳（截圖／打字）
+  const [aiFile, setAiFile] = useState(null);
 
   function load() {
     setLoading(true);
@@ -126,6 +129,23 @@ export default function Ledger() {
     loadBudgets();
     loadAccounts();
   }, []);
+
+  // 記帳頁任何地方 Ctrl+V 貼截圖 → 直接開 AI 記帳（其他視窗開著時不搶）
+  useEffect(() => {
+    if (NO_BACKEND) return;
+    function onPaste(e) {
+      if (aiOpen || txModalOpen || document.querySelector(".fixed.inset-0")) return;
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      const f = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+      if (!f) return;
+      e.preventDefault();
+      setAiFile(f);
+      setAiOpen(true);
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [aiOpen, txModalOpen]);
 
   // 目前選到的年月
   const base = new Date();
@@ -832,6 +852,33 @@ export default function Ledger() {
             </div>
           </div>
         </div>
+      )}
+
+      <LedgerAIModal
+        open={aiOpen}
+        initialFile={aiFile}
+        categories={allCats}
+        txs={txs}
+        onClose={() => { setAiOpen(false); setAiFile(null); }}
+        onSaved={(n) => {
+          setAiOpen(false);
+          setAiFile(null);
+          load();
+          loadAccounts();
+          window.alert(`已加入 ${n} 筆記錄`);
+        }}
+      />
+
+      {/* AI 記帳鈕（在 ＋ 上面） */}
+      {tab === "records" && !NO_BACKEND && (
+        <button
+          onClick={() => { setAiFile(null); setAiOpen(true); }}
+          className="fixed bottom-[9.5rem] right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl shadow-lg ring-1 ring-emerald-200 transition hover:bg-emerald-50 active:scale-95 md:bottom-[6.5rem] md:right-9"
+          title="AI 記帳：截圖或打字，GPT / Claude 自動填（記帳頁也可以直接 Ctrl+V 貼截圖）"
+          aria-label="AI 記帳"
+        >
+          📷
+        </button>
       )}
 
       {/* 浮動新增鈕（記錄頁；捲到哪都在，手機自動避開底部分頁列） */}

@@ -25,6 +25,7 @@ from app.routers import (
     holidays,
     invest,
     invoices,
+    ledger_ai,
     ledger_categories,
     media,
     work,
@@ -139,6 +140,7 @@ app.include_router(games.router)
 app.include_router(push.router)
 app.include_router(transactions.router)
 app.include_router(ledger_categories.router)
+app.include_router(ledger_ai.router)
 app.include_router(members.router)
 app.include_router(splitbills.router)
 app.include_router(accounts.router)
