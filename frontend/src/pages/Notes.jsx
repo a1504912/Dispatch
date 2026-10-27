@@ -1195,6 +1195,28 @@ export default function Notes() {
   }, [notebooks, q, catSel]);
 
   // 「全部」時依分類分組：最近更新的分類在前，未分類放最後
+  // 分類收合（記在這台瀏覽器）；搜尋時全部展開，才不會漏看
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("dispatch.notesCollapsed") || "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  function saveCollapsed(next) {
+    setCollapsed(next);
+    try {
+      localStorage.setItem("dispatch.notesCollapsed", JSON.stringify([...next]));
+    } catch {
+      /* 無痕模式 */
+    }
+  }
+  const toggleGroup = (key) => {
+    const next = new Set(collapsed);
+    next.has(key) ? next.delete(key) : next.add(key);
+    saveCollapsed(next);
+  };
+
   const groups = useMemo(() => {
     if (catSel !== "all" || !categories.length) return [{ key: "_", label: "", items: shown }];
     const out = categories.map((c) => ({ key: c, label: c, items: shown.filter((n) => n.category === c) }));
@@ -1243,10 +1265,42 @@ export default function Notes() {
               {notebooks.length ? "找不到符合的記事本" : "還沒有記事本，點「＋ 新增」開一本"}
             </div>
           )}
-          {groups.map((g) => (
+          {groups.filter((g) => g.label).length > 1 && !q.trim() && (
+            <div className="flex justify-end px-1">
+              {(() => {
+                const keys = groups.filter((g) => g.label).map((g) => g.key);
+                const allClosed = keys.every((k) => collapsed.has(k));
+                return (
+                  <button onClick={() => saveCollapsed(allClosed ? new Set() : new Set(keys))} className="text-[11px] font-semibold text-slate-400 hover:text-indigo-600">
+                    {allClosed ? "全部展開 ▾" : "全部收合 ▸"}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
+          {groups.map((g) => {
+            const closed = Boolean(g.label) && collapsed.has(g.key) && !q.trim();
+            return (
             <Fragment key={g.key}>
-              {g.label && <p className="px-1 pb-0.5 pt-2 text-[11px] font-black uppercase tracking-wide text-slate-400">{g.label}</p>}
-          {g.items.map((n) => (
+              {g.label && (
+                <button
+                  onClick={() => toggleGroup(g.key)}
+                  aria-label={`分類 ${g.label}`}
+                  className={`mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
+                    closed ? "bg-white/60 text-slate-600 hover:bg-white" : "text-slate-500 hover:bg-white/60"
+                  }`}
+                  title={closed ? "展開" : "收合"}
+                >
+                  {g.label}
+                  <span className="rounded-full bg-slate-200/70 px-1.5 text-[11px] font-semibold text-slate-500">{g.items.length}</span>
+                  {closed && g.items.some((n) => n.id === selId) && <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" title="目前開著的記事本在這裡" />}
+                  {/* 跟左邊選單一樣：收起是 ›，展開轉成 ⌄ */}
+                  <svg className={`ml-auto h-3.5 w-3.5 shrink-0 transition-transform ${closed ? "" : "rotate-90"}`} fill="none" viewBox="0 0 24 24" strokeWidth="2.2" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              )}
+          {!closed && g.items.map((n) => (
             <button
               key={n.id}
               onClick={() => setSelId(n.id)}
@@ -1268,7 +1322,8 @@ export default function Notes() {
             </button>
           ))}
             </Fragment>
-          ))}
+            );
+          })}
         </div>
       </aside>
 
