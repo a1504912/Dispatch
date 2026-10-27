@@ -88,6 +88,12 @@ def init_db() -> None:
                     conn.execute(text("ALTER TABLE notebook ADD COLUMN category VARCHAR NOT NULL DEFAULT ''"))
                 conn.commit()
 
+            # 分帳結算：沖銷拆成多筆時，其餘記帳的 id
+            st_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(settlement)"))]
+            if st_cols and "extra_tx_ids" not in st_cols:
+                conn.execute(text("ALTER TABLE settlement ADD COLUMN extra_tx_ids TEXT"))
+                conn.commit()
+
             # 記事本內容：事件（topic）底下的子內容用 parent_id 掛在事件上
             ni_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(noteitem)"))]
             if ni_cols and "parent_id" not in ni_cols:

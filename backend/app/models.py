@@ -94,6 +94,8 @@ class Settlement(SQLModel, table=True):
     account_id: Optional[int] = Field(default=None, foreign_key="account.id")
     note: str = ""
     transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")
+    # 沖銷支出橫跨不同分類時會拆成多筆，其餘幾筆的 id（JSON 陣列）
+    extra_tx_ids: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

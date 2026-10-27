@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listMembers, createMember, updateMember, deleteMember } from "../api/members";
 import { listSplitBills, createSplitBill, deleteSplitBill } from "../api/splitbills";
-import { listSettlements, createSettlement, deleteSettlement } from "../api/settlements";
+import { listSettlements, createSettlement, deleteSettlement, offsetPreview } from "../api/settlements";
 import { listAccounts } from "../api/accounts";
 import { evalExpr, hasOperator } from "../calc";
 import CalcButtons from "./CalcButtons.jsx";
@@ -261,6 +261,17 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
   const [method, setMethod] = useState(dir === "in" ? "income" : "expense");
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? null);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState(null); // 沖銷支出會扣回哪些分類
+  const amtNum = evalExpr(amount);
+  useEffect(() => {
+    if (method !== "offset" || !(amtNum > 0)) return setPreview(null);
+    let alive = true;
+    const t = setTimeout(() => offsetPreview(target.id, amtNum).then((p) => alive && setPreview(p)).catch(() => alive && setPreview(null)), 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [method, amtNum, target.id]);
 
   const inMethods = [
     ["income", "記為收入", "還款當成一筆收入"],
@@ -336,6 +347,21 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
               ))}
             </div>
           </div>
+
+          {method === "offset" && preview?.length > 0 && (
+            <div className="rounded-xl bg-indigo-50/70 px-3 py-2 text-xs text-indigo-800">
+              <p className="mb-1 font-bold">會扣回原本的支出分類：</p>
+              {preview.map((p, i) => (
+                <p key={i} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {p.category}{p.subcategory && `・${p.subcategory}`}
+                    {p.titles?.filter(Boolean).length > 0 && <span className="text-indigo-500">（{p.titles.filter(Boolean).join("、")}）</span>}
+                  </span>
+                  <b className="shrink-0">-{money(p.amount)}</b>
+                </p>
+              ))}
+            </div>
+          )}
 
           {needAccount && accounts.length > 0 && (
             <div>
