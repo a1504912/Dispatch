@@ -14,6 +14,7 @@ import Assets from "../components/Assets.jsx";
 import Subscriptions from "../components/Subscriptions.jsx";
 import TransactionModal from "../components/TransactionModal.jsx";
 import LedgerAIModal from "../components/LedgerAIModal.jsx";
+import LedgerSearch from "../components/LedgerSearch.jsx";
 
 const emojiFrom = (cats, kind, name) =>
   cats.find((c) => c.kind === kind && c.name === name)?.emoji ||
@@ -90,6 +91,7 @@ export default function Ledger() {
   const [linkInvoiceId, setLinkInvoiceId] = useState(null); // 記成支出後要綁定的發票
   const [accounts, setAccounts] = useState([]); // 算總資產用
   const [assetView, setAssetView] = useState("all"); // 總資產卡片：all 或某個帳戶類型 id
+  const [searchOpen, setSearchOpen] = useState(false); // 搜尋記錄
   const [aiOpen, setAiOpen] = useState(false); // AI 記帳（截圖／打字）
   const [aiFile, setAiFile] = useState(null);
 
@@ -365,6 +367,13 @@ export default function Ledger() {
             {label}
           </button>
         ))}
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="shrink-0 rounded-full bg-white px-4 py-1.5 text-slate-500 ring-1 ring-slate-200 transition hover:text-slate-700 lg:mt-3 lg:w-full lg:rounded-xl lg:px-3 lg:py-2 lg:text-left"
+          title="搜尋全部記錄（分類、金額、備註…）"
+        >
+          🔍 搜尋
+        </button>
       </div>
 
       {/* 右側內容 */}
@@ -645,6 +654,17 @@ export default function Ledger() {
         open={managerOpen}
         onClose={() => setManagerOpen(false)}
         onChanged={loadCats}
+      />
+
+      <LedgerSearch
+        open={searchOpen}
+        txs={txs}
+        categories={allCats}
+        accounts={accounts}
+        accLabel={accLabel}
+        emojiOf={(kind, name) => emojiFrom(allCats, kind, name)}
+        onClose={() => setSearchOpen(false)}
+        onOpenTx={startEdit}
       />
 
       <TransactionModal
