@@ -35,6 +35,7 @@ from app.routers import (
     notes,
     prefs,
     pricing,
+    quick_ledger,
     possessions,
     splitbills,
     push,
@@ -77,7 +78,10 @@ async def _unhandled_exc_handler(request: Request, exc: Exception):
     return JSONResponse({"detail": f"伺服器錯誤：{type(exc).__name__}: {str(exc)[:300]}"}, status_code=424)
 
 # 不需要登入的路徑（登入本身、健康檢查、Google OAuth 回跳）
-AUTH_EXEMPT_PATHS = {"/", "/api/health", "/api/auth/login", "/api/auth/status", "/api/google/callback"}
+AUTH_EXEMPT_PATHS = {
+    "/", "/api/health", "/api/auth/login", "/api/auth/status", "/api/google/callback",
+    "/api/quick-ledger/hook",  # 手機通知自動記帳：不用登入，改用專屬金鑰（在 router 裡檢查）
+}
 
 
 # 注意：這個 middleware 要在 CORSMiddleware「之前」註冊，
@@ -141,6 +145,7 @@ app.include_router(push.router)
 app.include_router(transactions.router)
 app.include_router(ledger_categories.router)
 app.include_router(ledger_ai.router)
+app.include_router(quick_ledger.router)
 app.include_router(members.router)
 app.include_router(splitbills.router)
 app.include_router(accounts.router)

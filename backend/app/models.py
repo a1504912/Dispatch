@@ -501,3 +501,25 @@ class PropertyFile(SQLModel, table=True):
     mime: str = ""
     size: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class QuickEntry(SQLModel, table=True):
+    """手機通知自動記帳收到的一則（iPhone 捷徑：錢包感應、LINE Pay、銀行 App 通知…）。
+
+    status：recorded（已記帳）/ pending（待確認）/ ignored（不像付款，略過）/
+            duplicate（跟剛剛那筆重複，略過）/ undone（已復原）/ error
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source: str = ""  # 捷徑送來的來源名稱，例：wallet、LINE、國泰世華
+    raw_text: str = ""
+    kind: str = "expense"
+    amount: Optional[float] = None
+    merchant: str = ""
+    category: str = ""
+    subcategory: str = ""
+    account_id: Optional[int] = None
+    status: str = "pending"
+    message: str = ""  # 給使用者看的處理說明（例：「沿用上次全家的分類」）
+    tx_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -15,6 +15,8 @@ import Subscriptions from "../components/Subscriptions.jsx";
 import TransactionModal from "../components/TransactionModal.jsx";
 import LedgerAIModal from "../components/LedgerAIModal.jsx";
 import LedgerSearch from "../components/LedgerSearch.jsx";
+import QuickLedger from "../components/QuickLedger.jsx";
+import { quickEntries } from "../api/ledger";
 
 const emojiFrom = (cats, kind, name) =>
   cats.find((c) => c.kind === kind && c.name === name)?.emoji ||
@@ -92,6 +94,13 @@ export default function Ledger() {
   const [accounts, setAccounts] = useState([]); // 算總資產用
   const [assetView, setAssetView] = useState("all"); // 總資產卡片：all 或某個帳戶類型 id
   const [searchOpen, setSearchOpen] = useState(false); // 搜尋記錄
+  // 手機通知自動記帳；從推播點進來（/ledger?quick=1）直接打開
+  const [quickOpen, setQuickOpen] = useState(() => new URLSearchParams(window.location.search).get("quick") === "1");
+  const [quickPending, setQuickPending] = useState(0);
+  useEffect(() => {
+    if (NO_BACKEND) return;
+    quickEntries().then((es) => setQuickPending(es.filter((e) => e.status === "pending").length)).catch(() => {});
+  }, [quickOpen, txs]);
   const [aiOpen, setAiOpen] = useState(false); // AI 記帳（截圖／打字）
   const [aiFile, setAiFile] = useState(null);
 
@@ -374,6 +383,16 @@ export default function Ledger() {
         >
           🔍 搜尋
         </button>
+        {!NO_BACKEND && (
+          <button
+            onClick={() => setQuickOpen(true)}
+            className="relative shrink-0 rounded-full bg-white px-4 py-1.5 text-slate-500 ring-1 ring-slate-200 transition hover:text-slate-700 lg:w-full lg:rounded-xl lg:px-3 lg:py-2 lg:text-left"
+            title="手機收到付款通知自動記帳（安卓 MacroDroid）"
+          >
+            📲 通知記帳
+            {quickPending > 0 && <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">{quickPending}</span>}
+          </button>
+        )}
       </div>
 
       {/* 右側內容 */}
@@ -654,6 +673,17 @@ export default function Ledger() {
         open={managerOpen}
         onClose={() => setManagerOpen(false)}
         onChanged={loadCats}
+      />
+
+      <QuickLedger
+        open={quickOpen}
+        categories={allCats}
+        accounts={accounts}
+        onClose={() => {
+          setQuickOpen(false);
+          if (window.location.search.includes("quick=1")) window.history.replaceState(null, "", "/ledger");
+        }}
+        onChanged={() => { load(); loadAccounts(); }}
       />
 
       <LedgerSearch
