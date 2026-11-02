@@ -228,7 +228,7 @@ export default function Assets() {
                 </div>
 
                 {isOpen && (
-                  <div className="space-y-2 border-t border-slate-100 px-3 py-2 pl-9">
+                  <div className="space-y-2 border-t border-slate-100 px-3 py-2 sm:pl-9">
                     {/* 沒有子帳戶時，主帳戶自己就是可用帳戶，可設初始 */}
                     {!isGroup && (
                       <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -237,13 +237,14 @@ export default function Assets() {
                       </div>
                     )}
                     {kids.map((k) => (
-                      <div key={k.id} className="flex items-center gap-2">
-                        <span className="text-slate-300">•</span>
-                        <input defaultValue={k.name} onBlur={(e) => e.target.value.trim() && e.target.value !== k.name && saveField(k, { name: e.target.value.trim() })} className={`${field} min-w-0 flex-1`} />
-                        <span className="flex items-center gap-1 text-xs text-slate-400">
+                      // 手機：名稱獨佔一行，初始／餘額／按鈕放第二行（不然名稱會被擠到看不見）
+                      <div key={k.id} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl bg-slate-50 p-2 sm:flex-nowrap sm:bg-transparent sm:p-0">
+                        <span className="hidden text-slate-300 sm:inline">•</span>
+                        <input defaultValue={k.name} onBlur={(e) => e.target.value.trim() && e.target.value !== k.name && saveField(k, { name: e.target.value.trim() })} className={`${field} w-full min-w-0 font-semibold sm:w-auto sm:flex-1 sm:font-normal`} />
+                        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-slate-400">
                           初始<input type="number" defaultValue={k.initial} onBlur={(e) => Number(e.target.value) !== k.initial && saveField(k, { initial: Number(e.target.value) || 0 })} className="w-20 rounded-md border border-slate-200 px-1.5 py-0.5 text-xs" />
                         </span>
-                        <span className={`w-16 shrink-0 text-right text-sm font-bold ${isExcluded(k) ? "text-slate-300" : bal(k) >= 0 ? "text-slate-700" : "text-red-500"}`}>{money(bal(k))}{mvNote(k)}</span>
+                        <span className={`ml-auto min-w-[4rem] shrink-0 whitespace-nowrap text-right text-sm font-bold ${isExcluded(k) ? "text-slate-300" : bal(k) >= 0 ? "text-slate-700" : "text-red-500"}`}>{money(bal(k))}{mvNote(k)}</span>
                         <button
                           onClick={() => saveField(k, { exclude_from_total: !k.exclude_from_total })}
                           className={`shrink-0 text-xs ${k.exclude_from_total ? "font-semibold text-amber-600" : "text-slate-400 hover:text-indigo-600"}`}
