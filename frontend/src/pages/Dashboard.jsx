@@ -16,6 +16,7 @@ import EventList from "../components/EventList.jsx";
 import GoogleSync from "../components/GoogleSync.jsx";
 import WeekBoard from "../components/WeekBoard.jsx";
 import EventSearch from "../components/EventSearch.jsx";
+import DayTimeline from "../components/DayTimeline.jsx";
 import { getWeatherLoc, setWeatherLoc, getWeekForecast } from "../api/weather";
 import { useHolidays } from "../api/holidays";
 
@@ -194,6 +195,31 @@ export default function Dashboard() {
   const [editingEvent, setEditingEvent] = useState(null);
   // 行事曆目前檢視範圍（月/週/日），清單依此過濾
   const [viewRange, setViewRange] = useState(null);
+  // 行事曆檢視：月／週用 FullCalendar；「天」改用自己做的橫向時間軸（左邊日期、上面時間）
+  const [calMode, setCalMode] = useState(() => {
+    try {
+      const v = localStorage.getItem("dispatch.calMode");
+      if (["dayGridMonth", "timeGridWeek", "hday"].includes(v)) return v;
+    } catch {
+      /* 無痕模式 */
+    }
+    return IS_MOBILE ? "hday" : "timeGridWeek";
+  });
+  const [calDate, setCalDate] = useState(() => new Date());
+  const calRef = useRef(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem("dispatch.calMode", calMode);
+    } catch {
+      /* 無痕模式 */
+    }
+  }, [calMode]);
+  useEffect(() => {
+    if (calMode !== "hday") return;
+    const start = new Date(calDate.getFullYear(), calDate.getMonth(), calDate.getDate());
+    setViewRange({ start, end: new Date(start.getTime() + 86400000), type: "timeGridDay" });
+  }, [calMode, calDate]);
+  const shiftDay = (n) => setCalDate((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
   // 國定假日 / 補班（月、週、日檢視都標示）
   const holidays = useHolidays([
     new Date().getFullYear(),
@@ -690,14 +716,40 @@ export default function Dashboard() {
         />
 
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
+          {calMode === "hday" ? (
+            <DayTimeline
+              date={calDate}
+              events={events}
+              holiday={holidays[ymd(calDate)]}
+              mobile={IS_MOBILE}
+              onPrev={() => shiftDay(-1)}
+              onNext={() => shiftDay(1)}
+              onToday={() => setCalDate(new Date())}
+              onView={(k) => k !== "hday" && setCalMode(k)}
+              onEventClick={(e) => handleEventClick({ event: { id: e.id, extendedProps: { parentId: e.parentId } } })}
+              onAdd={(start, end) => openNewEvent({ start_time: start, end_time: end, all_day: false })}
+              onToggle={(id, done) => toggleCompleted(id, done)}
+            />
+          ) : (
           <FullCalendar
+            ref={calRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             locale={zhTwLocale}
-            initialView={IS_MOBILE ? "timeGridDay" : "timeGridWeek"}
+            initialView={calMode}
+            initialDate={calDate}
+            customButtons={{
+              hday: {
+                text: "天",
+                click: () => {
+                  setCalDate(calRef.current?.getApi().getDate() || new Date());
+                  setCalMode("hday");
+                },
+              },
+            }}
             headerToolbar={{
               left: "prev,next today",
               center: "title",
-              right: "dayGridMonth,timeGridWeek,timeGridDay",
+              right: "dayGridMonth,timeGridWeek,hday",
             }}
             titleFormat={
               IS_MOBILE ? { month: "numeric", day: "numeric" } : undefined
@@ -720,6 +772,8 @@ export default function Dashboard() {
             dayMaxEventRows={4}
             scrollTime="08:00:00"
             datesSet={(arg) => {
+              setCalMode(arg.view.type);
+              setCalDate(arg.view.calendar.getDate());
               // 手機從月檢視（高度 auto）切到週/日時高度會變，捲動位置跑掉 → 拉回早上 8 點
               if (IS_MOBILE && arg.view.type !== viewRange?.type && arg.view.type.startsWith("timeGrid"))
                 setTimeout(() => arg.view.calendar.scrollToTime("08:00:00"), 50);
@@ -844,6 +898,7 @@ export default function Dashboard() {
               );
             }}
           />
+          )}
         </div>
           </>
         )}
