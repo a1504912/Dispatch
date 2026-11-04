@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { TW_CITIES, weatherIcon } from "../api/weather";
 import { useHolidays } from "../api/holidays";
 import { parseImages } from "../images";
+import { coversDay, spanInfo } from "../eventSpan";
 
 function startOfWeek(base) {
   const d = new Date(base);
@@ -66,8 +67,9 @@ export default function WeekBoard({
       const evStr = dateStr(new Date(ev.start_time));
       const subs = subtasksByEvent[ev.id] ?? [];
       const subsForDay = subs.filter((s) => (s.due_date || evStr) === ds);
-      if (evStr === ds) {
-        cards.push({ ev, subs: subsForDay, spillover: false });
+      if (evStr === ds || coversDay(ev.start_time, ev.end_time, day)) {
+        // 跨天的行程（例：請假 11/16–11/17）每一天都放一張
+        cards.push({ ev, subs: subsForDay, spillover: false, span: spanInfo(ev.start_time, ev.end_time, day) });
       } else if (subsForDay.length > 0) {
         cards.push({ ev, subs: subsForDay, spillover: true });
       }
@@ -187,7 +189,7 @@ export default function WeekBoard({
                 {cards.length === 0 && (
                   <p className="py-1 text-center text-xs text-slate-300 md:py-3">－</p>
                 )}
-                {cards.map(({ ev, subs, spillover }) => {
+                {cards.map(({ ev, subs, spillover, span }) => {
                   const done = subs.filter((s) => s.done).length;
                   const key = `${ev.id}:${dateStr(d)}`;
                   const isOpen = expanded.has(key);
@@ -228,8 +230,10 @@ export default function WeekBoard({
                             {spillover
                               ? "延期明細"
                               : ev.all_day
-                                ? "整天"
-                                : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}`}
+                                ? span
+                                  ? `整天・第 ${span.index}/${span.total} 天`
+                                  : "整天"
+                                : `${fmtTime(ev.start_time)}–${fmtTime(ev.end_time)}${span ? `（第 ${span.index}/${span.total} 天）` : ""}`}
                             {!spillover && ev.reminders && ev.reminders !== "[]" && (
                               <span className="ml-1" title="有自訂提醒">🔔</span>
                             )}

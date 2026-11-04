@@ -19,6 +19,7 @@ import EventSearch from "../components/EventSearch.jsx";
 import DayTimeline from "../components/DayTimeline.jsx";
 import { getWeatherLoc, setWeatherLoc, getWeekForecast } from "../api/weather";
 import { useHolidays } from "../api/holidays";
+import { coversDay } from "../eventSpan";
 
 // 手機上行事曆改用精簡設定（預設日檢視、短標題）
 const IS_MOBILE = typeof window !== "undefined" && window.innerWidth < 768;
@@ -486,15 +487,16 @@ export default function Dashboard() {
   const rangedEvents = viewRange
     ? visibleRaw.filter((e) => {
         const d = new Date(e.start_time);
-        return d >= viewRange.start && d < viewRange.end;
+        if (d >= viewRange.start && d < viewRange.end) return true;
+        // 從範圍之前開始、延續到範圍裡的跨天行程也列出來
+        const en = e.end_time ? new Date(e.end_time) : null;
+        return Boolean(en && en > d && d < viewRange.start && en > viewRange.start);
       })
     : visibleRaw;
 
   const today = new Date();
-  const todayEvents = events.filter((e) => {
-    const d = new Date(e.start);
-    return d.toDateString() === today.toDateString();
-  });
+  // 跨天的行程（例：請假兩天）每一天都算今日行程
+  const todayEvents = events.filter((e) => new Date(e.start).toDateString() === today.toDateString() || coversDay(e.start, e.end, today));
   const todayDone = todayEvents.filter((e) => e.completed).length;
 
   // 逾期未完成：日期在今天之前、且尚未完成的行程（不含待辦）
