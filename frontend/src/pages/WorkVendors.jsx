@@ -294,6 +294,7 @@ function MergePanel({ sheets, tables, onDone }) {
   const [matchKey, setMatchKey] = useState("");
   const [maps, setMaps] = useState({}); // {excel 欄 index: 目標欄位名稱（"" = 不匯入）}
   const [overwrite, setOverwrite] = useState(false);
+  const [fuzzy, setFuzzy] = useState(false); // 名稱部分符合也算
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -315,6 +316,7 @@ function MergePanel({ sheets, tables, onDone }) {
     match_key: matchKey,
     overwrite,
     dry_run: dry,
+    match_mode: fuzzy ? "contains" : "exact",
     rows: (sheet?.rows || []).map((r) => ({
       match: r[matchCol] || "",
       values: Object.fromEntries(Object.entries(maps).filter(([, lab]) => lab).map(([i, lab]) => [lab, r[i] || ""])),
@@ -330,7 +332,7 @@ function MergePanel({ sheets, tables, onDone }) {
       mergeImport(table.id, body(true)).then((p) => alive && setPreview(p)).catch((e) => alive && setErr(errMsg(e)));
     }, 300);
     return () => { alive = false; clearTimeout(t); };
-  }, [table?.id, matchKey, matchCol, maps, overwrite, si]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [table?.id, matchKey, matchCol, maps, overwrite, fuzzy, si]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function run() {
     setBusy(true);
@@ -376,6 +378,13 @@ function MergePanel({ sheets, tables, onDone }) {
             {table.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
         </div>
+        <label className="mt-2 flex items-start gap-2 text-xs text-slate-600">
+          <input type="checkbox" checked={fuzzy} onChange={(e) => setFuzzy(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-indigo-600" />
+          <span>
+            名稱部分符合也算（例：分類裡是「拓邦」，Excel 是「拓邦營造股份有限公司」也對得到）
+            <span className="block text-[11px] text-slate-400">會忽略括號備註、營造／建設／有限公司這類尾巴；同時像好幾家的會列出來讓你確認，不會亂寫</span>
+          </span>
+        </label>
       </div>
 
       <div>
@@ -414,8 +423,27 @@ function MergePanel({ sheets, tables, onDone }) {
               ))}
             </ul>
           )}
+          {preview.fuzzy_count > 0 && (
+            <details className="text-emerald-700">
+              <summary className="cursor-pointer">部分符合對到 {preview.fuzzy_count} 筆（點開看配對）</summary>
+              <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto pl-3 text-slate-600">
+                {preview.fuzzy.map((x, i) => <li key={i}>{x.match} <span className="text-slate-400">→</span> <b>{x.target}</b></li>)}
+              </ul>
+            </details>
+          )}
+          {preview.ambiguous_count > 0 && (
+            <div className="text-amber-700">
+              <p>同時像好幾筆、先略過 {preview.ambiguous_count} 筆（要的話把名稱改成更完整再匯）：</p>
+              <ul className="mt-0.5 space-y-0.5 pl-3">
+                {preview.ambiguous.map((x, i) => <li key={i}>{x.match}：{x.candidates.join(" / ")}</li>)}
+              </ul>
+            </div>
+          )}
           {preview.unmatched > 0 && (
-            <p className="text-amber-700">對不到 {preview.unmatched} 筆：{preview.unmatched_samples.join("、")}{preview.unmatched > preview.unmatched_samples.length ? "…" : ""}</p>
+            <p className="text-amber-700">
+              對不到 {preview.unmatched} 筆：{preview.unmatched_samples.join("、")}{preview.unmatched > preview.unmatched_samples.length ? "…" : ""}
+              {!fuzzy && <button onClick={() => setFuzzy(true)} className="ml-1 text-indigo-600 underline">試試「部分符合」</button>}
+            </p>
           )}
         </div>
       )}

@@ -497,6 +497,31 @@ def _norm_key(v) -> str:
     return s[:-2] if re.fullmatch(r"\d+\.0", s) else s
 
 
+# 公司名稱常見的尾巴：「拓邦營造股份有限公司」→「拓邦」，比對時拿掉
+_CO_SUFFIXES = sorted(
+    ["股份有限公司", "有限公司", "有限責任公司", "公司", "企業社", "工作室", "事務所", "營造", "建設", "工程",
+     "實業", "企業", "開發", "科技", "國際", "興業", "工業", "商行", "建築", "營建", "機構", "集團", "分公司", "總公司"],
+    key=len, reverse=True,
+)
+
+
+def _core_name(v) -> str:
+    """部分符合用：去掉括號裡的備註、公司尾巴、標點，留下「名字本體」。"""
+    s = re.sub(r"[（(【\[].*?[）)】\]]", "", str(v or ""))
+    s = _norm_key(s)
+    s = re.sub(r"[.,，。、·・'\"「」『』:：/／&＆]", "", s)
+    s = s.replace("台", "臺")
+    changed = True
+    while changed:
+        changed = False
+        for suf in _CO_SUFFIXES:
+            if s.endswith(suf) and len(s) - len(suf) >= 2:
+                s = s[: -len(suf)]
+                changed = True
+                break
+    return s
+
+
 class MergeRow(BaseModel):
     match: str
     values: dict  # {分類欄位名稱: 值}；名稱不存在會新增欄位
@@ -507,6 +532,7 @@ class MergeIn(BaseModel):
     rows: list[MergeRow]
     overwrite: bool = False  # 已經有值的也蓋掉（預設只填空白的）
     dry_run: bool = True  # 只算會改幾格，不寫入
+    match_mode: str = "exact"  # exact 完全一樣 / contains 名稱有包含就算（拓邦 ＝ 拓邦營造）
 
 
 @router.post("/tables/{table_id}/merge")
@@ -540,15 +566,62 @@ def merge_import(table_id: int, p: MergeIn, session: Session = Depends(get_sessi
         if k:
             index.setdefault(k, []).append(r)
 
+    contains = p.match_mode == "contains"
+    cores: list[tuple[str, WorkRow]] = []  # (名字本體, row)
+    if contains:
+        for r in rows:
+            c = _core_name(datas[r.id].get(p.match_key, ""))
+            if c:
+                cores.append((c, r))
+
+    def name_of(r):
+        return str(datas[r.id].get(p.match_key, "") or "")
+
+    def find(raw) -> tuple[list, list]:
+        """回傳 (對到的 rows, 模稜兩可的候選)；部分符合只在對到唯一一個名字時才算。"""
+        k = _norm_key(raw)
+        if k in index:
+            return index[k], []
+        if not contains:
+            return [], []
+        c = _core_name(raw)
+        if len(c) < 2:
+            return [], []
+        same = [r for cc, r in cores if cc == c]
+        if same:
+            return same, []
+        hits = [(cc, r) for cc, r in cores if len(cc) >= 2 and (cc in c or c in cc)]
+        if not hits:
+            return [], []
+        names = {cc for cc, _ in hits}
+        if len(names) == 1:
+            return [r for _, r in hits], []
+        # 好幾個名字都沾得上：挑最長（最像）的那個；一樣長就交給使用者
+        best = max(len(cc) for cc in names)
+        top = {cc for cc in names if len(cc) == best}
+        if len(top) == 1:
+            return [r for cc, r in hits if cc in top], []
+        return [], [r for _, r in hits]
+
     stats = {"matched_rows": 0, "updated_rows": 0, "updated_cells": 0, "skipped_existing": 0,
-             "unchanged": 0, "unmatched": 0, "unmatched_samples": [], "new_columns": new_cols, "samples": []}
+             "unchanged": 0, "unmatched": 0, "unmatched_samples": [], "new_columns": new_cols, "samples": [],
+             "fuzzy": [], "fuzzy_count": 0, "ambiguous": [], "ambiguous_count": 0}
     changed: dict[int, WorkRow] = {}
     seen_matched = set()
     for item in p.rows:
         k = _norm_key(item.match)
         if not k:
             continue
-        targets = index.get(k)
+        targets, amb = find(item.match)
+        if amb:
+            if len(stats["ambiguous"]) < 30:
+                stats["ambiguous"].append({"match": item.match, "candidates": sorted({name_of(r) for r in amb})[:6]})
+            stats["ambiguous_count"] = stats.get("ambiguous_count", 0) + 1
+            continue
+        if targets and k not in index:
+            stats["fuzzy_count"] += 1
+            if len(stats["fuzzy"]) < 50:
+                stats["fuzzy"].append({"match": item.match, "target": "、".join(sorted({name_of(r) for r in targets}))})
         if not targets:
             stats["unmatched"] += 1
             if len(stats["unmatched_samples"]) < 30:
@@ -570,7 +643,8 @@ def merge_import(table_id: int, p: MergeIn, session: Session = Depends(get_sessi
                     stats["skipped_existing"] += 1
                     continue
                 if len(stats["samples"]) < 8:
-                    stats["samples"].append({"match": item.match, "column": lab, "old": cur, "new": val})
+                    shown = item.match if k in index else f"{item.match} → {name_of(r)}"
+                    stats["samples"].append({"match": shown, "column": lab, "old": cur, "new": val})
                 d[key] = val
                 stats["updated_cells"] += 1
                 changed[r.id] = r
