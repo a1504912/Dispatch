@@ -11,6 +11,7 @@ import {
   listCases,
   listRows,
   listTables,
+  mergeImport,
   previewImport,
   searchCase,
   updateCase,
@@ -282,7 +283,156 @@ function mergeContinuation(rows) {
   return out;
 }
 
-function ImportModal({ caseObj, tables, onClose, onDone }) {
+/* 比對匯入：像 Excel 的 VLOOKUP，用統編之類的欄位對到既有資料，把 IP 之類的欄位寫進去 */
+function MergePanel({ sheets, tables, onDone }) {
+  const usable = sheets.filter((s) => s.rows.length && s.columns.length);
+  const [si, setSi] = useState(0);
+  const sheet = usable[si];
+  const [tid, setTid] = useState(tables[0]?.id ?? null);
+  const table = tables.find((t) => t.id === tid);
+  const [matchCol, setMatchCol] = useState(0); // Excel 欄位 index
+  const [matchKey, setMatchKey] = useState("");
+  const [maps, setMaps] = useState({}); // {excel 欄 index: 目標欄位名稱（"" = 不匯入）}
+  const [overwrite, setOverwrite] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  // 換工作表／分類時：自動找同名的比對欄位、同名的要寫入欄位
+  useEffect(() => {
+    if (!sheet || !table) return;
+    const labels = table.columns.map((c) => c.label);
+    const guess = ["統編", "統一編號", "客戶公司", "名稱", "公司"];
+    let mi = sheet.columns.findIndex((c) => guess.includes(c) && labels.includes(c));
+    if (mi < 0) mi = sheet.columns.findIndex((c) => labels.includes(c));
+    mi = Math.max(0, mi);
+    setMatchCol(mi);
+    setMatchKey(table.columns.find((c) => c.label === sheet.columns[mi])?.key || table.columns[0]?.key || "");
+    setMaps(Object.fromEntries(sheet.columns.map((c, i) => [i, i !== mi && labels.includes(c) ? c : ""])));
+  }, [si, tid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const body = (dry) => ({
+    match_key: matchKey,
+    overwrite,
+    dry_run: dry,
+    rows: (sheet?.rows || []).map((r) => ({
+      match: r[matchCol] || "",
+      values: Object.fromEntries(Object.entries(maps).filter(([, lab]) => lab).map(([i, lab]) => [lab, r[i] || ""])),
+    })),
+  });
+  const anyMap = Object.values(maps).some(Boolean);
+
+  // 條件一變就重新預覽（只算，不寫入）
+  useEffect(() => {
+    if (!table || !matchKey || !anyMap) return setPreview(null);
+    let alive = true;
+    const t = setTimeout(() => {
+      mergeImport(table.id, body(true)).then((p) => alive && setPreview(p)).catch((e) => alive && setErr(errMsg(e)));
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [table?.id, matchKey, matchCol, maps, overwrite, si]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function run() {
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await mergeImport(table.id, body(false));
+      onDone(res, table);
+    } catch (e) {
+      setErr(errMsg(e));
+      setBusy(false);
+    }
+  }
+
+  if (!usable.length) return <p className="text-sm text-slate-400">這個檔案沒有可以用的工作表</p>;
+  if (!tables.length) return <p className="text-sm text-slate-400">這個案子還沒有分類，先用「新增成分類」匯入一次。</p>;
+  const sel = "rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm";
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="space-y-1">
+          <span className="text-xs font-bold text-slate-500">Excel 工作表</span>
+          <select value={si} onChange={(e) => setSi(Number(e.target.value))} className={`${sel} w-full`}>
+            {usable.map((s, i) => <option key={s.sheet} value={i}>{s.sheet}（{s.rows.length} 列）</option>)}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-bold text-slate-500">要更新的分類</span>
+          <select value={tid ?? ""} onChange={(e) => setTid(Number(e.target.value))} className={`${sel} w-full`}>
+            {tables.map((t) => <option key={t.id} value={t.id}>{t.emoji} {t.name}（{t.row_count} 筆）</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="rounded-xl bg-indigo-50/60 p-3 ring-1 ring-indigo-100">
+        <p className="mb-1.5 text-xs font-bold text-indigo-700">🔑 用哪個欄位比對（兩邊值一樣就算同一筆）</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500">Excel 的</span>
+          <select value={matchCol} onChange={(e) => { const i = Number(e.target.value); setMatchCol(i); setMaps((m) => ({ ...m, [i]: "" })); }} className={sel}>
+            {sheet.columns.map((c, i) => <option key={i} value={i}>{c}</option>)}
+          </select>
+          <span className="text-xs text-slate-500">＝ 分類裡的</span>
+          <select value={matchKey} onChange={(e) => setMatchKey(e.target.value)} className={sel}>
+            {table.columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-xs font-bold text-slate-500">✍️ 要寫進去的欄位</p>
+        <div className="space-y-1">
+          {sheet.columns.map((c, i) => i === matchCol ? null : (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-32 shrink-0 truncate text-slate-700" title={c}>{c}</span>
+              <span className="text-slate-300">→</span>
+              <select value={maps[i] ?? ""} onChange={(e) => setMaps((m) => ({ ...m, [i]: e.target.value }))} className={`${sel} flex-1 ${maps[i] ? "" : "text-slate-400"}`}>
+                <option value="">（不匯入）</option>
+                {table.columns.filter((x) => x.key !== matchKey).map((x) => <option key={x.key} value={x.label}>{x.label}</option>)}
+                {!table.columns.some((x) => x.label === c) && <option value={c}>＋ 新增欄位「{c}」</option>}
+              </select>
+            </div>
+          ))}
+        </div>
+        <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} className="h-3.5 w-3.5 accent-indigo-600" />
+          已經有資料的也用 Excel 的值蓋掉（預設只填空白的）
+        </label>
+      </div>
+
+      {preview && (
+        <div className="space-y-1 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+          <p>
+            對到 <b className="text-slate-900">{preview.matched_rows}</b> 筆・會更新 <b className="text-indigo-700">{preview.updated_cells}</b> 格（{preview.updated_rows} 筆）
+            {preview.skipped_existing > 0 && <>・已有資料略過 <b>{preview.skipped_existing}</b> 格</>}
+            {preview.unchanged > 0 && <>・本來就一樣 {preview.unchanged} 格</>}
+          </p>
+          {preview.new_columns?.length > 0 && <p className="text-indigo-600">會新增欄位：{preview.new_columns.join("、")}</p>}
+          {preview.samples?.length > 0 && (
+            <ul className="space-y-0.5 text-slate-500">
+              {preview.samples.map((x, i) => (
+                <li key={i}>• {x.match}｜{x.column}：{x.old ? <><s>{x.old}</s> → </> : ""}<b className="text-slate-700">{x.new}</b></li>
+              ))}
+            </ul>
+          )}
+          {preview.unmatched > 0 && (
+            <p className="text-amber-700">對不到 {preview.unmatched} 筆：{preview.unmatched_samples.join("、")}{preview.unmatched > preview.unmatched_samples.length ? "…" : ""}</p>
+          )}
+        </div>
+      )}
+      {!anyMap && <p className="text-xs text-amber-600">選至少一個要寫進去的欄位</p>}
+      {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-600">{err}</p>}
+      <div className="flex justify-end">
+        <button disabled={busy || !preview?.updated_cells} onClick={run} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700 disabled:opacity-40`}>
+          {busy ? "更新中…" : `更新 ${preview?.updated_cells || 0} 格`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ImportModal({ caseObj, tables, onClose, onDone, onMerged }) {
+  const [mode, setMode] = useState("add"); // add 新增成分類 / merge 比對後更新欄位
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [sheets, setSheets] = useState(null);
@@ -329,8 +479,12 @@ function ImportModal({ caseObj, tables, onClose, onDone }) {
           <>
             <button onClick={() => setSheets(null)} className={`${btn} text-slate-500 hover:bg-slate-100`}>換檔案</button>
             <div className="flex-1" />
-            <span className="text-xs text-slate-400">{chosen.length} 個工作表</span>
-            <button disabled={busy || !chosen.length} onClick={run} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700 disabled:opacity-40`}>{busy ? "匯入中…" : "匯入"}</button>
+            {mode === "merge" ? null : (
+              <>
+                <span className="text-xs text-slate-400">{chosen.length} 個工作表</span>
+                <button disabled={busy || !chosen.length} onClick={run} className={`${btn} bg-indigo-600 text-white shadow hover:bg-indigo-700 disabled:opacity-40`}>{busy ? "匯入中…" : "匯入"}</button>
+              </>
+            )}
           </>
         )
       }
@@ -345,6 +499,15 @@ function ImportModal({ caseObj, tables, onClose, onDone }) {
           <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
         </div>
       ) : (
+        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
+          {[["add", "➕ 新增成分類"], ["merge", "🔗 比對後更新欄位"]].map(([k, l]) => (
+            <button key={k} onClick={() => setMode(k)} className={`rounded-lg py-1.5 transition ${mode === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>{l}</button>
+          ))}
+        </div>
+        {mode === "merge" ? (
+          <MergePanel sheets={sheets} tables={tables} onDone={(res, t) => onMerged(res, t)} />
+        ) : (
         <div className="space-y-2">
           <datalist id="work-table-names">{tables.map((t) => <option key={t.id} value={t.name} />)}</datalist>
           {sheets.map((s, i) => (
@@ -373,6 +536,8 @@ function ImportModal({ caseObj, tables, onClose, onDone }) {
               )}
             </div>
           ))}
+        </div>
+        )}
         </div>
       )}
       {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
@@ -1141,6 +1306,16 @@ export default function WorkVendors() {
           caseObj={caseObj}
           tables={tables}
           onClose={() => setModal(null)}
+          onMerged={(res, t) => {
+            setModal(null);
+            flash(`已更新「${t.name}」${res.updated_rows} 筆、${res.updated_cells} 格${res.unmatched ? `（對不到 ${res.unmatched} 筆）` : ""}`);
+            loadCases(caseId);
+            listTables(caseId).then((ts) => {
+              setTables(ts);
+              if (t.id === tableId) loadRows();
+              else setTableId(t.id);
+            });
+          }}
           onDone={(res) => {
             setModal(null);
             flash(`匯入完成：${res.tables.map((t) => `${t.name} ${t.rows} 筆`).join("、")}`);

@@ -486,3 +486,101 @@ def export_xlsx(case_id: int, table_id: int | None = None, include_hidden: bool 
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=\"export.xlsx\"; filename*=UTF-8''{quote(fname)}"},
     )
+
+
+# ---------- 比對匯入（像 Excel 的 VLOOKUP）：用某個欄位對到既有資料，把別的欄位寫進去 ----------
+
+
+def _norm_key(v) -> str:
+    """比對用：去掉空白、橫線，數字的「.0」也拿掉（Excel 常把統編存成 16440757.0）。"""
+    s = re.sub(r"[\s\-－]", "", str(v or "")).lower()
+    return s[:-2] if re.fullmatch(r"\d+\.0", s) else s
+
+
+class MergeRow(BaseModel):
+    match: str
+    values: dict  # {分類欄位名稱: 值}；名稱不存在會新增欄位
+
+
+class MergeIn(BaseModel):
+    match_key: str  # 分類裡拿來比對的欄位 key
+    rows: list[MergeRow]
+    overwrite: bool = False  # 已經有值的也蓋掉（預設只填空白的）
+    dry_run: bool = True  # 只算會改幾格，不寫入
+
+
+@router.post("/tables/{table_id}/merge")
+def merge_import(table_id: int, p: MergeIn, session: Session = Depends(get_session)):
+    t = _get(session, WorkTable, table_id, "分類")
+    cols = _cols(t)
+    if not any(c["key"] == p.match_key for c in cols):
+        raise HTTPException(400, "比對欄位不在這個分類裡")
+    by_label = {c["label"]: c["key"] for c in cols}
+    new_cols = []
+    for r in p.rows:
+        for lab in r.values:
+            lab = str(lab).strip()[:60]
+            if lab and lab not in by_label and lab not in new_cols:
+                new_cols.append(lab)
+    if new_cols and not p.dry_run:
+        for lab in new_cols:
+            k = _next_key(cols)
+            cols.append({"key": k, "label": lab, "masked": False, "pinned": False, "hidden": False})
+            by_label[lab] = k
+        t.columns = json.dumps(cols, ensure_ascii=False)
+        session.add(t)
+
+    rows = session.exec(select(WorkRow).where(WorkRow.table_id == t.id)).all()
+    index: dict[str, list] = {}
+    datas = {}
+    for r in rows:
+        d = _data(r)
+        datas[r.id] = d
+        k = _norm_key(d.get(p.match_key, ""))
+        if k:
+            index.setdefault(k, []).append(r)
+
+    stats = {"matched_rows": 0, "updated_rows": 0, "updated_cells": 0, "skipped_existing": 0,
+             "unchanged": 0, "unmatched": 0, "unmatched_samples": [], "new_columns": new_cols, "samples": []}
+    changed: dict[int, WorkRow] = {}
+    seen_matched = set()
+    for item in p.rows:
+        k = _norm_key(item.match)
+        if not k:
+            continue
+        targets = index.get(k)
+        if not targets:
+            stats["unmatched"] += 1
+            if len(stats["unmatched_samples"]) < 30:
+                stats["unmatched_samples"].append(item.match)
+            continue
+        for r in targets:
+            seen_matched.add(r.id)
+            d = datas[r.id]
+            for lab, val in item.values.items():
+                val = str(val or "").strip()
+                if not val:
+                    continue
+                key = by_label.get(str(lab).strip()[:60]) or f"__new__{lab}"
+                cur = str(d.get(key, "") or "").strip()
+                if cur == val:
+                    stats["unchanged"] += 1
+                    continue
+                if cur and not p.overwrite:
+                    stats["skipped_existing"] += 1
+                    continue
+                if len(stats["samples"]) < 8:
+                    stats["samples"].append({"match": item.match, "column": lab, "old": cur, "new": val})
+                d[key] = val
+                stats["updated_cells"] += 1
+                changed[r.id] = r
+    stats["matched_rows"] = len(seen_matched)
+    stats["updated_rows"] = len(changed)
+    if not p.dry_run:
+        now = datetime.utcnow()
+        for rid, r in changed.items():
+            r.data = json.dumps({k: v for k, v in datas[rid].items() if not k.startswith("__new__")}, ensure_ascii=False)
+            r.updated_at = now
+            session.add(r)
+        session.commit()
+    return stats

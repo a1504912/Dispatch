@@ -47,3 +47,6 @@ export async function exportXlsx(caseId, { tableId, includeHidden } = {}) {
   }, 5000);
   return name;
 }
+
+// 比對匯入：用 match_key 欄位對到既有資料，把值寫進指定欄位（dry_run 只預覽）
+export const mergeImport = async (tableId, body) => (await client.post(`/api/work/tables/${tableId}/merge`, body)).data;
