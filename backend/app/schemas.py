@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 from app.models import AgentStatus
 
@@ -77,6 +77,7 @@ class TransactionCreate(SQLModel):
     to_account_id: Optional[int] = None
     event_id: Optional[int] = None
     split_bill_id: Optional[int] = None
+    installments: int = Field(default=1, ge=1, le=120)
 
 
 class AccountCreate(SQLModel):
@@ -86,6 +87,8 @@ class AccountCreate(SQLModel):
     sort: int = 0
     parent_id: Optional[int] = None
     exclude_from_total: bool = False
+    card_close_day: int = Field(default=0, ge=0, le=31)
+    card_due_day: int = Field(default=0, ge=0, le=31)
 
 
 class BudgetCreate(SQLModel):

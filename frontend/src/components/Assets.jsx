@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listAccounts, createAccount, updateAccount, deleteAccount } from "../api/accounts";
 import { listTransactions, createTransaction } from "../api/ledger";
 import { getPortfolio } from "../api/invest";
+import CardBills from "./CardBills.jsx";
 
 const money = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n)).toLocaleString("en-US");
 const ACC_EMOJIS = ["💵", "🏦", "💳", "📱", "💱", "🪙", "💰", "🏧", "🧧", "💸", "📈"];
@@ -101,8 +102,9 @@ export default function Assets() {
   const [adjustFor, setAdjustFor] = useState(null); // { account, current }
   const [invest, setInvest] = useState(null); // 投資頁的持股市值（證券帳戶餘額只記成本）
 
-  function reload() {
-    setLoading(true);
+  function reload(quiet) {
+    if (quiet !== true) setLoading(true); // 改設定時不要整頁閃成「載入中」
+
     Promise.all([listAccounts(), listTransactions()])
       .then(([a, t]) => {
         setAccounts(a);
@@ -171,8 +173,10 @@ export default function Assets() {
       initial: a.initial,
       parent_id: a.parent_id ?? null,
       exclude_from_total: a.exclude_from_total ?? false,
+      card_close_day: a.card_close_day ?? 0,
+      card_due_day: a.card_due_day ?? 0,
       ...patch,
-    }).then(reload);
+    }).then(() => reload(true));
 
   const field =
     "rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100";
@@ -190,6 +194,8 @@ export default function Assets() {
           </p>
         )}
       </div>
+
+      {!loading && <CardBills accounts={accounts} txs={txs} onSaveCard={(a, patch) => saveField(a, patch)} />}
 
       {loading ? (
         <p className="py-10 text-center text-sm text-slate-400">載入中…</p>

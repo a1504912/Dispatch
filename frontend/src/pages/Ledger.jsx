@@ -621,6 +621,7 @@ export default function Ledger() {
                             )}
                             {refund && <span className="ml-1.5 rounded bg-emerald-50 px-1 py-0.5 align-middle text-[10px] font-bold text-emerald-600">退款</span>}
                             {t.kind === "income" && t.amount < 0 && <span className="ml-1.5 rounded bg-rose-50 px-1 py-0.5 align-middle text-[10px] font-bold text-rose-500">沖銷</span>}
+                            {t.installments > 1 && <span className="ml-1.5 rounded bg-indigo-50 px-1 py-0.5 align-middle text-[10px] font-bold text-indigo-600" title="信用卡分期">分 {t.installments} 期</span>}
                             {t.split_bill_id && <span className="ml-1" title="有分帳">🧾</span>}
                             {t.event_id && <span className="ml-0.5" title="連結行程">✈️</span>}
                           </p>

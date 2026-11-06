@@ -32,7 +32,7 @@ def update_transaction(
     tx = session.get(Transaction, tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    for key, value in payload.model_dump().items():
+    for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(tx, key, value)
     session.add(tx)
     session.commit()

@@ -127,6 +127,10 @@ def init_db() -> None:
                     conn.execute(
                         text("ALTER TABLE account ADD COLUMN exclude_from_total BOOLEAN NOT NULL DEFAULT 0")
                     )
+                if "card_close_day" not in acc_cols:
+                    conn.execute(text("ALTER TABLE account ADD COLUMN card_close_day INTEGER NOT NULL DEFAULT 0"))
+                if "card_due_day" not in acc_cols:
+                    conn.execute(text("ALTER TABLE account ADD COLUMN card_due_day INTEGER NOT NULL DEFAULT 0"))
                 conn.commit()
 
             # 記帳新增欄位（transaction 是保留字，需加引號）
@@ -148,6 +152,8 @@ def init_db() -> None:
                     conn.execute(text('ALTER TABLE "transaction" ADD COLUMN account_id INTEGER'))
                 if "to_account_id" not in tx_cols:
                     conn.execute(text('ALTER TABLE "transaction" ADD COLUMN to_account_id INTEGER'))
+                if "installments" not in tx_cols:
+                    conn.execute(text('ALTER TABLE "transaction" ADD COLUMN installments INTEGER NOT NULL DEFAULT 1'))
                 conn.commit()
 
     # 幫既有、還沒有縮圖的行程補上縮圖（一次性；之後啟動就略過）

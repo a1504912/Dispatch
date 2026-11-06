@@ -1,3 +1,4 @@
+import { installmentParts, isCardAccount } from "../cardBill";
 import { useEffect, useState } from "react";
 import { createTransaction, updateTransaction } from "../api/ledger";
 import { listMembers, createMember } from "../api/members";
@@ -92,6 +93,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
       account_id: initial?.account_id ?? null,
       to_account_id: initial?.to_account_id ?? null,
       event_id: initial?.event_id ?? null,
+      installments: initial?.installments ?? 1,
     });
     setSplitOn(false);
     setMethod("equal");
@@ -204,6 +206,10 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   const selBal = selAcc ? balOf(selAcc) : 0;
   const afterBal = selBal + (form.kind === "income" ? signedAmount : -signedAmount);
   const showAfter = !isTransfer && selAcc && Number.isFinite(amountNum) && amountNum !== 0;
+  // 信用卡分期：只有「信用卡的一般支出」才有
+  const installOn = form.kind === "expense" && !refund && isCardAccount(selAcc, accounts);
+  const nInstall = Math.max(1, Number(form.installments) || 1);
+  const instParts = installmentParts(amountNum || 0, nInstall);
 
   // 「不計入總資產」的帳戶不在選單顯示（除非正好是這筆已選的帳戶，才留著能改）
   const visibleTop = topAccounts.filter((a) => !a.exclude_from_total || a.id === selTopId);
@@ -269,6 +275,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
         to_account_id: isTransfer ? form.to_account_id ?? null : null,
         event_id: form.event_id ?? null,
         split_bill_id: splitBillId,
+        installments: installOn ? Math.max(1, Number(form.installments) || 1) : 1,
       };
       let saved;
       if (isEdit) saved = await updateTransaction(initial.id, payload);
@@ -432,6 +439,33 @@ export default function TransactionModal({ open, initial, categories = [], txs =
                   {showAfter && (
                     <> → 記後 <b className={afterBal < 0 ? "text-rose-500" : "text-slate-800"}>{money(afterBal)}</b></>
                   )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 信用卡分期 */}
+          {installOn && (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+              <p className="mb-1.5 text-xs font-bold text-indigo-700">💳 付款方式</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[1, 3, 6, 12, 24].map((n) => (
+                  <button key={n} type="button" onClick={() => setForm({ ...form, installments: n })}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${nInstall === n ? "bg-indigo-600 text-white ring-indigo-600" : "bg-white text-slate-600 ring-slate-200 hover:ring-indigo-300"}`}>
+                    {n === 1 ? "一次付清" : `${n} 期`}
+                  </button>
+                ))}
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  其他
+                  <input type="number" min={1} max={120} value={[1, 3, 6, 12, 24].includes(nInstall) ? "" : nInstall}
+                    onChange={(e) => setForm({ ...form, installments: Math.min(120, Math.max(1, Number(e.target.value) || 1)) })}
+                    placeholder="期" className="w-14 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs" />
+                </span>
+              </div>
+              {nInstall > 1 && amountNum > 0 && (
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  總額 {money(amountNum)} 分 {nInstall} 期：每期 <b className="text-indigo-700">{money(instParts[1])}</b>
+                  {instParts[0] !== instParts[1] && <>（第 1 期 {money(instParts[0])}）</>}，從這期帳單開始每月一期，資產頁會幫你算每個月卡費。
                 </p>
               )}
             </div>

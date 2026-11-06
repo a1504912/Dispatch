@@ -27,7 +27,7 @@ def update_account(account_id: int, payload: AccountCreate, session: Session = D
     acc = session.get(Account, account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
-    for key, value in payload.model_dump().items():
+    for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(acc, key, value)
     session.add(acc)
     session.commit()

@@ -143,6 +143,9 @@ class Account(SQLModel, table=True):
     parent_id: Optional[int] = Field(default=None, foreign_key="account.id")
     # 不計入總資產（例如「上繳款」這類代管/待付款項）
     exclude_from_total: bool = False
+    # 信用卡帳單：結帳日（0＝月底）、繳款日（0＝沒設定，只顯示月份）
+    card_close_day: int = 0
+    card_due_day: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -187,6 +190,7 @@ class Transaction(SQLModel, table=True):
     to_account_id: Optional[int] = Field(default=None, foreign_key="account.id")  # 轉帳的轉入帳戶
     event_id: Optional[int] = Field(default=None, foreign_key="event.id")  # 連結的行程
     split_bill_id: Optional[int] = Field(default=None, foreign_key="splitbill.id")  # 記帳時建立的分帳
+    installments: int = 1  # 信用卡分期期數（amount 是總額；1＝一次付清）
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
