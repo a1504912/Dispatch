@@ -383,6 +383,48 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
   );
 }
 
+/**
+ * 某個人「目前還欠的項目」：把還款（和反方向的帳）照時間先抵最早的帳，剩下沒抵完的就是還欠的。
+ * sign > 0：對方欠你（列對方該付的分帳）；sign < 0：你欠對方（列你該付的分帳）。
+ */
+function outstandingItems(who, bills, settlements, sign) {
+  const plus = []; // 讓「欠款」增加的項目
+  let minus = 0; // 抵掉的總額
+  for (const bill of bills) {
+    let shares = [];
+    try {
+      shares = JSON.parse(bill.shares || "[]");
+    } catch {
+      shares = [];
+    }
+    const smap = {};
+    shares.forEach((x) => (smap[String(x.who)] = Number(x.value) || 0));
+    let v = 0; // 正＝對方欠你
+    if (bill.payer === "self") v = smap[who] || 0;
+    else if (String(bill.payer) === who) v = -(smap.self || 0);
+    if (!v) continue;
+    const signed = v * sign;
+    if (signed > 0) plus.push({ date: String(bill.date), title: bill.title, category: bill.category, amount: signed, total: bill.total });
+    else minus += -signed;
+  }
+  for (const st of settlements) {
+    if (String(st.member_id) !== who) continue;
+    const v = (st.direction === "in" ? -st.amount : st.amount) * sign;
+    if (v > 0) plus.push({ date: String(st.date), title: st.direction === "in" ? "收款超過的部分" : "你先付給對方", amount: v, settlement: true });
+    else minus += -v;
+  }
+  plus.sort((a, b) => a.date.localeCompare(b.date));
+  const paid = minus;
+  const out = [];
+  for (const it of plus) {
+    const use = Math.min(it.amount, minus);
+    minus -= use;
+    const left = r2(it.amount - use);
+    if (left >= 0.5) out.push({ ...it, left, partial: use > 0 });
+  }
+  return { items: out.reverse(), paid: r2(paid) }; // 新的在上面
+}
+
 /* ---------------- 主畫面 ---------------- */
 export default function SplitBills({ expenseCats = [] }) {
   const [members, setMembers] = useState([]);
@@ -393,6 +435,7 @@ export default function SplitBills({ expenseCats = [] }) {
   const [membersOpen, setMembersOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [settleFor, setSettleFor] = useState(null); // {id,name,emoji,net}
+  const [detailFor, setDetailFor] = useState(null); // 點欠款金額：展開這個人目前還欠的項目
 
   function reload() {
     setLoading(true);
@@ -488,13 +531,22 @@ export default function SplitBills({ expenseCats = [] }) {
         <div className="rounded-2xl bg-white ring-1 ring-slate-100 p-4 shadow-sm">
           <p className="mb-3 text-sm font-black text-slate-700">結算</p>
           <div className="space-y-2">
-            {[...owedList, ...oweList].map(([who, v]) => (
-                <div key={who} className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-slate-700">{emojiOf(who)} {nameOf(who)}</span>
+            {[...owedList, ...oweList].map(([who, v]) => {
+              const isOpen = detailFor === who;
+              const detail = isOpen ? outstandingItems(who, bills, settlements, v > 0 ? 1 : -1) : null;
+              return (
+              <div key={who}>
+                <div className="flex items-center justify-between gap-2">
+                  <button onClick={() => setDetailFor(isOpen ? null : who)} className="text-left text-sm text-slate-700">{emojiOf(who)} {nameOf(who)}</button>
                   <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold ${v > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    <button
+                      onClick={() => setDetailFor(isOpen ? null : who)}
+                      title="看目前還欠哪些"
+                      className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-sm font-bold transition hover:bg-slate-50 ${v > 0 ? "text-emerald-600" : "text-red-500"}`}
+                    >
                       {v > 0 ? `欠你 ${money(v)}` : `你欠 ${money(-v)}`}
-                    </span>
+                      <span className={`text-[10px] text-slate-400 transition ${isOpen ? "rotate-90" : ""}`}>▸</span>
+                    </button>
                     {who !== "self" && members.some((m) => String(m.id) === who) && (
                       <button
                         onClick={() => setSettleFor({ id: Number(who), name: nameOf(who), emoji: emojiOf(who), net: v })}
@@ -505,7 +557,38 @@ export default function SplitBills({ expenseCats = [] }) {
                     )}
                   </div>
                 </div>
-              ))}
+                {isOpen && (
+                  <div className="mb-1 mt-1.5 rounded-xl bg-slate-50 px-3 py-2">
+                    <p className="mb-1 text-[11px] font-bold text-slate-500">
+                      {v > 0 ? `${nameOf(who)} 目前還欠你的` : `你目前還欠 ${nameOf(who)} 的`}（{detail.items.length} 筆）
+                    </p>
+                    {detail.items.length === 0 ? (
+                      <p className="text-xs text-slate-400">找不到明細（可能是小數四捨五入的差額）</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {detail.items.map((it, i) => (
+                          <li key={i} className="flex items-center gap-2 text-xs">
+                            <span className="w-10 shrink-0 tabular-nums text-slate-400">{it.date.slice(5).replace("-", "/")}</span>
+                            <span className="min-w-0 flex-1 truncate text-slate-700">
+                              {it.title}
+                              {it.total != null && <span className="ml-1 text-slate-400">（總額 {money(it.total)}）</span>}
+                            </span>
+                            {it.partial && <span className="shrink-0 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">已還一部分</span>}
+                            <b className={`shrink-0 tabular-nums ${v > 0 ? "text-emerald-700" : "text-red-500"}`}>{money(it.left)}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {detail.paid > 0 && (
+                      <p className="mt-1.5 border-t border-slate-200 pt-1 text-[11px] text-slate-400">
+                        已經{v > 0 ? "收" : "還"}過的 {money(detail.paid)} 先抵掉最早的帳，上面是還沒抵完的。
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              );
+            })}
             {rounded.length === 0 && (
               <p className="text-center text-sm text-slate-400">目前都結清了 🎉</p>
             )}
