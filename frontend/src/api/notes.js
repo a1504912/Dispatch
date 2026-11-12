@@ -131,6 +131,15 @@ export function mediaUrl(path, download = false) {
   return `${base}${path}${q ? `?${q}` : ""}`;
 }
 
+// 取回成 Blob（大檔瀏覽器會放硬碟，不會全部吃記憶體）
+export async function fetchMediaBlob(path, onProgress) {
+  const { data } = await client.get(path, {
+    responseType: "blob",
+    onDownloadProgress: (e) => onProgress && e.total && onProgress(e.loaded / e.total),
+  });
+  return data;
+}
+
 // 取回原始位元組（加密記事本要先下載再在瀏覽器解密）
 export async function fetchMediaBytes(path) {
   const { data } = await client.get(path, { responseType: "arraybuffer" });

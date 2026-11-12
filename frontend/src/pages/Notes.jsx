@@ -6,7 +6,7 @@ import {
   deleteItem,
   deleteNotebook,
   editItem,
-  fetchMediaBytes,
+  fetchMediaBlob,
   listItems,
   listNotebookEvents,
   listNotebooks,
@@ -19,10 +19,10 @@ import { openImage } from "../lightbox";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   cryptoSupported,
-  decryptBytes,
+  decryptFile,
   decryptText,
   deriveKey,
-  encryptBytes,
+  encryptFile,
   encryptText,
   makeCheck,
   newSalt,
@@ -115,6 +115,8 @@ const decryptAll = (key, rows) => Promise.all(rows.map((r) => decryptItem(key, r
 function EncMedia({ item, cryptoKey }) {
   const [url, setUrl] = useState("");
   const [state, setState] = useState("idle"); // idle / loading / err
+  const [errMsg, setErrMsg] = useState("");
+  const [pct, setPct] = useState(0);
   const urlRef = useRef("");
 
   useEffect(() => () => urlRef.current && URL.revokeObjectURL(urlRef.current), []);
@@ -122,15 +124,40 @@ function EncMedia({ item, cryptoKey }) {
   async function load() {
     if (urlRef.current) return urlRef.current;
     setState("loading");
+    setPct(0);
+    let stage = "download";
     try {
-      const buf = await fetchMediaBytes(item.media_url);
-      const plain = await decryptBytes(cryptoKey, buf);
-      const u = URL.createObjectURL(new Blob([plain], { type: item.media_type || "application/octet-stream" }));
+      let blob;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          blob = await fetchMediaBlob(item.media_url, (r) => setPct(Math.round(r * 50)));
+          break;
+        } catch (e) {
+          const st = e?.response?.status;
+          if (attempt >= 2 || (st && st < 500)) throw e; // 網路斷一下自動再抓一次
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+      stage = "decrypt";
+      const plain = await decryptFile(cryptoKey, blob, item.media_type || "application/octet-stream", (r) => setPct(50 + Math.round(r * 50)));
+      const u = URL.createObjectURL(plain);
       urlRef.current = u;
       setUrl(u);
       setState("idle");
       return u;
-    } catch {
+    } catch (e) {
+      const st = e?.response?.status;
+      let msg;
+      if (stage === "download") {
+        msg = st === 404 ? "主機上找不到這個檔案" : st ? `下載失敗（${st}）` : "下載失敗（網路不穩）";
+      } else if (e?.name === "OperationError") {
+        msg = "解密失敗：檔案內容跟上傳時不一樣";
+      } else if (e?.name === "RangeError" || /memory|allocation|array buffer/i.test(e?.message || "")) {
+        msg = "檔案太大，這台裝置記憶體不夠解密";
+      } else {
+        msg = `解密失敗（${e?.name || "錯誤"}）`;
+      }
+      setErrMsg(msg);
       setState("err");
       return "";
     }
@@ -152,12 +179,18 @@ function EncMedia({ item, cryptoKey }) {
     a.remove();
   }
 
-  if (state === "err") return <p className="px-3.5 py-3 text-xs text-red-500">🔐 解密失敗（檔案可能損壞）</p>;
+  if (state === "err")
+    return (
+      <div className="px-3.5 py-3 text-xs">
+        <p className="text-red-500">🔐 {errMsg || "解密失敗"}</p>
+        <button onClick={() => { setState("idle"); load(); }} className="mt-1 rounded-md bg-white/70 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-white">↻ 再試一次</button>
+      </div>
+    );
   if (item.kind === "image") {
     return url ? (
       <img src={url} alt="" onClick={() => openImage(url)} className="block max-h-80 w-auto max-w-full cursor-zoom-in object-contain" />
     ) : (
-      <div className="flex h-40 w-56 items-center justify-center text-xs text-slate-500">🔐 解密中…</div>
+      <div className="flex h-40 w-56 items-center justify-center text-xs text-slate-500">🔐 {pct < 50 ? "下載中" : "解密中"}…{pct > 0 && ` ${pct}%`}</div>
     );
   }
   if (item.kind === "video") {
@@ -166,7 +199,7 @@ function EncMedia({ item, cryptoKey }) {
     ) : (
       <button onClick={load} className="flex h-40 w-64 max-w-full flex-col items-center justify-center gap-1 bg-slate-800 text-white">
         <span className="text-3xl">▶</span>
-        <span className="text-xs">{state === "loading" ? "解密中…" : `點一下解密播放（${fmtSize(item.media_size)}）`}</span>
+        <span className="text-xs">{state === "loading" ? `${pct < 50 ? "下載中" : "解密中"}… ${pct}%` : `點一下解密播放（${fmtSize(item.media_size)}）`}</span>
       </button>
     );
   }
@@ -282,14 +315,23 @@ function splitTopic(text) {
   return { title: title.trim() || "（未命名事件）", desc: rest.join("\n").trim() };
 }
 
+// 加密後上傳：分段加密（手機大檔也不會撐爆記憶體），傳完核對主機收到的大小
+async function uploadEncrypted(nbId, f, fname, cryptoKey, onPct, parentId = null) {
+  if (f.size > 4 * 1024 * 1024 * 1024) throw new Error("加密記事本單檔上限 4GB，請放到一般記事本");
+  const blob = await encryptFile(cryptoKey, f);
+  const encMeta = await encryptText(cryptoKey, JSON.stringify({ name: fname, type: f.type || "application/octet-stream", size: f.size }));
+  const saved = await uploadFile(nbId, new File([blob], "data.bin", { type: "application/octet-stream" }), "", onPct, encMeta, parentId);
+  if (saved?.media_size != null && saved.media_size !== blob.size) {
+    throw new Error(`上傳不完整（主機收到 ${saved.media_size} / ${blob.size} bytes），請刪掉這則重傳`);
+  }
+  return saved;
+}
+
 // 上傳一個檔案（加密記事本先在瀏覽器加密），回傳可直接顯示的那則
 async function uploadNoteFile(nbId, f, cryptoKey, onPct, parentId = null) {
   const fname = f.name || "image.png";
   if (cryptoKey) {
-    if (f.size > 1024 * 1024 * 1024) throw new Error("加密記事本單檔上限 1GB（太大的檔案瀏覽器加密不動），請放到一般記事本");
-    const blob = await encryptBytes(cryptoKey, await f.arrayBuffer());
-    const encMeta = await encryptText(cryptoKey, JSON.stringify({ name: fname, type: f.type || "application/octet-stream", size: f.size }));
-    const saved = await uploadFile(nbId, new File([blob], "data.bin", { type: "application/octet-stream" }), "", onPct, encMeta, parentId);
+    const saved = await uploadEncrypted(nbId, f, fname, cryptoKey, onPct, parentId);
     return decryptItem(cryptoKey, saved);
   }
   return uploadFile(nbId, f, "", onPct, "", parentId);
@@ -667,8 +709,7 @@ async function encryptExisting(nbId, password, onStep) {
     const entry = { id: it.id, text: it.text ? await encryptText(key, it.text) : "" };
     if (it.media_url) {
       onStep(`下載第 ${i + 1} / ${all.length} 則的檔案…`);
-      const buf = await fetchMediaBytes(it.media_url);
-      const blob = await encryptBytes(key, buf);
+      const blob = await encryptFile(key, await fetchMediaBlob(it.media_url));
       entry.enc_meta = await encryptText(
         key,
         JSON.stringify({ name: it.media_name, type: it.media_type || "application/octet-stream", size: it.media_size })
@@ -1107,12 +1148,8 @@ export default function Notes() {
         const onPct = (pct) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, pct } : x)));
         let it;
         if (cryptoKeyForUpload) {
-          // 加密要把整個檔案讀進瀏覽器記憶體，太大的檔案手機／瀏覽器會撐不住
-          if (f.size > 1024 * 1024 * 1024) throw new Error("加密記事本單檔上限 1GB（太大的檔案瀏覽器加密不動），請放到一般記事本");
           // 在瀏覽器先加密內容和檔名/類型，主機只收到亂碼
-          const blob = await encryptBytes(cryptoKeyForUpload, await f.arrayBuffer());
-          const encMeta = await encryptText(cryptoKeyForUpload, JSON.stringify({ name: fname, type: f.type || "application/octet-stream", size: f.size }));
-          const saved = await uploadFile(nbId, new File([blob], "data.bin", { type: "application/octet-stream" }), "", onPct, encMeta);
+          const saved = await uploadEncrypted(nbId, f, fname, cryptoKeyForUpload, onPct);
           it = await decryptItem(cryptoKeyForUpload, saved);
         } else {
           it = await uploadFile(nbId, f, "", onPct);
