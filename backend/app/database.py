@@ -92,7 +92,9 @@ def init_db() -> None:
             st_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(settlement)"))]
             if st_cols and "extra_tx_ids" not in st_cols:
                 conn.execute(text("ALTER TABLE settlement ADD COLUMN extra_tx_ids TEXT"))
-                conn.commit()
+            if st_cols and "bill_ids" not in st_cols:
+                conn.execute(text("ALTER TABLE settlement ADD COLUMN bill_ids TEXT"))
+            conn.commit()
 
             # 記事本內容：事件（topic）底下的子內容用 parent_id 掛在事件上
             ni_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(noteitem)"))]

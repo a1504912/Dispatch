@@ -253,10 +253,22 @@ function SplitBillModal({ open, members, expenseCats, onClose, onSaved }) {
 }
 
 /* ---------------- 結算/沖帳 ---------------- */
-function SettleModal({ target, accounts, onClose, onSaved }) {
+function SettleModal({ target, accounts, items = [], onClose, onSaved }) {
   const net = target.net;
   const dir = net > 0 ? "in" : "out"; // in：對方還你；out：你還對方
-  const [amount, setAmount] = useState(String(Math.round(Math.abs(net))));
+  const billItems = items.filter((it) => it.id != null);
+  // 這次還哪幾筆（不選＝從最早的開始抵）
+  const [picked, setPicked] = useState(() => new Set(target.preselect || []));
+  const pickedSum = billItems.filter((it) => picked.has(it.id)).reduce((x, it) => x + it.left, 0);
+  const [amount, setAmount] = useState(String(Math.round(picked.size ? pickedSum : Math.abs(net))));
+  function togglePick(id) {
+    const next = new Set(picked);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setPicked(next);
+    const sum = billItems.filter((it) => next.has(it.id)).reduce((x, it) => x + it.left, 0);
+    setAmount(String(Math.round(next.size ? sum : Math.abs(net))));
+  }
+  const pickedIds = billItems.filter((it) => picked.has(it.id)).map((it) => it.id);
   const [date, setDate] = useState(todayStr());
   const [method, setMethod] = useState(dir === "in" ? "income" : "expense");
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? null);
@@ -266,12 +278,12 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
   useEffect(() => {
     if (method !== "offset" || !(amtNum > 0)) return setPreview(null);
     let alive = true;
-    const t = setTimeout(() => offsetPreview(target.id, amtNum).then((p) => alive && setPreview(p)).catch(() => alive && setPreview(null)), 250);
+    const t = setTimeout(() => offsetPreview(target.id, amtNum, pickedIds).then((p) => alive && setPreview(p)).catch(() => alive && setPreview(null)), 250);
     return () => {
       alive = false;
       clearTimeout(t);
     };
-  }, [method, amtNum, target.id]);
+  }, [method, amtNum, target.id, pickedIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inMethods = [
     ["income", "記為收入", "還款當成一筆收入"],
@@ -301,6 +313,7 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
         method,
         account_id: needAccount ? accountId : null,
         note: "",
+        bill_ids: pickedIds.length ? JSON.stringify(pickedIds) : null,
       });
       onSaved();
     } finally {
@@ -310,12 +323,12 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[92vh] w-full max-w-sm flex-col rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-lg font-black text-slate-900">{dir === "in" ? "收款結清" : "還款結清"}</h2>
           <button onClick={onClose} className="rounded-md px-2 text-slate-400 hover:text-slate-600">✕</button>
         </div>
-        <div className="space-y-3 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <p className="text-sm text-slate-600">
             {target.emoji} <b>{target.name}</b>
             {dir === "in" ? ` 欠你 ${money(Math.abs(net))}` : `：你欠 ${money(Math.abs(net))}`}
@@ -331,6 +344,30 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${field} w-36`} />
           </div>
           <CalcButtons value={amount} onChange={setAmount} />
+
+          {billItems.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-bold text-slate-500">
+                這次{dir === "in" ? "收" : "還"}哪幾筆？<span className="font-normal text-slate-400">（不選＝從最早的開始抵）</span>
+              </p>
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-1.5">
+                {billItems.map((it) => (
+                  <label key={it.id} className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-xs ${picked.has(it.id) ? "bg-indigo-50" : "hover:bg-slate-50"}`}>
+                    <input type="checkbox" checked={picked.has(it.id)} onChange={() => togglePick(it.id)} className="h-3.5 w-3.5 accent-indigo-600" />
+                    <span className="w-10 shrink-0 tabular-nums text-slate-400">{it.date.slice(5).replace("-", "/")}</span>
+                    <span className="min-w-0 flex-1 truncate text-slate-700">{it.title}</span>
+                    {it.partial && <span className="shrink-0 text-[10px] text-amber-600">剩</span>}
+                    <b className="shrink-0 tabular-nums text-slate-800">{money(it.left)}</b>
+                  </label>
+                ))}
+              </div>
+              {picked.size > 0 && (
+                <p className="mt-1 text-[11px] text-indigo-600">
+                  已選 {picked.size} 筆共 {money(pickedSum)}，金額已自動帶入（可以改，少給就先抵選的那幾筆）
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="mb-1 text-xs font-bold text-slate-500">記帳方式</p>
@@ -383,13 +420,24 @@ function SettleModal({ target, accounts, onClose, onSaved }) {
   );
 }
 
+const parseIds = (raw) => {
+  try {
+    const v = JSON.parse(raw || "[]");
+    return Array.isArray(v) ? v.map(Number) : [];
+  } catch {
+    return [];
+  }
+};
+
 /**
- * 某個人「目前還欠的項目」：把還款（和反方向的帳）照時間先抵最早的帳，剩下沒抵完的就是還欠的。
+ * 某個人「目前還欠的項目」：有指定還哪幾筆的還款先扣那幾筆，
+ * 其餘的還款（和反方向的帳）照時間先抵最早的帳，剩下沒抵完的就是還欠的。
  * sign > 0：對方欠你（列對方該付的分帳）；sign < 0：你欠對方（列你該付的分帳）。
  */
 function outstandingItems(who, bills, settlements, sign) {
   const plus = []; // 讓「欠款」增加的項目
-  let minus = 0; // 抵掉的總額
+  let minus = 0; // 沒指定項目、從最早開始抵的總額
+  let paid = 0;
   for (const bill of bills) {
     let shares = [];
     try {
@@ -404,24 +452,46 @@ function outstandingItems(who, bills, settlements, sign) {
     else if (String(bill.payer) === who) v = -(smap.self || 0);
     if (!v) continue;
     const signed = v * sign;
-    if (signed > 0) plus.push({ date: String(bill.date), title: bill.title, category: bill.category, amount: signed, total: bill.total });
-    else minus += -signed;
+    if (signed > 0) plus.push({ id: bill.id, date: String(bill.date), title: bill.title, category: bill.category, amount: signed, total: bill.total, left: signed });
+    else {
+      minus += -signed;
+      paid += -signed;
+    }
   }
+  plus.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const targeted = [];
   for (const st of settlements) {
     if (String(st.member_id) !== who) continue;
     const v = (st.direction === "in" ? -st.amount : st.amount) * sign;
-    if (v > 0) plus.push({ date: String(st.date), title: st.direction === "in" ? "收款超過的部分" : "你先付給對方", amount: v, settlement: true });
-    else minus += -v;
+    if (v > 0) plus.push({ date: String(st.date), title: st.direction === "in" ? "收款超過的部分" : "你先付給對方", amount: v, left: v, settlement: true });
+    else {
+      paid += -v;
+      const ids = parseIds(st.bill_ids);
+      if (ids.length) targeted.push([ids, -v]);
+      else minus += -v;
+    }
   }
   plus.sort((a, b) => a.date.localeCompare(b.date));
-  const paid = minus;
-  const out = [];
-  for (const it of plus) {
-    const use = Math.min(it.amount, minus);
-    minus -= use;
-    const left = r2(it.amount - use);
-    if (left >= 0.5) out.push({ ...it, left, partial: use > 0 });
+  // 指定項目的還款：先扣那幾筆，用不完的併進「從最早開始抵」
+  for (const [ids, amt] of targeted) {
+    let m = amt;
+    for (const it of plus) {
+      if (m <= 0) break;
+      if (it.id == null || !ids.includes(it.id)) continue;
+      const use = Math.min(it.left, m);
+      it.left -= use;
+      m -= use;
+    }
+    minus += m;
   }
+  for (const it of plus) {
+    const use = Math.min(it.left, minus);
+    it.left -= use;
+    minus -= use;
+  }
+  const out = plus
+    .map((it) => ({ ...it, left: r2(it.left), partial: it.left < it.amount - 0.004 }))
+    .filter((it) => it.left >= 0.5);
   return { items: out.reverse(), paid: r2(paid) }; // 新的在上面
 }
 
@@ -436,6 +506,7 @@ export default function SplitBills({ expenseCats = [] }) {
   const [addOpen, setAddOpen] = useState(false);
   const [settleFor, setSettleFor] = useState(null); // {id,name,emoji,net}
   const [detailFor, setDetailFor] = useState(null); // 點欠款金額：展開這個人目前還欠的項目
+  const [picks, setPicks] = useState(() => new Set()); // 展開清單裡勾的分帳（要先還的）
 
   function reload() {
     setLoading(true);
@@ -534,13 +605,14 @@ export default function SplitBills({ expenseCats = [] }) {
             {[...owedList, ...oweList].map(([who, v]) => {
               const isOpen = detailFor === who;
               const detail = isOpen ? outstandingItems(who, bills, settlements, v > 0 ? 1 : -1) : null;
+              const canSettle = who !== "self" && members.some((m) => String(m.id) === who);
               return (
               <div key={who}>
                 <div className="flex items-center justify-between gap-2">
-                  <button onClick={() => setDetailFor(isOpen ? null : who)} className="text-left text-sm text-slate-700">{emojiOf(who)} {nameOf(who)}</button>
+                  <button onClick={() => { setDetailFor(isOpen ? null : who); setPicks(new Set()); }} className="text-left text-sm text-slate-700">{emojiOf(who)} {nameOf(who)}</button>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setDetailFor(isOpen ? null : who)}
+                      onClick={() => { setDetailFor(isOpen ? null : who); setPicks(new Set()); }}
                       title="看目前還欠哪些"
                       className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-sm font-bold transition hover:bg-slate-50 ${v > 0 ? "text-emerald-600" : "text-red-500"}`}
                     >
@@ -568,6 +640,13 @@ export default function SplitBills({ expenseCats = [] }) {
                       <ul className="space-y-1">
                         {detail.items.map((it, i) => (
                           <li key={i} className="flex items-center gap-2 text-xs">
+                            {canSettle && it.id != null ? (
+                              <input type="checkbox" checked={picks.has(it.id)} title="勾起來＝這次先還這筆"
+                                onChange={() => setPicks((p) => { const n = new Set(p); n.has(it.id) ? n.delete(it.id) : n.add(it.id); return n; })}
+                                className="h-3.5 w-3.5 shrink-0 accent-indigo-600" />
+                            ) : (
+                              <span className="w-3.5 shrink-0" />
+                            )}
                             <span className="w-10 shrink-0 tabular-nums text-slate-400">{it.date.slice(5).replace("-", "/")}</span>
                             <span className="min-w-0 flex-1 truncate text-slate-700">
                               {it.title}
@@ -579,9 +658,20 @@ export default function SplitBills({ expenseCats = [] }) {
                         ))}
                       </ul>
                     )}
+                    {canSettle && picks.size > 0 && (() => {
+                      const sum = detail.items.filter((it) => picks.has(it.id)).reduce((x, it) => x + it.left, 0);
+                      return (
+                        <button
+                          onClick={() => setSettleFor({ id: Number(who), name: nameOf(who), emoji: emojiOf(who), net: v, preselect: [...picks] })}
+                          className="mt-2 w-full rounded-lg bg-indigo-600 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700 active:scale-[.98]"
+                        >
+                          {v > 0 ? "收" : "還"}這 {picks.size} 筆 {money(sum)}
+                        </button>
+                      );
+                    })()}
                     {detail.paid > 0 && (
                       <p className="mt-1.5 border-t border-slate-200 pt-1 text-[11px] text-slate-400">
-                        已經{v > 0 ? "收" : "還"}過的 {money(detail.paid)} 先抵掉最早的帳，上面是還沒抵完的。
+                        已經{v > 0 ? "收" : "還"}過的 {money(detail.paid)}：有指定的扣那幾筆，其餘先抵最早的帳，上面是還沒抵完的。勾選後可以只{v > 0 ? "收" : "還"}特定幾筆。
                       </p>
                     )}
                   </div>
@@ -673,9 +763,11 @@ export default function SplitBills({ expenseCats = [] }) {
         <SettleModal
           target={settleFor}
           accounts={accounts}
+          items={outstandingItems(String(settleFor.id), bills, settlements, settleFor.net > 0 ? 1 : -1).items}
           onClose={() => setSettleFor(null)}
           onSaved={() => {
             setSettleFor(null);
+            setPicks(new Set());
             reload();
           }}
         />

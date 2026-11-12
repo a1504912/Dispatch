@@ -30,8 +30,10 @@ export async function deleteSettlement(id) {
 }
 
 // 「沖銷支出」會扣回哪些分類（沿用原分帳那筆記錄的分類／次分類）
-export async function offsetPreview(memberId, amount) {
+export async function offsetPreview(memberId, amount, billIds = []) {
   if (SUPABASE_MODE || LOCAL_MODE) return [];
-  const { data } = await client.get("/api/settlements/offset-preview", { params: { member_id: memberId, amount } });
+  const params = { member_id: memberId, amount };
+  if (billIds.length) params.bill_ids = billIds.join(",");
+  const { data } = await client.get("/api/settlements/offset-preview", { params });
   return data;
 }

@@ -96,6 +96,8 @@ class Settlement(SQLModel, table=True):
     transaction_id: Optional[int] = Field(default=None, foreign_key="transaction.id")
     # 沖銷支出橫跨不同分類時會拆成多筆，其餘幾筆的 id（JSON 陣列）
     extra_tx_ids: Optional[str] = None
+    # 指定還哪幾筆分帳（JSON 陣列的 split bill id）；空＝從最早的開始抵
+    bill_ids: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

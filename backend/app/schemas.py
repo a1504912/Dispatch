@@ -104,6 +104,7 @@ class SettlementCreate(SQLModel):
     method: str = "none"  # income / offset / expense / none
     account_id: Optional[int] = None
     note: str = ""
+    bill_ids: Optional[str] = None  # JSON 陣列：指定還哪幾筆分帳
 
 
 class LedgerCategoryCreate(SQLModel):
