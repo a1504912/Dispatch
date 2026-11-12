@@ -167,6 +167,14 @@ def init_db() -> None:
     _seed_ledger_categories()
     _seed_accounts()
 
+    # 以前沖銷多記的「分帳沖銷 $0」零頭，併回同一次結算的記錄
+    try:
+        from app.routers.settlements import merge_tiny_offsets
+
+        merge_tiny_offsets()
+    except Exception as exc:  # noqa: BLE001
+        print("merge tiny offsets skipped:", str(exc)[:200])
+
 
 DEFAULT_LEDGER_CATEGORIES = [
     ("expense", "餐飲", "🍜"),

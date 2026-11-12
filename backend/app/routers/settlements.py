@@ -95,7 +95,11 @@ def _offset_allocations(session: Session, member_id: int, amount: float, exclude
         sub = (tx.subcategory if tx else "") or ""
         out.append({"category": cat, "subcategory": sub, "amount": round(t, 2), "title": b.title, "date": b.date.isoformat()})
     if left > 0.004:
-        out.append({"category": "分帳沖銷", "subcategory": "", "amount": round(left, 2), "title": "", "date": ""})
+        if out and left < 1:
+            # 平均分帳除不盡的零頭（例：929/3＝309.67，對方給 310）：併進最後一筆，不要多出一筆 $0 的「分帳沖銷」
+            out[-1]["amount"] = round(out[-1]["amount"] + left, 2)
+        else:
+            out.append({"category": "分帳沖銷", "subcategory": "", "amount": round(left, 2), "title": "", "date": ""})
     # 同一個分類／次分類合併成一筆
     merged: dict[tuple, dict] = {}
     for a in out:
@@ -188,3 +192,35 @@ def delete_settlement(settlement_id: int, session: Session = Depends(get_session
             session.delete(tx)
     session.delete(s)
     session.commit()
+
+
+def merge_tiny_offsets() -> int:
+    """一次性整理：以前沖銷時，除不盡的零頭（不到 1 元）會多記一筆「分帳沖銷 $0」。
+    把它併回同一次結算的其他沖銷記錄後刪掉。重跑不會有事（沒有零頭就不動）。"""
+    from app.database import engine
+
+    fixed = 0
+    with Session(engine) as session:
+        for st in session.exec(select(Settlement).where(Settlement.method == "offset")).all():
+            ids = [st.transaction_id] if st.transaction_id else []
+            try:
+                ids += [int(i) for i in json.loads(st.extra_tx_ids or "[]")]
+            except (ValueError, TypeError):
+                continue
+            txs = [t for t in (session.get(Transaction, i) for i in ids) if t]
+            tiny = [t for t in txs if t.category == "分帳沖銷" and abs(t.amount) < 1]
+            keep = [t for t in txs if t not in tiny]
+            if not tiny or not keep:
+                continue
+            target = max(keep, key=lambda t: abs(t.amount))
+            for t in tiny:
+                target.amount = round(target.amount + t.amount, 2)
+                session.delete(t)
+                fixed += 1
+            session.add(target)
+            remaining = [t.id for t in keep]
+            st.transaction_id = remaining[0]
+            st.extra_tx_ids = json.dumps(remaining[1:]) if len(remaining) > 1 else None
+            session.add(st)
+        session.commit()
+    return fixed
