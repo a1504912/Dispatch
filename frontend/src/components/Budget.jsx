@@ -19,6 +19,7 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
   const [overallInput, setOverallInput] = useState("");
   const [newCat, setNewCat] = useState("");
   const [newAmt, setNewAmt] = useState("");
+  const [otherOpen, setOtherOpen] = useState(false);
 
   const expense = monthTxs.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount, 0);
   const byCat = useMemo(() => {
@@ -32,6 +33,13 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
   const catSum = catBudgets.reduce((s, b) => s + b.amount, 0); // 分類預算加總
   const unallocated = overall ? overall.amount - catSum : 0; // 總預算還沒分配掉的部分
   const emojiOf = (name) => categories.find((c) => c.name === name && c.kind === "expense" && !c.parent_id)?.emoji || "📦";
+
+  // 沒設分類預算的分類：花費一樣要算出來，不然上面總額跟下面加不起來
+  const otherCats = Object.entries(byCat)
+    .filter(([name, v]) => !catBudgets.some((b) => b.category === name) && Math.round(v) !== 0)
+    .sort((a, b) => b[1] - a[1]);
+  const otherSpent = otherCats.reduce((s, [, v]) => s + v, 0);
+  const otherLimit = overall ? Math.max(0, unallocated) : 0;
 
   const topCats = categories.filter((c) => c.kind === "expense" && !c.parent_id);
   const budgetableCats = topCats.filter((c) => !catBudgets.some((b) => b.category === c.name));
@@ -153,6 +161,46 @@ export default function Budget({ budgets = [], monthTxs = [], categories = [], m
             );
           })}
           {catBudgets.length === 0 && <p className="text-sm text-slate-400">還沒有分類預算。可以幫特定分類(例如飲食)設上限。</p>}
+          {catBudgets.length > 0 && otherCats.length > 0 && (
+            <div className="rounded-xl border border-dashed border-slate-200 p-2.5">
+              <button onClick={() => setOtherOpen((v) => !v)} className="flex w-full items-center justify-between text-left text-sm">
+                <span className="font-medium text-slate-700">
+                  <span className={`mr-1 inline-block text-xs text-slate-400 transition ${otherOpen ? "rotate-90" : ""}`}>▸</span>
+                  📦 其他分類 <span className="text-xs font-normal text-slate-400">（沒設預算的 {otherCats.length} 個）</span>
+                </span>
+                <span className={otherLimit > 0 && otherSpent > otherLimit ? "font-bold text-red-500" : "text-slate-500"}>
+                  {money(otherSpent)}{otherLimit > 0 && ` / ${money(otherLimit)}`}
+                </span>
+              </button>
+              {otherLimit > 0 ? (
+                <Bar spent={otherSpent} amount={otherLimit} />
+              ) : (
+                overall && otherSpent > 0 && (
+                  <p className="mt-1 text-[11px] text-amber-600">總預算已經全分給上面的分類，這些花費沒有預算額度（會讓總預算提早用完）</p>
+                )
+              )}
+              {otherOpen && (
+                <ul className="mt-2 space-y-1">
+                  {otherCats.map(([name, v]) => (
+                    <li key={name || "(未分類)"} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-600">{emojiOf(name)} {name || "（未分類）"}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="tabular-nums text-slate-700">{money(v)}</span>
+                        {budgetableCats.some((c) => c.name === name) && (
+                          <button onClick={() => setNewCat(name)} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 hover:bg-indigo-100">設預算</button>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {catBudgets.length > 0 && (
+            <p className="text-right text-[11px] text-slate-400">
+              分類合計 {money(catBudgets.reduce((s, b) => s + (byCat[b.category] || 0), 0) + otherSpent)}＝本月支出 {money(expense)}
+            </p>
+          )}
         </div>
 
         {/* 新增分類預算 */}
