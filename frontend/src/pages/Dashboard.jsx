@@ -315,6 +315,7 @@ export default function Dashboard() {
     setWeatherLocState(loc);
   }
 
+  const aiDoneRef = useRef(null); // AI 排程「完整編輯」存好後要做的事
   function openNewEvent(initial = null) {
     // 新增（不是編輯）時，分類篩選只選了一個分類 → 預設帶這個分類
     const isNew = !initial?.id;
@@ -911,6 +912,10 @@ export default function Dashboard() {
         open={imageModalOpen}
         initialFile={pastedFile}
         categories={categories}
+        onOpenFull={(initial, done) => {
+          aiDoneRef.current = done;
+          openNewEvent(initial);
+        }}
         onClose={() => {
           setImageModalOpen(false);
           setPastedFile(null);
@@ -926,8 +931,14 @@ export default function Dashboard() {
         onClose={() => {
           setEventModalOpen(false);
           setEditingEvent(null);
+          aiDoneRef.current = null;
         }}
-        onSaved={loadEvents}
+        onSaved={() => {
+          // 從 AI 排程「完整編輯」存好的：從 AI 清單拿掉那一筆
+          aiDoneRef.current?.();
+          aiDoneRef.current = null;
+          loadEvents();
+        }}
       />
 
       {/* 未來事項查詢 */}

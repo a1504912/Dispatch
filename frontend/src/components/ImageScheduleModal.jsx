@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { scheduleFromImage, scheduleFromText } from "../api/schedule";
-import { createEvent } from "../api/events";
+import { createEvent, listEvents } from "../api/events";
+import { createSubtask } from "../api/subtasks";
 import { listModels } from "../api/models";
 
 const VISION_HINT = /vl|llava|vision|minicpm|moondream|bakllava|gemma3/i;
@@ -31,6 +32,31 @@ const errOf = (e) => {
   return (typeof d === "string" && d) || e?.message || "失敗";
 };
 
+// 兩個標題最長的共同片段（至少 2 個字才算像）：「皆豪系統修改更新」vs「皆豪-客製」→「皆豪」
+function sharedLen(a, b) {
+  const clean = (x) => String(x || "").replace(/[\s\-_－—·・,，.。:：()（）[\]【】]/g, "");
+  a = clean(a);
+  b = clean(b);
+  for (let L = Math.min(a.length, b.length, 8); L >= 2; L--) {
+    for (let i = 0; i + L <= a.length; i++) if (b.includes(a.slice(i, i + L))) return L;
+  }
+  return 0;
+}
+
+// 「1.xxx 2.xxx」「xxx、xxx」或一行一項 → 明細陣列
+function splitToSubtasks(text) {
+  const t = String(text || "").replace(/^[^：:]{0,12}[：:]/, "");
+  let parts = t.split(/\n|；|;/);
+  if (parts.length < 2) parts = t.split(/(?=\s*\d+[.、)）])/);
+  if (parts.length < 2) parts = t.split(/、|，|,/);
+  return parts.map((x) => x.replace(/^\s*(?:\d+[.、)）]|[-•*・])\s*/, "").trim()).filter(Boolean);
+}
+
+const shortDate = (v) => {
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getMonth() + 1}/${d.getDate()}`;
+};
+
 function formatRange(start, end) {
   const s = new Date(start);
   const e = new Date(end);
@@ -46,7 +72,7 @@ function toInputValue(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ImageScheduleModal({ open, onClose, onSaved, initialFile = null, categories = [] }) {
+export default function ImageScheduleModal({ open, onClose, onSaved, onOpenFull, initialFile = null, categories = [] }) {
   const [images, setImages] = useState([]); // [{file, url}]
   const [models, setModels] = useState([]);
   const [model, setModel] = useState("");
@@ -60,6 +86,8 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
   const [mode, setMode] = useState("image"); // image（截圖）/ text（打字描述）
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [existing, setExisting] = useState([]); // 既有行程（可以把明細加進去）
+  const [subDraft, setSubDraft] = useState("");
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -72,6 +100,12 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setError("");
     setProgress(null);
     setImages(initialFile ? [{ file: initialFile, url: URL.createObjectURL(initialFile) }] : []);
+    listEvents()
+      .then((evs) => {
+        const from = Date.now() - 30 * 86400000;
+        setExisting(evs.filter((e) => new Date(e.start_time).getTime() >= from).sort((a, b) => String(a.start_time).localeCompare(String(b.start_time))));
+      })
+      .catch(() => setExisting([]));
     listModels()
       .then((data) => {
         const list = data.models ?? [];
@@ -118,6 +152,25 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setError("");
   }
 
+  function toProposal(ev) {
+    return { ...ev, include: true, category_id: "", subtasks: Array.isArray(ev.subtasks) ? ev.subtasks : [], target: "" };
+  }
+
+  // 標題像、日期接近的既有行程 → 建議「加到這個行程的明細」
+  function suggestTarget(ev) {
+    const t = new Date(ev.start_time).getTime();
+    let best = null;
+    for (const e of existing) {
+      const L = sharedLen(ev.title, e.title);
+      if (L < 2) continue;
+      const days = Math.abs(new Date(e.start_time).getTime() - t) / 86400000;
+      if (days > 60) continue;
+      const score = L * 10 - days;
+      if (!best || score > best.score) best = { e, score };
+    }
+    return best?.e || null;
+  }
+
   // 打字描述：一次問完
   async function handleText() {
     if (!text.trim()) return;
@@ -125,7 +178,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setProgress({ done: 0, total: 1 });
     try {
       const data = await scheduleFromText(text.trim(), provider, model || undefined);
-      setProposals((data.events ?? []).map((ev) => ({ ...ev, include: true, category_id: "" })));
+      setProposals((data.events ?? []).map(toProposal));
     } catch (e) {
       setError(errOf(e));
     } finally {
@@ -145,7 +198,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     for (let i = 0; i < images.length; i++) {
       try {
         const data = await scheduleFromImage(images[i].file, model || undefined, hint.trim() || undefined, provider);
-        for (const ev of data.events ?? []) all.push({ ...ev, include: true, category_id: "" });
+        for (const ev of data.events ?? []) all.push(toProposal(ev));
       } catch (e) {
         failed += 1;
         lastErr = errOf(e);
@@ -165,6 +218,12 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     setSaving(true);
     try {
       for (const ev of proposals.filter((e) => e.include && e.title?.trim())) {
+        const subs = (ev.subtasks || []).map((x) => x.trim()).filter(Boolean);
+        if (ev.target) {
+          // 加到既有行程：每一項變成那個行程的明細（沒有明細就把標題當一項）
+          for (const t of subs.length ? subs : [ev.title.trim()]) await createSubtask(Number(ev.target), t);
+          continue;
+        }
         await createEvent({
           title: ev.title,
           start_time: ev.start_time,
@@ -172,6 +231,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
           description: ev.description || "",
           color: ev.color || "#8b5cf6",
           category_id: ev.category_id ? Number(ev.category_id) : null,
+          subtasks: subs.length ? subs : undefined,
         });
       }
       onSaved?.();
@@ -183,6 +243,23 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
 
   function updateProposal(idx, patch) {
     setProposals((p) => p.map((ev, i) => (i === idx ? { ...ev, ...patch } : ev)));
+  }
+  // 用完整的「新增行程」視窗編輯這一筆：存好後從清單拿掉
+  function openFull(idx) {
+    const ev = proposals[idx];
+    setEditingIdx(null);
+    onOpenFull?.(
+      {
+        title: ev.title,
+        start_time: ev.start_time,
+        end_time: ev.end_time,
+        description: ev.description || "",
+        color: ev.color || "#8b5cf6",
+        category_id: ev.category_id ? Number(ev.category_id) : undefined,
+        pending_subtasks: (ev.subtasks || []).map((x) => x.trim()).filter(Boolean),
+      },
+      () => setProposals((p) => p.filter((x) => x !== ev))
+    );
   }
   function removeProposal(idx) {
     setProposals((p) => p.filter((_, i) => i !== idx));
@@ -196,7 +273,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
     end.setHours(end.getHours() + 1);
     setProposals((p) => [
       ...(p ?? []),
-      { title: "", start_time: toInputValue(start), end_time: toInputValue(end), description: "", color: "#8b5cf6", include: true, category_id: "" },
+      { title: "", start_time: toInputValue(start), end_time: toInputValue(end), description: "", color: "#8b5cf6", include: true, category_id: "", subtasks: [], target: "" },
     ]);
     setEditingIdx(proposals?.length ?? 0);
   }
@@ -342,6 +419,37 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
                               <input type="datetime-local" className={inputCls} value={toInputValue(ev.end_time)} min={toInputValue(ev.start_time)} onChange={(e) => updateProposal(i, { end_time: e.target.value })} />
                             </div>
                             <input className={inputCls} placeholder="備註（可留空）" value={ev.description ?? ""} onChange={(e) => updateProposal(i, { description: e.target.value })} />
+                            {/* 明細 */}
+                            <div className="rounded-lg bg-slate-50 p-2">
+                              <div className="mb-1 flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-500">明細 {ev.subtasks.length > 0 && `（${ev.subtasks.length} 項）`}</span>
+                                {ev.description?.trim() && splitToSubtasks(ev.description).length > 1 && (
+                                  <button type="button" onClick={() => updateProposal(i, { subtasks: [...ev.subtasks, ...splitToSubtasks(ev.description)], description: "" })}
+                                    className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50">備註拆成明細</button>
+                                )}
+                              </div>
+                              <ul className="space-y-1">
+                                {ev.subtasks.map((t, j) => (
+                                  <li key={j} className="flex items-center gap-1.5">
+                                    <span className="text-xs text-slate-300">☐</span>
+                                    <input className={`${inputCls} py-1 text-xs`} value={t} onChange={(e) => updateProposal(i, { subtasks: ev.subtasks.map((x, k) => (k === j ? e.target.value : x)) })} />
+                                    <button type="button" onClick={() => updateProposal(i, { subtasks: ev.subtasks.filter((_, k) => k !== j) })} className="shrink-0 px-1 text-slate-300 hover:text-red-500">✕</button>
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className="mt-1 flex gap-1.5">
+                                <input className={`${inputCls} py-1 text-xs`} placeholder="新增明細（Enter）" value={subDraft} onChange={(e) => setSubDraft(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter" && subDraft.trim()) { e.preventDefault(); updateProposal(i, { subtasks: [...ev.subtasks, subDraft.trim()] }); setSubDraft(""); } }} />
+                              </div>
+                            </div>
+                            {/* 放到哪裡 */}
+                            <div>
+                              <label className="mb-1 block text-xs font-bold text-slate-500">放到哪裡</label>
+                              <select className={`${inputCls} cursor-pointer`} value={ev.target} onChange={(e) => updateProposal(i, { target: e.target.value })}>
+                                <option value="">➕ 新增成一個行程</option>
+                                {existing.map((x) => <option key={x.id} value={x.id}>📌 加到既有：{shortDate(x.start_time)} {x.title}</option>)}
+                              </select>
+                            </div>
                             {categories.length > 0 && (
                               <select className={`${inputCls} cursor-pointer`} value={ev.category_id} onChange={(e) => { const id = e.target.value; const cat = categories.find((c) => String(c.id) === id); updateProposal(i, { category_id: id, ...(cat ? { color: cat.color } : {}) }); }}>
                                 <option value="">未分類</option>
@@ -350,7 +458,10 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
                             )}
                             <div className="flex justify-end gap-2 pt-0.5">
                               <button onClick={() => removeProposal(i)} className="rounded-lg px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50">刪除</button>
-                              <button onClick={() => setEditingIdx(null)} className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-bold text-white hover:bg-slate-700">完成</button>
+                              {onOpenFull && !ev.target && (
+                                <button onClick={() => openFull(i)} className="mr-auto order-first rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50" title="用完整的行程編輯視窗（照片、連結、提醒…）">↗ 完整編輯</button>
+                              )}
+                              <button onClick={() => { setEditingIdx(null); setSubDraft(""); }} className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-bold text-white hover:bg-slate-700">完成</button>
                             </div>
                           </div>
                         ) : (
@@ -358,10 +469,31 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
                             <input type="checkbox" checked={ev.include} onChange={() => updateProposal(i, { include: !ev.include })} className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-indigo-600" />
                             <button onClick={() => setEditingIdx(i)} className="min-w-0 flex-1 text-left">
                               <p className={`truncate text-sm font-semibold ${ev.include ? "text-slate-800" : "text-slate-400"}`}>{ev.title || "（未命名，點此編輯）"}</p>
-                              <p className="text-xs text-slate-400">
-                                {formatRange(ev.start_time, ev.end_time)}
-                                {ev.category_id && categories.find((c) => String(c.id) === String(ev.category_id)) && `　·　${categories.find((c) => String(c.id) === String(ev.category_id)).name}`}
-                              </p>
+                              {ev.target ? (
+                                <p className="text-xs font-semibold text-emerald-600">
+                                  → 加到「{existing.find((x) => String(x.id) === String(ev.target))?.title || "既有行程"}」的明細（{ev.subtasks.length || 1} 項）
+                                </p>
+                              ) : (
+                                <p className="text-xs text-slate-400">
+                                  {formatRange(ev.start_time, ev.end_time)}
+                                  {ev.category_id && categories.find((c) => String(c.id) === String(ev.category_id)) && `　·　${categories.find((c) => String(c.id) === String(ev.category_id)).name}`}
+                                </p>
+                              )}
+                              {ev.subtasks.length > 0 && (
+                                <ul className="mt-1 space-y-0.5">
+                                  {ev.subtasks.slice(0, 6).map((t, j) => <li key={j} className="truncate text-[11px] text-slate-500">☐ {t}</li>)}
+                                  {ev.subtasks.length > 6 && <li className="text-[11px] text-slate-400">…還有 {ev.subtasks.length - 6} 項</li>}
+                                </ul>
+                              )}
+                              {!ev.target && (() => {
+                                const sug = suggestTarget(ev);
+                                return sug ? (
+                                  <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); updateProposal(i, { target: String(sug.id) }); }}
+                                    className="mt-1 inline-block rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100">
+                                    💡 改成加到「{shortDate(sug.start_time)} {sug.title}」的明細？
+                                  </span>
+                                ) : null;
+                              })()}
                             </button>
                             <button onClick={() => setEditingIdx(i)} className="shrink-0 rounded-md px-1.5 text-slate-300 hover:text-indigo-500" title="編輯／分類">✎</button>
                             <button onClick={() => removeProposal(i)} className="shrink-0 rounded-md px-1.5 text-slate-300 hover:text-red-500" title="移除">✕</button>
@@ -386,7 +518,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, initialFile
             </button>
           ) : (
             <button onClick={handleSave} disabled={includedCount === 0 || saving} className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:shadow-none">
-              {saving ? "加入中…" : `加入 ${includedCount} 筆到行事曆`}
+              {saving ? "加入中…" : `加入 ${includedCount} 筆`}
             </button>
           )}
         </div>

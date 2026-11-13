@@ -55,8 +55,12 @@ def _build_prompt() -> str:
         "請依此推算相對日期（例如「明天」「下週三」）。\n"
         "只輸出 JSON，格式為：\n"
         '{"events": [{"title": "標題", "start_time": "YYYY-MM-DDTHH:MM:SS", '
-        '"end_time": "YYYY-MM-DDTHH:MM:SS", "description": "補充說明"}]}\n'
+        '"end_time": "YYYY-MM-DDTHH:MM:SS", "description": "補充說明", '
+        '"subtasks": ["明細1", "明細2"]}]}\n'
         "規則：\n"
+        "- 同一件事底下有條列的多個項目（1. 2. 3.、項目符號、逐行列出的待辦／修正項目）時，"
+        "放進 subtasks 陣列，一項一個字串、保留原文重點（去掉編號）；description 不要再重複列一次。"
+        "沒有條列項目就給空陣列。\n"
         "- 時間一律用 ISO 8601，不要加時區。\n"
         "- 沒寫結束時間就預設一小時；只有日期沒時間就預設當天 09:00。\n"
         "- 標題與說明使用繁體中文，簡潔扼要。\n"
@@ -113,13 +117,22 @@ def _parse_events(content: str) -> list[EventCreate]:
         if end_dt <= start_dt:
             end_dt = start_dt + timedelta(hours=1)
 
+        subs = item.get("subtasks") or item.get("items") or []
+        if isinstance(subs, str):
+            subs = [x for x in re.split(r"[\n；;]", subs)]
+        subs = [
+            re.sub(r"^\s*(?:\d+[.、)）]|[-•*・])\s*", "", str(x.get("title") if isinstance(x, dict) else x)).strip()[:200]
+            for x in subs
+            if x
+        ]
         events.append(
             EventCreate(
                 title=str(title),
                 start_time=start_dt,
                 end_time=end_dt,
-                description=str(item.get("description", "")),
+                description=str(item.get("description") or ""),
                 color=AI_EVENT_COLOR,
+                subtasks=[x for x in subs if x][:50] or None,
             )
         )
     return events

@@ -319,7 +319,8 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     });
     setNewSub("");
     setSubtasks([]);
-    setPendingSubs([]);
+    // AI 排程「完整編輯」帶過來的明細
+    setPendingSubs(!initial?.id && Array.isArray(initial?.pending_subtasks) ? initial.pending_subtasks : []);
     setPasteSubId(null);
     setImagesLoading(false);
     setFilesLoading(false);
