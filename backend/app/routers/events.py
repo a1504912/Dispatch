@@ -1,7 +1,9 @@
+import base64
+import binascii
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlmodel import Session, select
 
 from app import google_calendar as gcal
@@ -34,38 +36,58 @@ def _propagate_delete(session: Session, google_event_id: Optional[str]) -> None:
         print("Google delete failed:", exc)
 
 
+# 列表不需要的大欄位（原圖、檔案 base64、縮圖）：不從資料庫讀出來，省下大部分時間
+_HEAVY = {"image", "images", "files", "thumb"}
+
+
+def _light_columns():
+    return [c for c in Event.__table__.columns if c.name not in _HEAVY]
+
+
 @router.get("")
 def list_events(session: Session = Depends(get_session)):
-    # 列表只回小縮圖 thumb，拿掉大張的 image/images，大幅減少總覽讀取量。
-    events = session.exec(select(Event)).all()
+    """總覽列表：不讀原圖／檔案（圖片數、檔案數存檔時就算好了）；縮圖改成網址（瀏覽器會快取，捲到才載）。"""
+    cols = _light_columns()
+    rows = session.exec(select(*cols)).all()
     result = []
-    for e in events:
-        data = e.model_dump()
-        # 先算出圖片張數（給前端顯示載入骨架用），再把大張圖片拿掉
-        count = 0
-        if e.images:
-            try:
-                arr = json.loads(e.images)
-                count = len(arr) if isinstance(arr, list) else 0
-            except (ValueError, TypeError):
-                count = 0
-        if count == 0 and e.image:
-            count = 1
-        data["image_count"] = count
-        data.pop("image", None)
-        data.pop("images", None)
-        # 檔案（base64）也很大，列表只回數量，開單筆才載完整檔
-        fcount = 0
-        if e.files:
-            try:
-                farr = json.loads(e.files)
-                fcount = len(farr) if isinstance(farr, list) else 0
-            except (ValueError, TypeError):
-                fcount = 0
-        data["file_count"] = fcount
-        data.pop("files", None)
+    for r in rows:
+        data = dict(r._mapping)
+        data["image_count"] = data.get("image_count") or 0
+        data["file_count"] = data.get("file_count") or 0
+        tv = data.pop("thumb_v", None)
+        if tv:
+            data["thumb_url"] = f"/api/events/{data['id']}/thumb?v={tv}"
         result.append(data)
-    return result
+    # 自己轉 JSON（日期轉字串），跳過 FastAPI 逐欄位檢查，筆數多時快很多
+    return Response(json.dumps(result, default=_iso, ensure_ascii=False), media_type="application/json")
+
+
+def _iso(v):
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
+@router.get("/brief")
+def list_events_brief(session: Session = Depends(get_session)):
+    """選單用（記帳的「所屬行程」、AI 排程的「加到既有行程」）：只要標題和時間。"""
+    rows = session.exec(
+        select(Event.id, Event.title, Event.start_time, Event.end_time, Event.all_day, Event.is_task, Event.completed)
+    ).all()
+    return [dict(r._mapping) for r in rows]
+
+
+@router.get("/{event_id}/thumb")
+def event_thumb(event_id: int, session: Session = Depends(get_session)):
+    """縮圖（data URL 轉成圖片）。網址帶 ?v=，內容變了網址就會變，所以可以放心長時間快取。"""
+    thumb = session.exec(select(Event.thumb).where(Event.id == event_id)).first()
+    if not thumb or not str(thumb).startswith("data:"):
+        raise HTTPException(status_code=404, detail="沒有縮圖")
+    head, _, b64 = str(thumb).partition(",")
+    mime = head[5:].split(";")[0] or "image/jpeg"
+    try:
+        raw = base64.b64decode(b64)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=404, detail="縮圖壞了")
+    return Response(raw, media_type=mime, headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 @router.get("/{event_id}", response_model=Event)

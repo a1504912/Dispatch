@@ -327,7 +327,7 @@ export default function EventModal({ open, onClose, onSaved, initial, agents = [
     setSubtasksLoading(false);
     if (initial?.id) {
       let alive = true;
-      const expectImages = (initial.image_count ?? (initial.thumb ? 1 : 0)) > 0;
+      const expectImages = (initial.image_count ?? (initial.thumb || initial.thumb_url ? 1 : 0)) > 0;
       const expectFiles = (initial.file_count ?? 0) > 0;
       setImagesLoading(expectImages);
       setFilesLoading(expectFiles);

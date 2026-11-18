@@ -66,6 +66,11 @@ class Event(SQLModel, table=True):
     # 自訂提醒（JSON 陣列）：[{"id","mode":"before|at","minutes":60,"at":"YYYY-MM-DDTHH:MM","text":"提醒文字"}]
     # before＝開始前幾分鐘（整天行程以當天 09:00 為基準）；at＝指定時間；text 空白就用標題
     reminders: Optional[str] = None
+    # 列表用的摘要（存檔時自動算，見檔案最下面的 _event_media_summary）：
+    # 讓總覽列表完全不用讀原圖／檔案那幾 MB 的 base64
+    image_count: Optional[int] = None
+    file_count: Optional[int] = None
+    thumb_v: Optional[str] = None  # 縮圖版本（內容變了就變，給瀏覽器快取用）
 
 
 class Subtask(SQLModel, table=True):
@@ -529,3 +534,31 @@ class QuickEntry(SQLModel, table=True):
     message: str = ""  # 給使用者看的處理說明（例：「沿用上次全家的分類」）
     tx_id: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------- 行程存檔時順便算列表摘要 ----------
+def event_media_summary(ev) -> tuple[int, int, str | None]:
+    import json as _json
+    import zlib as _zlib
+
+    def _n(raw):
+        try:
+            arr = _json.loads(raw) if raw else []
+        except (ValueError, TypeError):
+            return 0
+        return len(arr) if isinstance(arr, list) else 0
+
+    imgs = _n(ev.images) or (1 if ev.image else 0)
+    files = _n(ev.files)
+    tv = f"{_zlib.crc32(ev.thumb.encode()) & 0xFFFFFFFF:x}" if ev.thumb else None
+    return imgs, files, tv
+
+
+def _event_media_summary(mapper, connection, target):  # noqa: ARG001
+    target.image_count, target.file_count, target.thumb_v = event_media_summary(target)
+
+
+from sqlalchemy import event as _sa_event  # noqa: E402
+
+_sa_event.listen(Event, "before_insert", _event_media_summary)
+_sa_event.listen(Event, "before_update", _event_media_summary)

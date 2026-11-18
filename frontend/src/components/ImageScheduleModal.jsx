@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { scheduleFromImage, scheduleFromText } from "../api/schedule";
-import { createEvent, listEvents } from "../api/events";
+import { createEvent, listEventsBrief } from "../api/events";
 import { createSubtask } from "../api/subtasks";
 import { listModels } from "../api/models";
 
@@ -100,7 +100,7 @@ export default function ImageScheduleModal({ open, onClose, onSaved, onOpenFull,
     setError("");
     setProgress(null);
     setImages(initialFile ? [{ file: initialFile, url: URL.createObjectURL(initialFile) }] : []);
-    listEvents()
+    listEventsBrief()
       .then((evs) => {
         const from = Date.now() - 30 * 86400000;
         setExisting(evs.filter((e) => new Date(e.start_time).getTime() >= from).sort((a, b) => String(a.start_time).localeCompare(String(b.start_time))));

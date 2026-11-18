@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { createTransaction, updateTransaction } from "../api/ledger";
 import { listMembers, createMember } from "../api/members";
 import { createSplitBill } from "../api/splitbills";
-import { listEvents } from "../api/events";
+import { listEventsBrief } from "../api/events";
 import { listAccounts } from "../api/accounts";
 import { listInvoices, invoiceLink } from "../api/invoices";
 import { NO_BACKEND } from "../localMode";
@@ -112,7 +112,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
         });
       })
       .catch(() => setAccounts([]));
-    listEvents()
+    listEventsBrief()
       .then((evs) => setEvents(evs.filter((e) => !e.is_task).sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))))
       .catch(() => setEvents([]));
     // 載入發票（給「這筆對應哪張發票」用），並預選已綁定的

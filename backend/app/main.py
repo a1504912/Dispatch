@@ -130,6 +130,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 文字類回應（JSON、網頁、JS）gzip 壓縮：筆數多了以後，列表資料小 5～10 倍
+from app.gzip_mw import SelectiveGZipMiddleware  # noqa: E402
+
+app.add_middleware(SelectiveGZipMiddleware)
+
 app.include_router(auth.router)
 app.include_router(agents.router)
 app.include_router(chat.router)
@@ -174,14 +179,24 @@ def health():
 
 if FRONTEND_DIST.exists():
     # 部署模式：後端直接供應前端網頁（SPA fallback 到 index.html）
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+    class _HashedAssets(StaticFiles):
+        """assets 檔名帶內容雜湊（改版就換檔名），瀏覽器可以放心快取一年，不用每次重新確認。"""
+
+        async def get_response(self, path, scope):
+            resp = await super().get_response(path, scope)
+            if resp.status_code == 200:
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
+    app.mount("/assets", _HashedAssets(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         candidate = FRONTEND_DIST / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        # index.html 每次都向主機確認（按「立即更新」後才會拿到新版）
+        return FileResponse(FRONTEND_DIST / "index.html", headers={"Cache-Control": "no-cache"})
 
 else:
 

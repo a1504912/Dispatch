@@ -22,6 +22,9 @@ def init_db() -> None:
         with engine.connect() as conn:
             columns = [row[1] for row in conn.execute(text("PRAGMA table_info(event)"))]
             if columns:
+                for col, typ in (("image_count", "INTEGER"), ("file_count", "INTEGER"), ("thumb_v", "VARCHAR")):
+                    if col not in columns:
+                        conn.execute(text(f"ALTER TABLE event ADD COLUMN {col} {typ}"))
                 if "completed" not in columns:
                     conn.execute(
                         text("ALTER TABLE event ADD COLUMN completed BOOLEAN NOT NULL DEFAULT 0")
@@ -163,6 +166,10 @@ def init_db() -> None:
         _backfill_thumbs()
     except Exception as exc:  # noqa: BLE001
         print("thumbnail backfill skipped:", str(exc)[:200])
+    try:
+        _backfill_event_summary()
+    except Exception as exc:  # noqa: BLE001
+        print("event summary backfill skipped:", str(exc)[:200])
 
     _seed_ledger_categories()
     _seed_accounts()
@@ -251,6 +258,28 @@ def _backfill_thumbs() -> None:
         if changed:
             session.commit()
             print(f"backfilled {changed} event thumbnails")
+
+
+def _backfill_event_summary() -> None:
+    """舊行程補上列表摘要（圖片數、檔案數、縮圖版本）。只處理還沒算過的，之後啟動就略過。"""
+    from sqlalchemy import text
+    from sqlmodel import Session, select
+
+    from app.models import Event, event_media_summary
+
+    with Session(engine) as session:
+        ids = session.exec(select(Event.id).where(Event.image_count == None)).all()  # noqa: E711
+        for i in range(0, len(ids), 200):
+            for ev in session.exec(select(Event).where(Event.id.in_(ids[i : i + 200]))).all():
+                n, f, tv = event_media_summary(ev)
+                session.execute(
+                    text("UPDATE event SET image_count=:n, file_count=:f, thumb_v=:tv WHERE id=:id"),
+                    {"n": n, "f": f, "tv": tv, "id": ev.id},
+                )
+            session.commit()
+            session.expunge_all()
+        if ids:
+            print(f"backfilled list summary for {len(ids)} events")
 
 
 def get_session() -> Generator[Session, None, None]:

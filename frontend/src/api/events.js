@@ -27,6 +27,13 @@ export async function listEvents() {
 }
 
 // 單一行程完整資料（含原圖）；列表為了速度不帶原圖，編輯視窗才用這個載入。
+// 選單用的精簡列表（只有標題、時間）：比完整列表小很多
+export async function listEventsBrief() {
+  if (SUPABASE_MODE || LOCAL_MODE) return listEvents();
+  const { data } = await client.get("/api/events/brief");
+  return data;
+}
+
 export async function getEvent(id) {
   if (SUPABASE_MODE) {
     return orThrow(await supabase.from("events").select("*").eq("id", id).single());

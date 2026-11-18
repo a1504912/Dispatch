@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { TW_CITIES, weatherIcon } from "../api/weather";
 import { useHolidays } from "../api/holidays";
 import { parseImages } from "../images";
+import { authUrl } from "../api/client";
 import { coversDay, spanInfo } from "../eventSpan";
 
 function startOfWeek(base) {
@@ -336,8 +337,8 @@ export default function WeekBoard({
 
                       {!spillover &&
                         (() => {
-                          // 列表只帶小縮圖 thumb（省流量）；離線模式沒 thumb 就退回原圖
-                          const thumb = ev.thumb || parseImages(ev)[0];
+                          // 列表只帶縮圖網址（瀏覽器會快取）；離線模式沒有就退回原圖
+                          const thumb = ev.thumb_url ? authUrl(ev.thumb_url) : ev.thumb || parseImages(ev)[0];
                           if (!thumb) return null;
                           return (
                             <img

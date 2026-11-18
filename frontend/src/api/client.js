@@ -49,4 +49,12 @@ client.interceptors.response.use(
   }
 );
 
+// <img> 帶不了 Authorization header：API 圖片網址加 ?token=（登入中介層本來就支援）
+export function authUrl(path) {
+  if (!path || /^(data:|blob:|https?:)/.test(path)) return path;
+  const token = getToken();
+  const sep = path.includes("?") ? "&" : "?";
+  return `${client.defaults.baseURL || ""}${path}${token ? `${sep}token=${encodeURIComponent(token)}` : ""}`;
+}
+
 export default client;
