@@ -214,8 +214,19 @@ export default function TransactionModal({ open, initial, categories = [], txs =
   // 「不計入總資產」的帳戶不在選單顯示（除非正好是這筆已選的帳戶，才留著能改）
   const visibleTop = topAccounts.filter((a) => !a.exclude_from_total || a.id === selTopId);
   const visibleSub = subAccts.filter((s) => !s.exclude_from_total || s.id === form.account_id);
-  const transferAccts = usableAccounts.filter(
-    (a) => !a.exclude_from_total || a.id === form.account_id || a.id === form.to_account_id
+  // 轉帳：「不計入總資產」的帳戶（上繳款、證券帳戶…）也要能轉進轉出，放在選單下半部另外一組
+  const isExcludedAcc = (a) => a.exclude_from_total || accounts.find((p) => p.id === a.parent_id)?.exclude_from_total;
+  const transferMain = usableAccounts.filter((a) => !isExcludedAcc(a));
+  const transferOther = usableAccounts.filter((a) => isExcludedAcc(a));
+  const transferOptions = (
+    <>
+      {transferMain.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+      {transferOther.length > 0 && (
+        <optgroup label="不計入總資產">
+          {transferOther.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+        </optgroup>
+      )}
+    </>
   );
 
   function pickType(top) {
@@ -390,7 +401,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
               <div className="flex-1">
                 <p className="mb-1 text-xs font-bold text-slate-500">從</p>
                 <select value={form.account_id ?? ""} onChange={(e) => { const id = Number(e.target.value); setForm({ ...form, account_id: id, account: accounts.find((a) => a.id === id)?.name ?? "" }); }} className={`${field} w-full`}>
-                  {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+                  {transferOptions}
                 </select>
               </div>
               <span className="mt-5 text-slate-400">→</span>
@@ -398,7 +409,7 @@ export default function TransactionModal({ open, initial, categories = [], txs =
                 <p className="mb-1 text-xs font-bold text-slate-500">到</p>
                 <select value={form.to_account_id ?? ""} onChange={(e) => setForm({ ...form, to_account_id: Number(e.target.value) })} className={`${field} w-full`}>
                   <option value="">選擇</option>
-                  {transferAccts.map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.name}（{money(balOf(a))}）</option>)}
+                  {transferOptions}
                 </select>
               </div>
             </div>
